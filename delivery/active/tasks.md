@@ -18,17 +18,17 @@
 - [x] тест: журнал второго прогона состоит из строк `cached` (C10); `--refresh` держит `ON CONFLICT`
 
 ## Single-flight
-- [ ] `collect/single_flight.py`: обёртка `AhrefsProvider` с `dict[key, asyncio.Task]`
-- [ ] ключ = `(endpoint, target, mode, country, date_from, date_to)`
-- [ ] тест: два одновременных запроса по одному домену → один вызов провайдера (C4)
-- [ ] тест: разные домены не блокируют друг друга (обратная сторона C4)
+- [x] `collect/single_flight.py`: обёртка `AhrefsProvider` с `dict[key, asyncio.Task]`
+- [x] ключ = `(endpoint, target, mode, country, date_from, date_to)`
+- [x] тест: два одновременных запроса по одному домену → один вызов провайдера (C4)
+- [x] тест: разные домены не блокируют друг друга (обратная сторона C4)
 
 ## Квота: fail-closed
-- [ ] `collect/quota.py`: `QuotaSource(Protocol)`, `FixtureQuota`, `LiveQuota`
-- [ ] `LiveQuota`: `subscription-info/limits-and-usage` (0 units), разбор остатка
-- [ ] `preflight(quota, estimate)`: три исхода — можно, мало, не знаем
-- [ ] тест: остаток ниже `AHREFS_UNITS_MIN_LEFT` → прогон не стартует, причина с числами (C6)
-- [ ] тест: квота недоступна → прогон не стартует (C7), и это **не** тот же код, что C6
+- [x] `collect/quota.py`: `QuotaSource(Protocol)`, `FixtureQuota`, `LiveQuota`
+- [x] `LiveQuota`: `subscription-info/limits-and-usage` (0 units), разбор остатка
+- [x] `preflight(quota, estimate)`: три исхода — можно, мало, не знаем
+- [x] тест: остаток ниже `AHREFS_UNITS_MIN_LEFT` → прогон не стартует, причина с числами (C6)
+- [x] тест: квота недоступна → прогон не стартует (C7), и это **не** тот же код, что C6
 
 ## Память о пустом ответе (дыра, найденная сверкой с CRM)
 - [x] хранить факт пустого ответа: дата последней проверки домена без истории
@@ -61,18 +61,18 @@
 - [x] анкер `coalesce(started_at, created_at)`; пороги для `running` и `queued` разные
 - [x] guarded UPDATE по активному статусу; причина текстом в `Run.error`
 - [x] порог в конфиг (`COLLECT_RUN_STALE_SEC`) + `.env.example`
-- [~] вызов реапера пока в начале прогона; переедет в preflight вместе со сметой
+- [x] вызов реапера в начале прогона, до открытия своего и до сметы
 - [x] тест: прогон старше порога → `failed` с причиной, резерв освобождён (C11)
 - [x] тест: прогон, финишировавший между выборкой и апдейтом, статус сохраняет (C11)
 - [x] тест: свежий `running` реапер не трогает (обратная сторона C11)
 
 ## Смета и резервы
-- [ ] `budget.estimate(tasks)`: сумма по задачам **после** кэша
-- [ ] `budget.reserve(session, run)`: строка `kind=reserve`
-- [ ] `budget.available(session, quota_left)`: остаток минус резервы незавершённых прогонов
-- [ ] тест: 60 из 100 доменов в базе → смета на 40 запросов, не на 100 (C5)
-- [ ] тест: смета сверена с фактом того же прогона, расхождение ≤ 10 % (C5)
-- [ ] тест: второй прогон видит остаток минус резерв первого (C8)
+- [x] `budget.estimate(tasks)`: сумма по задачам **после** кэша
+- [x] `budget.reserve(session, run)`: строка `kind=reserve`
+- [x] `budget.available(session, quota_left)`: остаток минус резервы незавершённых прогонов
+- [x] тест: 60 из 100 доменов в базе → смета на 40 запросов, не на 100 (C5)
+- [x] тест: смета сверена с фактом того же прогона, расхождение ≤ 10 % (C5)
+- [x] тест: второй прогон видит остаток минус резерв первого (C8)
 
 ## Шаг 2 воронки
 - [ ] `collect/funnel.py`: `preliminary_candidates(session, project_ids, now)` — префильтр по росту трафика

@@ -23,7 +23,7 @@ from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
 from ahrefs_cases.collect.endpoints import EndpointSpec
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.provider import HistoryRequest, HistoryResult
-from ahrefs_cases.collect.run_journal import open_run, system_user
+from ahrefs_cases.collect.run_journal import open_run, start_run, system_user
 from ahrefs_cases.collect.run_reaper import reap_stale_runs
 from ahrefs_cases.collect.runner import collect_all
 from ahrefs_cases.intake.accept import accept
@@ -246,6 +246,7 @@ async def test_reaper_closes_stale_run(db_session: AsyncSession) -> None:
     """C11: прогон, простоявший в `running` дольше порога, закрывается с причиной."""
     user = await system_user(db_session)
     run = await open_run(db_session, started_by=user.id, projects_total=1)
+    await start_run(db_session, run)
     run.started_at = datetime.now(UTC) - timedelta(seconds=config.ahrefs.run_stale_sec + 60)
     await db_session.flush()
 
@@ -261,6 +262,7 @@ async def test_reaper_does_not_touch_fresh_run(db_session: AsyncSession) -> None
     """Обратная сторона C11: идущий прогон не должен быть добит реапером."""
     user = await system_user(db_session)
     run = await open_run(db_session, started_by=user.id, projects_total=1)
+    await start_run(db_session, run)
 
     reaped = await reap_stale_runs(db_session)
 
@@ -277,6 +279,7 @@ async def test_reaper_does_not_overwrite_finished_run(db_session: AsyncSession) 
     """
     user = await system_user(db_session)
     run = await open_run(db_session, started_by=user.id, projects_total=1)
+    await start_run(db_session, run)
     run.started_at = datetime.now(UTC) - timedelta(seconds=config.ahrefs.run_stale_sec + 60)
     run.status = RunStatus.DONE
     await db_session.flush()

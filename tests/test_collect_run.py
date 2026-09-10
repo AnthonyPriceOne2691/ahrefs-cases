@@ -90,7 +90,11 @@ async def test_units_ledger_has_a_row_per_request(db_session: AsyncSession, tmp_
 
     report = await collect_all(db_session, AhrefsFixture())
 
-    rows = (await db_session.execute(select(UnitsLedger))).scalars().all()
+    rows = (
+        (await db_session.execute(select(UnitsLedger).where(UnitsLedger.kind == LedgerKind.SPENT)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == DOMAINS
     assert {row.endpoint for row in rows} == {METRICS_HISTORY.name}
     assert {row.kind for row in rows} == {LedgerKind.SPENT}
@@ -159,7 +163,16 @@ async def test_second_run_ledger_is_all_cached(db_session: AsyncSession, tmp_pat
     second = await collect_all(db_session, AhrefsFixture(), now=NOW)
 
     rows = (
-        (await db_session.execute(select(UnitsLedger).where(UnitsLedger.run_id == second.run_id)))
+        (
+            await db_session.execute(
+                select(UnitsLedger).where(
+                    UnitsLedger.run_id == second.run_id,
+                    # Строка резерва в счёт не идёт: она про намерение, а не
+                    # про запрос. Считаем то, что объясняет счёт от Ahrefs.
+                    UnitsLedger.kind != LedgerKind.RESERVE,
+                )
+            )
+        )
         .scalars()
         .all()
     )

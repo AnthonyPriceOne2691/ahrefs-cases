@@ -15,7 +15,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.collect.provider import HistoryResult
-from ahrefs_cases.storage._enums import LedgerKind
+from ahrefs_cases.storage._enums import LedgerKind, RunStatus
+from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 
 
@@ -32,6 +33,45 @@ async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult
             rows=len(result.points),
         )
     )
+
+
+async def reserve(session: AsyncSession, run_id: int, units: int) -> None:
+    """Списать смету прогона резервом.
+
+    Без резерва «кнопка неактивна при нехватке квоты» защищает только первого
+    нажавшего: шесть человек, готовящих прогоны одновременно, увидят один и тот
+    же остаток и запустятся все. Резерв делает чужие намерения видимыми.
+    """
+    session.add(
+        UnitsLedger(
+            run_id=run_id,
+            kind=LedgerKind.RESERVE,
+            endpoint="",
+            target="",
+            units_estimated=units,
+            units_actual=None,
+        )
+    )
+
+
+async def reserved_units(session: AsyncSession) -> int:
+    """Сколько units зарезервировано прогонами, которые ещё идут.
+
+    Считается по **активным** прогонам, а не по всем строкам резерва: снимать
+    резерв компенсирующей записью значило бы иметь два способа сказать одно и
+    то же, и они разошлись бы на первом же прогоне, упавшем в середине.
+    Завершение прогона меняет статус — и резерв перестаёт учитываться сам.
+    """
+    stmt = (
+        select(func.coalesce(func.sum(UnitsLedger.units_estimated), 0))
+        .join(Run, Run.id == UnitsLedger.run_id)
+        .where(
+            UnitsLedger.kind == LedgerKind.RESERVE,
+            Run.status.in_([RunStatus.QUEUED, RunStatus.RUNNING]),
+        )
+    )
+    total: int | None = (await session.execute(stmt)).scalar_one()
+    return total or 0
 
 
 async def record_cached(session: AsyncSession, run_id: int, endpoint: str, target: str) -> None:

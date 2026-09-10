@@ -15,10 +15,15 @@ from ahrefs_cases import config
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.live import AhrefsLive
 from ahrefs_cases.collect.provider import AhrefsProvider
+from ahrefs_cases.collect.single_flight import SingleFlightProvider
 
 
 def build_provider() -> AhrefsProvider:
-    """Провайдер, объявленный конфигом."""
-    if config.ahrefs.provider == "live":
-        return AhrefsLive()
-    return AhrefsFixture()
+    """Провайдер, объявленный конфигом, обёрнутый склейкой одинаковых запросов.
+
+    Обёртка ставится здесь, а не в исполнителе: дедупликация — свойство доступа
+    к Ahrefs, а не прогона. Прогон, собранный вручную из `AhrefsFixture` (так
+    делают тесты), склейки не получает — и это правильно, там проверяют другое.
+    """
+    inner: AhrefsProvider = AhrefsLive() if config.ahrefs.provider == "live" else AhrefsFixture()
+    return SingleFlightProvider(inner)

@@ -1,9 +1,125 @@
-"""Остаток квоты Ahrefs: preflight перед платным прогоном.
+"""Остаток квоты Ahrefs и preflight перед прогоном. Fail-closed.
 
-Не реализовано (Ф1). Источник — `/v3/subscription-info/limits-and-usage` (0 units).
-Два бакета: workspace (лимит подписки) и api_key (sub-limit ключа) — упереться
-можно в любой.
+`subscription-info/limits-and-usage` стоит **0 units**, поэтому спрашивать
+остаток перед каждым прогоном ничего не стоит — а не спрашивать стоит дорого:
+прогон, начатый вслепую, упирается в исчерпанную квоту на середине, оставив
+половину проектов собранной и половину нет.
 
-Зачем: ключ, вероятно, общий с другими сервисами (см. Q9), и прогон по 200
-доменам способен выжечь квоту соседям. Мягкий стоп — AHREFS_UNITS_MIN_LEFT.
+Главное правило — **fail-closed**: не смогли узнать остаток, прогон не
+стартует. «Не знаем» трактуется как «не тратим»: у ошибки в эту сторону цена —
+отложенный прогон, у ошибки в другую — потраченные units заказчика и
+недоделанная работа.
 """
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Protocol
+
+from ahrefs_cases import config
+from ahrefs_cases.collect.ahrefs_transport import (
+    AhrefsHTTPError,
+    AhrefsTransport,
+    AhrefsUnavailableError,
+)
+
+logger = logging.getLogger(__name__)
+
+_LIMITS_PATH = "/v3/subscription-info/limits-and-usage"
+_UNITS_LIMIT_KEY = "units_limit"
+_UNITS_USED_KEY = "units_usage"
+
+
+class QuotaVerdict(StrEnum):
+    """Три исхода preflight, и они разные по причине.
+
+    `UNKNOWN` не сливается с `NOT_ENOUGH` намеренно: «квоты мало» лечится
+    ожиданием или повышением лимита, «остаток неизвестен» — починкой доступа к
+    Ahrefs. Слить их значит показать оператору не ту причину.
+    """
+
+    OK = "ok"
+    NOT_ENOUGH = "not_enough"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class QuotaState:
+    """Что известно об остатке."""
+
+    left: int | None
+    verdict: QuotaVerdict
+    reason: str = ""
+
+    @property
+    def may_start(self) -> bool:
+        return self.verdict is QuotaVerdict.OK
+
+
+class QuotaSource(Protocol):
+    """Откуда узнаём остаток. Как и у провайдера — две реализации."""
+
+    async def units_left(self) -> int: ...
+
+
+class LiveQuota:
+    """Настоящий остаток из Ahrefs. Запрос бесплатный."""
+
+    def __init__(self, transport: AhrefsTransport | None = None) -> None:
+        self._transport = transport or AhrefsTransport()
+
+    async def units_left(self) -> int:
+        response = await self._transport.get(_LIMITS_PATH, {})
+        limit = int(response.payload.get(_UNITS_LIMIT_KEY, 0))
+        used = int(response.payload.get(_UNITS_USED_KEY, 0))
+        return max(0, limit - used)
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureQuota:
+    """Остаток в fixture-режиме. По умолчанию — бюджет первичного прогона.
+
+    Не «бесконечность»: смета и мягкий стоп должны срабатывать в разработке,
+    иначе их первое настоящее срабатывание случится на живых деньгах в Ф7.
+    """
+
+    left: int = 10_000
+
+    async def units_left(self) -> int:
+        return self.left
+
+
+async def preflight(source: QuotaSource, *, needed: int, reserved: int = 0) -> QuotaState:
+    """Хватит ли квоты на прогон стоимостью `needed` при уже занятых `reserved`.
+
+    Мягкий стоп по `AHREFS_UNITS_MIN_LEFT` — не украшение: заказчику нужен
+    запас на срочный ручной запрос, и прогон не должен съедать квоту до нуля.
+    """
+    try:
+        left = await source.units_left()
+    except (AhrefsUnavailableError, AhrefsHTTPError) as exc:
+        logger.warning("quota_unknown", extra={"reason": str(exc)})
+        return QuotaState(
+            left=None,
+            verdict=QuotaVerdict.UNKNOWN,
+            reason=(
+                f"остаток квоты Ahrefs неизвестен ({exc}). Прогон не начат: "
+                "«не знаем» значит «не тратим». Проверьте доступность API и ключ."
+            ),
+        )
+
+    available = left - reserved
+    floor = config.ahrefs.units_min_left
+    if available - needed < floor:
+        return QuotaState(
+            left=left,
+            verdict=QuotaVerdict.NOT_ENOUGH,
+            reason=(
+                f"не хватает units: остаток {left}, зарезервировано {reserved}, "
+                f"нужно {needed}, неснижаемый запас {floor}. "
+                "Прогон не начат — поднимите лимит или дождитесь других прогонов."
+            ),
+        )
+    return QuotaState(left=left, verdict=QuotaVerdict.OK)

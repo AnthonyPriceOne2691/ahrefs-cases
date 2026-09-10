@@ -52,7 +52,11 @@ async def system_user(session: AsyncSession) -> User:
 
 
 async def open_run(session: AsyncSession, started_by: int, projects_total: int) -> Run:
-    """Открыть прогон и записать, чем он считается.
+    """Открыть прогон в статусе `queued` и записать, чем он считается.
+
+    Именно `queued`, а не `running`: между открытием и первым запросом стоит
+    preflight по квоте, и прогон, отклонённый им, никогда не был запущен.
+    Записывать его как `running` значило бы соврать журналу.
 
     Снимок параметров обязателен: через полгода вопрос «почему у кейса такие
     числа» упирается в провайдера, группировку и глубину истории, а они
@@ -60,8 +64,7 @@ async def open_run(session: AsyncSession, started_by: int, projects_total: int) 
     """
     run = Run(
         started_by=started_by,
-        status=RunStatus.RUNNING,
-        started_at=datetime.now(UTC),
+        status=RunStatus.QUEUED,
         projects_total=projects_total,
         params_snapshot={
             "provider": config.ahrefs.provider,
@@ -73,6 +76,25 @@ async def open_run(session: AsyncSession, started_by: int, projects_total: int) 
     session.add(run)
     await session.flush()
     return run
+
+
+async def start_run(session: AsyncSession, run: Run) -> None:
+    """Прогон прошёл preflight и начинает работу."""
+    run.status = RunStatus.RUNNING
+    run.started_at = datetime.now(UTC)
+    await session.flush()
+
+
+async def reject_run(session: AsyncSession, run: Run, reason: str) -> None:
+    """Прогон не начат: квоты нет или остаток неизвестен.
+
+    Это штатный исход, а не сбой: причина пишется в `Run.error` и показывается
+    оператору. `failed` без причины выглядел бы как поломка сервиса.
+    """
+    run.status = RunStatus.FAILED
+    run.finished_at = datetime.now(UTC)
+    run.error = reason
+    await session.flush()
 
 
 async def add_item(

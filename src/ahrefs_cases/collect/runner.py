@@ -24,15 +24,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import AhrefsHTTPError, AhrefsUnavailableError
 from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
-from ahrefs_cases.collect.budget import record_cached, record_spend, run_saved, run_spend
+from ahrefs_cases.collect.budget import (
+    record_cached,
+    record_spend,
+    reserve,
+    reserved_units,
+    run_saved,
+    run_spend,
+)
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan
 from ahrefs_cases.collect.provider import AhrefsProvider, HistoryResult
+from ahrefs_cases.collect.quota import FixtureQuota, QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
     add_item,
     count_outcome,
     finish_run,
     open_run,
+    reject_run,
+    start_run,
     system_user,
 )
 from ahrefs_cases.collect.run_reaper import reap_stale_runs
@@ -69,8 +79,13 @@ class RunReport:
 
     points_written: int
     units_spent: int
-    requests_made: int
-    requests_saved: int
+    units_estimated: int
+    """Смета до старта. Хранится рядом с фактом: расхождение между ними —
+    единственный способ узнать, что модель стоимости врёт, до Ф7."""
+
+    error: str = ""
+    requests_made: int = 0
+    requests_saved: int = 0
     """Сколько запросов сделано и сколько не понадобилось. Два числа, а не одно:
     «сделано 0» без «сэкономлено 100» читается как сломанный прогон."""
 
@@ -82,7 +97,8 @@ class RunReport:
             f"упало {self.projects_failed}, не выполнено {self.projects_aborted})",
             f"точек записано: {self.points_written}",
             f"запросов: сделано {self.requests_made}, сэкономлено кэшем {self.requests_saved}",
-            f"units потрачено: {self.units_spent}",
+            f"units: смета {self.units_estimated}, потрачено {self.units_spent}",
+            *([f"причина: {self.error}"] if self.error else []),
         ]
 
 
@@ -103,6 +119,7 @@ async def collect_projects(
     *,
     now: date | None = None,
     refresh: bool = False,
+    quota: QuotaSource | None = None,
 ) -> RunReport:
     """Собрать шаг 1 по списку проектов. Провайдер — из конфига, если не задан.
 
@@ -122,7 +139,9 @@ async def collect_projects(
     await session.commit()
 
     try:
-        return await _execute_run(session, engine, run, projects, now=now, refresh=refresh)
+        return await _execute_run(
+            session, engine, run, projects, now=now, refresh=refresh, quota=quota
+        )
     except Exception as exc:
         # Широко и с логом: любая ошибка вне задач (база, запись, финализация)
         # обязана закрыть прогон статусом, иначе строка навсегда останется в
@@ -141,6 +160,7 @@ async def _execute_run(
     *,
     now: date | None,
     refresh: bool,
+    quota: QuotaSource | None,
 ) -> RunReport:
     """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
     plan = await build_stage1_plan(
@@ -150,6 +170,37 @@ async def _execute_run(
         now=now or date.today(),  # noqa: DTZ011 — календарная граница месяца
         refresh=refresh,
     )
+    estimate = plan.estimated_units()
+
+    state = await preflight(
+        quota or FixtureQuota(),
+        needed=estimate,
+        reserved=await reserved_units(session),
+    )
+    if not state.may_start:
+        # Отказ до первого запроса — единственное место, где он что-то стоит.
+        # Проверка по ходу нашла бы нехватку, когда часть units уже потрачена.
+        await reject_run(session, run, state.reason)
+        await session.commit()
+        logger.warning("collect_run_rejected", extra={"run_id": run.id, "reason": state.reason})
+        return RunReport(
+            run_id=run.id,
+            status=run.status.value,
+            projects_total=run.projects_total,
+            projects_ok=0,
+            projects_skipped=0,
+            projects_failed=0,
+            projects_aborted=0,
+            points_written=0,
+            units_spent=0,
+            units_estimated=estimate,
+            error=state.reason,
+        )
+
+    await reserve(session, run.id, estimate)
+    await start_run(session, run)
+    await session.commit()
+
     for skipped in plan.cached:
         await record_cached(session, run.id, skipped.spec.name, skipped.domain)
         await add_item(
@@ -176,6 +227,7 @@ async def _execute_run(
         projects_failed=run.projects_failed,
         points_written=points,
         units_spent=await run_spend(session, run.id),
+        units_estimated=estimate,
         requests_made=len(plan.tasks),
         requests_saved=await run_saved(session, run.id),
     )
@@ -260,10 +312,13 @@ async def collect_all(
     *,
     now: date | None = None,
     refresh: bool = False,
+    quota: QuotaSource | None = None,
 ) -> RunReport:
     """Прогон по всем проектам в базе — то, что делает CLI."""
     projects = (await session.execute(select(Project))).scalars().all()
-    return await collect_projects(session, list(projects), provider, now=now, refresh=refresh)
+    return await collect_projects(
+        session, list(projects), provider, now=now, refresh=refresh, quota=quota
+    )
 
 
 async def _run_tasks(provider: AhrefsProvider, tasks: Sequence[CollectTask]) -> list[_TaskOutcome]:
