@@ -10,7 +10,7 @@
 - **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** pending — спека E1–E12 коммитится до кода
+- **human_ok_spec:** yes at=2026-09-11 by=human:anthony (спека E1–E14, подписана до кода)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
@@ -18,7 +18,7 @@
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель, прямые коммиты в main
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
-- **blockers:** none
+- **blockers:** escalation — схема «две точки» несовместима с правилом дыры в серии из Ф3а (Z6 в docs/FINDINGS.md); ждёт выбора варианта A/B в delivery/active/escalation.md
 - **waivers:** none
   <!-- Вторая поставка по правилу размера (урок L20). Ф3б открывалась как первая
        и уступила место хотфиксу Z1; её спека жива в коммите 9990114. -->
