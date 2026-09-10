@@ -24,7 +24,7 @@ def client() -> Iterator[TestClient]:
         yield test_client
 
 
-def test_health_ok_with_database(client: TestClient, needs_db: None) -> None:
+def test_health_ok_with_database(client: TestClient, migrated_db: None) -> None:
     """A2: при поднятой базе — 200, версия миграции и текущий провайдер."""
     response = client.get("/api/health")
 

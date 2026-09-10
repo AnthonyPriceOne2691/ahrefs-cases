@@ -73,3 +73,25 @@ def dispose_engine_after_test() -> Iterator[None]:
 
     yield
     asyncio.run(storage.dispose_engine())
+
+
+@pytest.fixture
+def migrated_db(needs_db: None) -> None:
+    """База со применённой схемой.
+
+    Без этой фикстуры тест health'а проходил локально и падал в CI: локальная
+    дев-база уже была прогнана `alembic upgrade head`, а в CI она чистая, и
+    `alembic_version` там нет. То есть тест был зелёным по причине окружения,
+    а не потому, что код верен — ровно тот класс, против которого стоит контур.
+
+    `upgrade head` идемпотентен: на применённой схеме это no-op.
+    """
+    import pathlib as _pathlib
+
+    from alembic import command
+    from alembic.config import Config
+
+    root = _pathlib.Path(__file__).resolve().parents[1]
+    cfg = Config(str(root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(root / "migrations"))
+    command.upgrade(cfg, "head")
