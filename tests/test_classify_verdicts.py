@@ -96,7 +96,7 @@ async def test_without_stage_two_there_are_no_good_projects(db_session: AsyncSes
 
 
 async def test_seed_is_idempotent_by_version(db_session: AsyncSession) -> None:
-    """Повторный сид не плодит версии и не переписывает существующую.
+    """D19: повторный сид не плодит версии и не переписывает существующую.
 
     Переписывать было бы опаснее: по этой версии уже могут стоять вердикты,
     и подмена порогов задним числом лишила бы их объяснимости.
@@ -113,7 +113,7 @@ async def test_seed_is_idempotent_by_version(db_session: AsyncSession) -> None:
 async def test_thresholds_come_from_database_not_file(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Правка файла на живом сервисе ничего не меняет — так написано в сиде.
+    """D19: правка файла на живом сервисе ничего не меняет.
 
     Проверяется, а не подразумевается: файл с другими порогами читается только
     как новая версия, а действующие пороги остаются теми, что в базе.
@@ -130,7 +130,7 @@ async def test_thresholds_come_from_database_not_file(
 
 
 async def test_no_active_ruleset_is_an_error(db_session: AsyncSession) -> None:
-    """Классифицировать по умолчаниям нельзя: этих порогов никто не утверждал."""
+    """D19: классифицировать по умолчаниям нельзя — этих порогов никто не утверждал."""
     with pytest.raises(ThresholdsError, match="активной версии"):
         await active_ruleset(db_session)
 
@@ -181,7 +181,7 @@ async def test_other_version_gives_its_own_verdict(db_session: AsyncSession) -> 
 
 
 async def test_classify_all_reports_distribution(db_session: AsyncSession) -> None:
-    """Отчёт по прогону: сколько проектов в какой группе."""
+    """D20: отчёт по прогону — сколько проектов в какой группе."""
     await _prepare(db_session, ["d0.example.com", "d2.example.com", "d4.example.com"])
     await seed_thresholds(db_session)
 
@@ -193,7 +193,7 @@ async def test_classify_all_reports_distribution(db_session: AsyncSession) -> No
 
 
 async def test_classified_project_changes_status(db_session: AsyncSession) -> None:
-    """Статус проекта двигает классификация — как сбор двигал его в Ф2."""
+    """D20: статус проекта двигает классификация — как сбор двигал его в Ф2."""
     projects = await _prepare(db_session, ["d0.example.com"])
     ruleset = await seed_thresholds(db_session)
 
@@ -204,7 +204,7 @@ async def test_classified_project_changes_status(db_session: AsyncSession) -> No
 
 
 async def test_reclassification_updates_not_duplicates(db_session: AsyncSession) -> None:
-    """Повтор по той же версии обновляет вердикт, а не плодит второй.
+    """D12: повтор по той же версии обновляет вердикт, а не плодит второй.
 
     Ключ `(project_id, ruleset_id)` из модели Ф1: один проект на одной версии
     порогов имеет ровно один вердикт.
