@@ -42,6 +42,11 @@ class AhrefsSettings(Settings):
     units_min_left: int = Field(5000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
     history_grouping: HistoryGrouping = Field("monthly", validation_alias="AHREFS_HISTORY_GROUPING")
     max_history_months: int = Field(24, ge=1, le=60, validation_alias="AHREFS_MAX_HISTORY_MONTHS")
+    history_lead_months: int = Field(3, ge=0, le=12, validation_alias="AHREFS_HISTORY_LEAD_MONTHS")
+    """Сколько месяцев истории брать ДО старта работ. Нужны точке А (среднее по
+    окну вокруг границы периода) и baseline'у Ф3. По нашей модели стоимости цена
+    запроса не зависит от числа строк, поэтому запас почти бесплатен — но если
+    Ф7 покажет построчный биллинг, уменьшать надо будет здесь, а не в коде."""
     collect_dr_history: bool = Field(False, validation_alias="AHREFS_COLLECT_DR_HISTORY")
     stage2_only_for_cases: bool = Field(True, validation_alias="AHREFS_STAGE2_ONLY_FOR_CASES")
     max_parallel: int = Field(3, ge=1, le=10, validation_alias="COLLECT_MAX_PARALLEL")

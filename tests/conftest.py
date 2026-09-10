@@ -123,6 +123,7 @@ async def db_session(migrated_db: None) -> AsyncIterator[AsyncSession]:
     try:
         async with engine.connect() as connection:
             transaction = await connection.begin()
+            await _truncate_all(connection)
             session = _AsyncSession(bind=connection, expire_on_commit=False)
             try:
                 yield session
@@ -134,3 +135,23 @@ async def db_session(migrated_db: None) -> AsyncIterator[AsyncSession]:
         # Дать циклу закрыть транспорт asyncpg — см. `storage.session`.
         for _ in range(3):
             await asyncio.sleep(0)
+
+
+async def _truncate_all(connection: object) -> None:
+    """Опустошить таблицы продукта внутри тестовой транзакции.
+
+    Дев-база живёт между прогонами и накапливает следы ручных запусков
+    (`scripts/run_collect.py`). Тест, читающий «все проекты», начинал зависеть от
+    того, запускал ли кто-то CLI полчаса назад: тот же класс, что тест health'а в
+    Ф1, — зелёный или красный по причине окружения, а не по коду.
+
+    `TRUNCATE` выполняется **внутри** внешней транзакции, поэтому откат в конце
+    теста возвращает базу к прежнему содержимому: изоляция от чужих данных без
+    их уничтожения.
+    """
+    from sqlalchemy import text
+
+    from ahrefs_cases.storage.models._base import Base
+
+    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+    await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))  # type: ignore[attr-defined]

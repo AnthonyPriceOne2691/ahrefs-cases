@@ -47,6 +47,16 @@ _FALSE = frozenset({"no", "n", "false", "0", "нет", "-", ""})
 
 def validate_table(table: RawTable) -> tuple[list[ProjectDraft], list[Rejection]]:
     """Таблица → черновики и отказы. Дубль домена в файле отмечается, не глотается."""
+    if not table.columns:
+        return [], [
+            Rejection(
+                row_no=1,
+                field="*",
+                reason=RejectReason.EMPTY_SOURCE,
+                detail=table.origin,
+            )
+        ]
+
     missing = missing_columns(table)
     if missing:
         return [], [

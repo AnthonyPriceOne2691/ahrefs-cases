@@ -28,6 +28,15 @@ class UnknownSourceError(ValueError):
     там пусто» ведут к разным действиям человека."""
 
 
+class SourceNotFoundError(FileNotFoundError):
+    """Файла нет по указанному пути.
+
+    Свой тип, потому что опечатка в пути — самая частая ошибка запуска, и
+    отвечать на неё трассировкой `io.open` значит заставлять человека читать
+    стек ради строки «файла нет».
+    """
+
+
 def read_source(reference: str | Path, fetch: Fetcher | None = None) -> RawTable:
     """Ссылка или путь → сырая таблица."""
     ref = str(reference)
@@ -35,13 +44,17 @@ def read_source(reference: str | Path, fetch: Fetcher | None = None) -> RawTable
         return read_gsheet(ref, fetch=fetch)
 
     path = Path(ref)
-    if path.suffix.lower() in _XLSX_SUFFIXES:
-        return read_xlsx(path)
-    if path.suffix.lower() == ".csv":
-        return read_csv(path)
-    raise UnknownSourceError(
-        f"не понимаю источник: {ref}. Ожидаю .csv, .xlsx или ссылку на Google Sheet."
-    )
+    suffix = path.suffix.lower()
+    if suffix not in {*_XLSX_SUFFIXES, ".csv"}:
+        raise UnknownSourceError(
+            f"не понимаю источник: {ref}. Ожидаю .csv, .xlsx или ссылку на Google Sheet."
+        )
+    # Формат проверяется раньше существования: `список.pdf` — ошибка формата,
+    # и говорить о нём «файл не найден» значило бы отправить человека искать файл,
+    # который мы всё равно не прочитаем.
+    if not path.exists():
+        raise SourceNotFoundError(f"файл не найден: {path}")
+    return read_xlsx(path) if suffix in _XLSX_SUFFIXES else read_csv(path)
 
 
 async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:

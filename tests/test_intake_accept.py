@@ -14,7 +14,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases.intake.accept import UnknownSourceError, accept, read_source
+from ahrefs_cases.intake.accept import (
+    SourceNotFoundError,
+    UnknownSourceError,
+    accept,
+    read_source,
+)
 from ahrefs_cases.intake.csv_source import read_csv
 from ahrefs_cases.intake.rejections import RejectReason
 from ahrefs_cases.storage.models.project import Project
@@ -208,6 +213,17 @@ async def test_missing_column_is_one_rejection_not_hundred(
 
 
 def test_unknown_source_is_named() -> None:
-    """`.pdf` вместо списка — внятный отказ, а не `AttributeError` в разборе."""
+    """`.pdf` вместо списка — внятный отказ, а не `AttributeError` в разборе.
+
+    Формат судится раньше существования файла: сказать про `.pdf` «файл не
+    найден» значит отправить человека искать файл, который всё равно не прочтут.
+    """
     with pytest.raises(UnknownSourceError):
         read_source("список.pdf")
+
+
+def test_missing_file_is_named_too(tmp_path: Path) -> None:
+    """Опечатка в пути — самая частая ошибка запуска, и отвечать на неё
+    трассировкой `io.open` значит требовать чтения стека ради строки «файла нет»."""
+    with pytest.raises(SourceNotFoundError, match="файл не найден"):
+        read_source(tmp_path / "нет-такого.csv")

@@ -1,13 +1,48 @@
-"""Бюджет прогона в units: смета до запуска, мягкий стоп, локальный счётчик.
+"""Расход units: строка журнала на каждый запрос к провайдеру.
 
-Не реализовано (Ф1). Три функции:
+Ф2а ведёт **факт**: сколько запросов сделано и во что они обошлись. Смета,
+резервы и мягкий стоп — Ф2б; они опираются на этот же журнал, поэтому он должен
+существовать раньше и заполняться одинаково в обоих режимах.
 
-1. **Смета** — по числу проектов, глубине периода и набору метрик, с поправкой
-   на кэш-хиты (коэффициент cache-miss в конфиге).
-2. **Мягкий стоп** — прогон не начинается, если остаток квоты ниже
-   AHREFS_UNITS_MIN_LEFT; на UI это «кнопка disabled», а не предупреждение
-   (физический стоп надёжнее аккуратности оператора).
-3. **Локальный счётчик** — сумма фактических `x-api-units-cost-total-actual`
-   по прогону. Authoritative-счёт ведёт Ahrefs, наш нужен, чтобы объяснить,
-   на что ушли units, и чтобы калибровать смету.
+В fixture-режиме units условные, но считаются моделью стоимости живого API
+(`EndpointSpec.estimate_units`). Ноль здесь означал бы, что экран расхода и
+смета разрабатываются на нулях и проверяются впервые в Ф7 — на деньгах заказчика.
 """
+
+from __future__ import annotations
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ahrefs_cases.collect.provider import HistoryResult
+from ahrefs_cases.storage._enums import LedgerKind
+from ahrefs_cases.storage.models.units_ledger import UnitsLedger
+
+
+async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult) -> None:
+    """Записать стоимость одного ответа провайдера."""
+    session.add(
+        UnitsLedger(
+            run_id=run_id,
+            kind=LedgerKind.SPENT,
+            endpoint=result.endpoint,
+            target=result.target,
+            units_estimated=result.units_estimated,
+            units_actual=result.units_actual,
+            rows=len(result.points),
+        )
+    )
+
+
+async def run_spend(session: AsyncSession, run_id: int) -> int:
+    """Сколько units стоил прогон по журналу.
+
+    Считается запросом, а не суммированием по дороге: журнал — источник правды о
+    расходе, и второй счётчик рано или поздно разойдётся с ним именно в тот
+    прогон, который придётся объяснять.
+    """
+    stmt = select(func.coalesce(func.sum(UnitsLedger.units_actual), 0)).where(
+        UnitsLedger.run_id == run_id, UnitsLedger.kind == LedgerKind.SPENT
+    )
+    total: int | None = (await session.execute(stmt)).scalar_one()
+    return total or 0
