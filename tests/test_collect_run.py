@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases import config
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.quota import FixtureQuota
@@ -283,7 +284,7 @@ async def test_hundred_domains_do_not_fit_customer_budget(
     списка.
 
     Тест закрепляет факт, а не желаемое. Схема «две точки» это число тоже
-    изменит — но это следующая поставка.
+    меняет — см. соседний тест, где она включена флагом.
     """
     await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])
 
@@ -296,3 +297,31 @@ async def test_hundred_domains_do_not_fit_customer_budget(
     assert "не хватает units" in report.error
     assert report.units_estimated == 19_800
 
+
+async def test_scheme_auto_halves_the_estimate_and_says_so(
+    db_session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E11: схема `auto` вдвое дешевле, и отчёт показывает разбивку по способу.
+
+    Период списка — 18 месяцев, то есть точки дешевле истории (100 против 198
+    на домен). Сотня доменов: 19 800 историей против 10 000 точками.
+
+    Отчёт обязан назвать оба числа и «стоимость запуска на 100 URL» — это
+    метрика приёмки, которую заказчик назвал сам, и выводить её из журнала
+    руками он не должен. Метрика — цена **прогона на сотню URL** (10 000), а не
+    на домен (100): сравнивать прогоны между собой можно только так.
+    """
+    monkeypatch.setattr(config.ahrefs, "collect_scheme", "auto")
+    await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])
+
+    report = await collect_all(
+        db_session, AhrefsFixture(), now=NOW, quota=FixtureQuota(left=200_000)
+    )
+
+    assert report.units_estimated == 10_000
+    assert report.cost_per_100 == 10_000, "цена прогона на сотню URL, то есть 100 на домен"
+    assert report.requests_made == 2 * DOMAINS, "две точки — два запроса на домен"
+    assert report.projects_total == DOMAINS, "проектов сто, а не двести (L13)"
+    breakdown = "\n".join(report.scheme_lines)
+    assert "two_points: 100 проект(ов), 10000 units" in breakdown
+    assert "19800" in breakdown, "отчёт называет цену альтернативы, иначе смета необъяснима"

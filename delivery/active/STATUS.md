@@ -18,7 +18,7 @@
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель, прямые коммиты в main
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
-- **blockers:** escalation — схема «две точки» несовместима с правилом дыры в серии из Ф3а (Z6 в docs/FINDINGS.md); ждёт выбора варианта A/B в delivery/active/escalation.md
+- **blockers:** поставка дробится на две — net loc_diff 990 > 800, и waiver решено не брать (третий подряд отменил бы правило). Границы дробления — в decisions.md
 - **waivers:** none
   <!-- Вторая поставка по правилу размера (урок L20). Ф3б открывалась как первая
        и уступила место хотфиксу Z1; её спека жива в коммите 9990114. -->

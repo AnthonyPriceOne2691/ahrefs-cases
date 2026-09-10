@@ -46,6 +46,8 @@ from ahrefs_cases.collect.run_journal import (
     system_user,
 )
 from ahrefs_cases.collect.run_reaper import reap_stale_runs
+from ahrefs_cases.collect.run_report import RunReport
+from ahrefs_cases.collect.scheme import PointWindows
 from ahrefs_cases.collect.series import store_history
 from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome
 from ahrefs_cases.storage.models.project import Project
@@ -63,48 +65,25 @@ SHORT_HISTORY_POINTS = 6
 
 
 @dataclass(frozen=True, slots=True)
-class RunReport:
-    """Итог прогона в числах, которые показывают человеку."""
+class RunOptions:
+    """Параметры прогона: что уточняет вызывающий, а не конфиг.
 
-    run_id: int
-    status: str
-    projects_total: int
-    projects_ok: int
-    projects_skipped: int
-    projects_failed: int
-    projects_aborted: int
-    """Задачи, которых не было: предохранитель остановил прогон. Отдельное
-    число, потому что это не «упало», а «не спрашивали» — и повторный прогон
-    по ним обязателен."""
+    Одним объектом, а не пятью аргументами: у `_execute_run` их стало девять, и
+    гейт сложности остановил поставку — справедливо. Девять позиций в сигнатуре
+    читаются только по имени, и первая же перепутанная пара (`refresh`/`stage`)
+    была бы тихой: типы у них разные, а вот `now`/`windows` уже нет.
 
-    tasks_total: int = 0
-    """Задач в прогоне: на шаге 2 их вчетверо больше, чем проектов. Отдельное
-    число, потому что «проектов 3, собрано 12» человеку показывать нельзя."""
+    `now` параметром, потому что от него зависит граница закрытого месяца, и
+    тест не должен подкручивать системные часы. `windows` — окна точек из
+    активной версии порогов: контракт `layers` запрещает `collect` знать про
+    `classify`, поэтому их передаёт тот, кто читает пороги.
+    """
 
-    points_written: int = 0
-    units_spent: int = 0
-    units_estimated: int = 0
-    """Смета до старта. Хранится рядом с фактом: расхождение между ними —
-    единственный способ узнать, что модель стоимости врёт, до Ф7."""
-
-    error: str = ""
-    requests_made: int = 0
-    requests_saved: int = 0
-    """Сколько запросов сделано и сколько не понадобилось. Два числа, а не одно:
-    «сделано 0» без «сэкономлено 100» читается как сломанный прогон."""
-
-    def as_lines(self) -> list[str]:
-        return [
-            f"прогон {self.run_id}: {self.status}",
-            f"проектов: {self.projects_total} "
-            f"(собрано {self.projects_ok}, пропущено {self.projects_skipped}, "
-            f"упало {self.projects_failed}, не выполнено {self.projects_aborted})",
-            f"задач: {self.tasks_total}",
-            f"точек записано: {self.points_written}",
-            f"запросов: сделано {self.requests_made}, сэкономлено кэшем {self.requests_saved}",
-            f"units: смета {self.units_estimated}, потрачено {self.units_spent}",
-            *([f"причина: {self.error}"] if self.error else []),
-        ]
+    now: date | None = None
+    refresh: bool = False
+    quota: QuotaSource | None = None
+    windows: PointWindows | None = None
+    stage: int = 1
 
 
 @dataclass(slots=True)
@@ -125,11 +104,17 @@ async def collect_projects(
     now: date | None = None,
     refresh: bool = False,
     quota: QuotaSource | None = None,
+    windows: PointWindows | None = None,
 ) -> RunReport:
     """Собрать шаг 1 по списку проектов. Провайдер — из конфига, если не задан.
 
     `now` параметром: от него зависит граница закрытого месяца, и тест не должен
     подкручивать системные часы, чтобы её проверить.
+
+    `windows` — окна точек из активной версии порогов. Приходят сверху, потому
+    что контракт `layers` запрещает `collect` знать про `classify`; кто читает
+    пороги, тот и передаёт (`scripts/run_collect.py`). Без них покупается
+    бесплатный максимум под минимальную стоимость запроса.
     """
     engine = provider or build_provider()
     # До открытия своего прогона подметаем чужие зависшие: их резервы units
@@ -145,7 +130,11 @@ async def collect_projects(
 
     try:
         return await _execute_run(
-            session, engine, run, projects, now=now, refresh=refresh, quota=quota
+            session,
+            engine,
+            run,
+            projects,
+            RunOptions(now=now, refresh=refresh, quota=quota, windows=windows),
         )
     except Exception as exc:
         # Широко и с логом: любая ошибка вне задач (база, запись, финализация)
@@ -162,25 +151,23 @@ async def _execute_run(
     engine: AhrefsProvider,
     run: Run,
     projects: Sequence[Project],
-    *,
-    now: date | None,
-    refresh: bool,
-    quota: QuotaSource | None,
-    stage: int = 1,
+    options: RunOptions,
 ) -> RunReport:
     """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
-    build = build_stage1_plan if stage == 1 else build_stage2_plan
+    build = build_stage1_plan if options.stage == 1 else build_stage2_plan
     plan = await build(
         session,
         projects,
         source=engine.source,
-        now=now or date.today(),  # noqa: DTZ011 — календарная граница месяца
-        refresh=refresh,
+        now=options.now or date.today(),  # noqa: DTZ011 — календарная граница месяца
+        refresh=options.refresh,
+        windows=options.windows,
     )
     estimate = plan.estimated_units()
+    scheme = plan.scheme_breakdown()
 
     state = await preflight(
-        quota or FixtureQuota(),
+        options.quota or FixtureQuota(),
         needed=estimate,
         reserved=await reserved_units(session),
     )
@@ -232,6 +219,8 @@ async def _execute_run(
         projects_skipped=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_NO_DATA),
         projects_aborted=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_ABORTED),
         tasks_total=len(plan.tasks) + len(plan.cached),
+        scheme_lines=tuple(scheme.as_lines()),
+        cost_per_100=scheme.per_100_urls(run.projects_total),
         projects_failed=run.projects_failed,
         points_written=points,
         units_spent=await run_spend(session, run.id),
@@ -308,7 +297,6 @@ async def _execute_tasks(
             # `checkpoint_every` доменов — за них уже заплачено.
             await session.commit()
 
-    await _mark_projects(session, [])
     await session.commit()
     return points
 
@@ -340,6 +328,7 @@ async def collect_stage2(
     now: date | None = None,
     refresh: bool = False,
     quota: QuotaSource | None = None,
+    windows: PointWindows | None = None,
 ) -> RunReport:
     """Шаг 2 воронки: дорогие метрики только по переданным проектам.
 
@@ -364,10 +353,7 @@ async def collect_stage2(
             engine,
             run,
             projects,
-            now=now,
-            refresh=refresh,
-            quota=quota,
-            stage=2,
+            RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=2),
         )
     except Exception as exc:
         logger.exception("collect_stage2_crashed", extra={"run_id": run.id})
@@ -382,28 +368,13 @@ async def collect_all(
     now: date | None = None,
     refresh: bool = False,
     quota: QuotaSource | None = None,
+    windows: PointWindows | None = None,
 ) -> RunReport:
     """Прогон по всем проектам в базе — то, что делает CLI."""
     projects = (await session.execute(select(Project))).scalars().all()
     return await collect_projects(
-        session, list(projects), provider, now=now, refresh=refresh, quota=quota
+        session, list(projects), provider, now=now, refresh=refresh, quota=quota, windows=windows
     )
-
-
-async def _run_tasks(provider: AhrefsProvider, tasks: Sequence[CollectTask]) -> list[_TaskOutcome]:
-    """Задачи параллельно, но не все сразу.
-
-    Ограничение — из конфига (`COLLECT_MAX_PARALLEL`, по умолчанию 3): у Ahrefs
-    есть лимит запросов в минуту, и сотня одновременных запросов приводит к 429
-    по всем сразу, то есть к прогону, который стоит units и не приносит данных.
-    """
-    semaphore = asyncio.Semaphore(config.ahrefs.max_parallel)
-
-    async def one(task: CollectTask) -> _TaskOutcome:
-        async with semaphore:
-            return await _fetch_one(provider, task)
-
-    return list(await asyncio.gather(*(one(task) for task in tasks)))
 
 
 async def _fetch_one(provider: AhrefsProvider, task: CollectTask) -> _TaskOutcome:
@@ -466,12 +437,6 @@ async def _apply_project_status(session: AsyncSession, item: _TaskOutcome) -> No
     project = await session.get(Project, item.task.project_id)
     if project is not None:
         project.status = status
-
-
-async def _mark_projects(session: AsyncSession, outcomes: Sequence[_TaskOutcome]) -> None:
-    """Совместимость: статусы теперь проставляются по мере готовности задач."""
-    for item in outcomes:
-        await _apply_project_status(session, item)
 
 
 async def _fail_run(session: AsyncSession, run: Run, exc: Exception) -> None:
