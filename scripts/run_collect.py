@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import sys
 from pathlib import Path
 
@@ -33,6 +34,8 @@ from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 
 _SOURCE_ERRORS = (SourceNotFoundError, UnknownSourceError, SheetLinkError, SheetAccessError)
 _EXIT_BAD_SOURCE = 2
+_EXIT_RUN_FAILED = 3
+_EXIT_INTERRUPTED = 130
 
 
 async def _intake(reference: str) -> int:
@@ -55,23 +58,44 @@ async def _intake(reference: str) -> int:
     return 0 if report.accepted else 1
 
 
-async def _collect() -> int:
+async def _collect(*, refresh: bool = False) -> int:
     async with get_sessionmaker()() as session:
-        report = await collect_all(session)
+        report = await collect_all(session, refresh=refresh)
         await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.projects_ok else 1
 
 
 async def _main(args: argparse.Namespace) -> int:
+    """Разбор команды. Наружу не выходит ни одна необработанная ошибка.
+
+    Коды различают причины, потому что по ним принимают разные решения:
+    2 — список не прочитан (чинит человек, правя путь или доступ),
+    3 — прогон упал (смотреть журнал прогона и логи),
+    130 — прервано с клавиатуры (не ошибка вовсе).
+    """
     print(f"провайдер: {config.ahrefs.provider}", flush=True)
     try:
         if args.command == "intake":
             return await _intake(args.source)
         if args.command == "collect":
-            return await _collect()
+            return await _collect(refresh=args.refresh)
         code = await _intake(args.source)
-        return code or await _collect()
+        return code or await _collect(refresh=args.refresh)
+    except KeyboardInterrupt:
+        # Не ошибка: человек остановил прогон сам. Уже собранное сохранено
+        # чекпойнтами, следующий запуск догрузит остаток.
+        print("прервано; собранное сохранено, повторный запуск догрузит остаток", file=sys.stderr)
+        return _EXIT_INTERRUPTED
+    except Exception as exc:
+        # Последний рубеж: сервис не имеет права падать трассировкой в лицо.
+        # Полный стек уходит в лог, человеку — строка и код возврата.
+        logging.getLogger(__name__).exception("cli_command_failed", extra={"command": args.command})
+        print(f"прогон не завершён: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(
+            "подробности — в логе; журнал прогона показывает, что успело собраться", file=sys.stderr
+        )
+        return _EXIT_RUN_FAILED
     finally:
         await dispose_engine()
 
@@ -83,10 +107,19 @@ def main() -> int:
     intake_parser = sub.add_parser("intake", help="принять список проектов")
     intake_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
-    sub.add_parser("collect", help="собрать историю по проектам в базе")
-
+    collect_parser = sub.add_parser("collect", help="собрать историю по проектам в базе")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
+
+    for parser_with_refresh in (collect_parser, all_parser):
+        parser_with_refresh.add_argument(
+            "--refresh",
+            action="store_true",
+            help=(
+                "игнорировать кэш и перезапросить историю целиком. "
+                "Стоит полной цены прогона — нужен, если Ahrefs пересчитал данные задним числом"
+            ),
+        )
 
     return asyncio.run(_main(parser.parse_args()))
 

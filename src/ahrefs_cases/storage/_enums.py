@@ -76,6 +76,10 @@ class RunItemOutcome(StrEnum):
     SKIPPED_NO_DATA = "skipped_no_data"
     SKIPPED_INVALID = "skipped_invalid"
     SKIPPED_QUOTA = "skipped_quota"
+    SKIPPED_ABORTED = "skipped_aborted"
+    """Задача не выполнялась: прогон остановлен предохранителем после серии
+    неудач. Отдельный исход, а не `failed`: по этому домену мы ничего не
+    спрашивали и ничего о нём не знаем — в отличие от домена, чей запрос упал."""
     FAILED = "failed"
 
 

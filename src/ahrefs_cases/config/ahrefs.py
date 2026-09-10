@@ -69,6 +69,42 @@ class AhrefsSettings(Settings):
     stage2_only_for_cases: bool = Field(True, validation_alias="AHREFS_STAGE2_ONLY_FOR_CASES")
     max_parallel: int = Field(3, ge=1, le=10, validation_alias="COLLECT_MAX_PARALLEL")
 
+    # --- устойчивость прогона (docs/IMPLEMENTATION_V3.md §5, «Надёжность») ---
+    breaker_max_failures: int = Field(
+        5, ge=1, le=100, validation_alias="COLLECT_BREAKER_MAX_FAILURES"
+    )
+    """Сколько неудач подряд означают «Ahrefs лёг» и пора останавливать прогон.
+
+    Подряд, а не всего: одиночные ошибки на отдельных доменах — норма (домен без
+    данных, странный ответ), а серия означает, что остальные 90 запросов уйдут
+    в те же таймауты и купят те же ошибки."""
+
+    checkpoint_every: int = Field(10, ge=1, le=1000, validation_alias="COLLECT_CHECKPOINT_EVERY")
+    """Через сколько задач фиксировать собранное. Прогон, убитый между
+    чекпойнтами, теряет не больше этого числа доменов — за них уже заплачено."""
+
+    run_queued_stale_sec: int = Field(7200, ge=60, validation_alias="COLLECT_RUN_QUEUED_STALE_SEC")
+    """Порог для прогонов, которые ещё не начинались.
+
+    Мягче, чем у `running`, и это не симметрия ради симметрии: очередь законно
+    держит задачу, пока идут предшественники. Мёртвой она становится, только
+    если её вообще никто не подхватил."""
+
+    empty_retry_days: int = Field(30, ge=0, le=365, validation_alias="AHREFS_EMPTY_RETRY_DAYS")
+    """Как долго помнить, что у домена нет истории.
+
+    Домен без данных не оставляет точек, поэтому обычный кэш о нём ничего не
+    знает и покупает ту же пустоту каждым прогоном. Молодой сайт станет
+    непустым не завтра — месяца достаточно. Дыра найдена сверкой с CRM
+    агентства, где то же лечится счётчиком пустых прогонов."""
+
+    run_stale_sec: int = Field(3600, ge=60, validation_alias="COLLECT_RUN_STALE_SEC")
+    """После скольких секунд прогон в `running` считается мёртвым.
+
+    Аналог жёсткого таймаута джобы из CRM (`run_reaper.py`): живой прогон
+    физически не идёт дольше, значит признак смерти — возраст, а не отсутствие
+    heartbeat'а. Поля `last_heartbeat` и миграции для этого не нужно."""
+
     @field_validator("retry_backoff_sec", mode="before")
     @classmethod
     def _parse_backoff(cls, value: object) -> object:

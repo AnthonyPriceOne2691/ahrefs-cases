@@ -18,18 +18,28 @@ from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import AhrefsHTTPError, AhrefsUnavailableError
+from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
 from ahrefs_cases.collect.budget import record_cached, record_spend, run_saved, run_spend
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan
 from ahrefs_cases.collect.provider import AhrefsProvider, HistoryResult
-from ahrefs_cases.collect.run_journal import add_item, finish_run, open_run, system_user
+from ahrefs_cases.collect.run_journal import (
+    add_item,
+    count_outcome,
+    finish_run,
+    open_run,
+    system_user,
+)
+from ahrefs_cases.collect.run_reaper import reap_stale_runs
 from ahrefs_cases.collect.series import store_history
 from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome
 from ahrefs_cases.storage.models.project import Project
+from ahrefs_cases.storage.models.run import Run
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +62,11 @@ class RunReport:
     projects_ok: int
     projects_skipped: int
     projects_failed: int
+    projects_aborted: int
+    """Задачи, которых не было: предохранитель остановил прогон. Отдельное
+    число, потому что это не «упало», а «не спрашивали» — и повторный прогон
+    по ним обязателен."""
+
     points_written: int
     units_spent: int
     requests_made: int
@@ -64,7 +79,7 @@ class RunReport:
             f"прогон {self.run_id}: {self.status}",
             f"проектов: {self.projects_total} "
             f"(собрано {self.projects_ok}, пропущено {self.projects_skipped}, "
-            f"упало {self.projects_failed})",
+            f"упало {self.projects_failed}, не выполнено {self.projects_aborted})",
             f"точек записано: {self.points_written}",
             f"запросов: сделано {self.requests_made}, сэкономлено кэшем {self.requests_saved}",
             f"units потрачено: {self.units_spent}",
@@ -95,8 +110,39 @@ async def collect_projects(
     подкручивать системные часы, чтобы её проверить.
     """
     engine = provider or build_provider()
+    # До открытия своего прогона подметаем чужие зависшие: их резервы units
+    # иначе занимают квоту вечно (паттерн CRM, см. `run_reaper`). Место
+    # временное — с появлением сметы в этой же поставке вызов переедет в
+    # preflight, туда, где результат нужен.
+    await reap_stale_runs(session)
     user = await system_user(session)
     run = await open_run(session, started_by=user.id, projects_total=len(projects))
+    # Коммит сразу: до него строки прогона не существует ни для другого
+    # процесса (а его резерв обязан быть виден чужой смете), ни для реапера.
+    await session.commit()
+
+    try:
+        return await _execute_run(session, engine, run, projects, now=now, refresh=refresh)
+    except Exception as exc:
+        # Широко и с логом: любая ошибка вне задач (база, запись, финализация)
+        # обязана закрыть прогон статусом, иначе строка навсегда останется в
+        # `running` и её резерв — в чужой смете. Исключение после этого летит
+        # дальше: проглотить его значило бы соврать вызывающему успехом.
+        logger.exception("collect_run_crashed", extra={"run_id": run.id})
+        await _fail_run(session, run, exc)
+        raise
+
+
+async def _execute_run(
+    session: AsyncSession,
+    engine: AhrefsProvider,
+    run: Run,
+    projects: Sequence[Project],
+    *,
+    now: date | None,
+    refresh: bool,
+) -> RunReport:
+    """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
     plan = await build_stage1_plan(
         session,
         projects,
@@ -104,23 +150,6 @@ async def collect_projects(
         now=now or date.today(),  # noqa: DTZ011 — календарная граница месяца
         refresh=refresh,
     )
-
-    outcomes = await _run_tasks(engine, plan.tasks)
-
-    points = 0
-    for item in outcomes:
-        if item.result is not None:
-            points += await store_history(session, item.task.project_id, item.result)
-            await record_spend(session, run.id, item.result)
-        await add_item(
-            session,
-            run,
-            project_id=item.task.project_id,
-            raw_domain=item.task.domain,
-            outcome=item.outcome,
-            reason=item.reason,
-            units_actual=item.result.units_actual if item.result else 0,
-        )
     for skipped in plan.cached:
         await record_cached(session, run.id, skipped.spec.name, skipped.domain)
         await add_item(
@@ -131,25 +160,98 @@ async def collect_projects(
             outcome=RunItemOutcome.OK,
             reason=skipped.reason,
         )
-    await _mark_projects(session, outcomes)
+    await session.commit()
+
+    points = await _execute_tasks(session, engine, run, plan.tasks)
     await finish_run(session, run)
+    await session.commit()
 
     return RunReport(
         run_id=run.id,
         status=run.status.value,
         projects_total=run.projects_total,
         projects_ok=run.projects_ok,
-        projects_skipped=sum(
-            1 for item in outcomes if item.outcome is RunItemOutcome.SKIPPED_NO_DATA
-        ),
+        projects_skipped=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_NO_DATA),
+        projects_aborted=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_ABORTED),
         projects_failed=run.projects_failed,
         points_written=points,
         units_spent=await run_spend(session, run.id),
         requests_made=len(plan.tasks),
-        # Из журнала, а не из длины плана: число, которое покажут заказчику,
-        # обязано браться оттуда же, откуда объясняется счёт (как units_spent).
         requests_saved=await run_saved(session, run.id),
     )
+
+
+async def _execute_tasks(
+    session: AsyncSession,
+    engine: AhrefsProvider,
+    run: Run,
+    tasks: Sequence[CollectTask],
+) -> int:
+    """Выполнить задачи, записывая результат **по мере готовности**.
+
+    Ф2а писала всё после `gather`: прогон, убитый на семидесятом домене, терял
+    данные шестидесяти девяти, за которые units уже списаны. Здесь каждая
+    завершённая задача попадает в базу сразу, а каждые
+    `COLLECT_CHECKPOINT_EVERY` задач фиксируются коммитом.
+
+    Возобновления как отдельного механизма не нужно: следующий прогон увидит
+    собранное через кэш и докупит только остаток.
+    """
+    semaphore = asyncio.Semaphore(config.ahrefs.max_parallel)
+    breaker = ConsecutiveFailureBreaker(limit=config.ahrefs.breaker_max_failures)
+
+    async def one(task: CollectTask) -> _TaskOutcome:
+        """Одна задача под семафором.
+
+        Предохранитель проверяется и обновляется **внутри** семафора, а не в
+        цикле потребления результатов. Снаружи это не работает: `as_completed`
+        стартует все корутины сразу, проверка успевает пройти до первой
+        неудачи, и предохранитель не срабатывает вообще — поймано тестом C14,
+        который до этой правки видел 10 запросов вместо 3.
+
+        Перелёт на величину `max_parallel` остаётся: задачи, уже ушедшие в
+        сеть, не отзываются. Это цена параллельности, а не дефект.
+        """
+        async with semaphore:
+            if breaker.tripped:
+                return _TaskOutcome(
+                    task=task, outcome=RunItemOutcome.SKIPPED_ABORTED, reason=breaker.reason()
+                )
+            outcome = await _fetch_one(engine, task)
+            breaker.record(ok=outcome.outcome is not RunItemOutcome.FAILED)
+            return outcome
+
+    points = 0
+    for done, future in enumerate(asyncio.as_completed([one(task) for task in tasks]), start=1):
+        item = await future
+        points += await _store_outcome(session, run, item)
+        if done % config.ahrefs.checkpoint_every == 0:
+            # Чекпойнт: прогон, убитый после этой точки, теряет не больше
+            # `checkpoint_every` доменов — за них уже заплачено.
+            await session.commit()
+
+    await _mark_projects(session, [])
+    await session.commit()
+    return points
+
+
+async def _store_outcome(session: AsyncSession, run: Run, item: _TaskOutcome) -> int:
+    """Записать исход одной задачи: точки, расход, строку журнала, статус проекта."""
+    points = 0
+    if item.result is not None:
+        points = await store_history(session, item.task.project_id, item.result)
+        await record_spend(session, run.id, item.result)
+    await add_item(
+        session,
+        run,
+        project_id=item.task.project_id,
+        raw_domain=item.task.domain,
+        outcome=item.outcome,
+        reason=item.reason,
+        units_actual=item.result.units_actual if item.result else 0,
+    )
+    await _apply_project_status(session, item)
+    return points
 
 
 async def collect_all(
@@ -190,6 +292,21 @@ async def _fetch_one(provider: AhrefsProvider, task: CollectTask) -> _TaskOutcom
             extra={"domain": task.domain, "endpoint": task.spec.name, "reason": str(exc)},
         )
         return _TaskOutcome(task=task, outcome=RunItemOutcome.FAILED, reason=str(exc))
+    except Exception as exc:
+        # Неизвестная ошибка (разбор ответа, кодировка, чужая библиотека) не
+        # имеет права уронить прогон на сотню доменов. Логируется целиком со
+        # стеком: свернуть незнакомое в строку — значит потерять единственный
+        # шанс понять, что это было. `BaseException` сюда не попадает, поэтому
+        # отмена прогона остаётся отменой, а не «падением по своей вине».
+        logger.exception(
+            "collect_task_crashed",
+            extra={"domain": task.domain, "endpoint": task.spec.name},
+        )
+        return _TaskOutcome(
+            task=task,
+            outcome=RunItemOutcome.FAILED,
+            reason=f"неожиданная ошибка {type(exc).__name__}: {exc}",
+        )
 
     if result.is_empty:
         return _TaskOutcome(
@@ -204,21 +321,47 @@ async def _fetch_one(provider: AhrefsProvider, task: CollectTask) -> _TaskOutcom
     return _TaskOutcome(task=task, outcome=RunItemOutcome.OK, reason=reason, result=result)
 
 
-async def _mark_projects(session: AsyncSession, outcomes: Sequence[_TaskOutcome]) -> None:
+_PROJECT_STATUS_BY_OUTCOME = {
+    RunItemOutcome.OK: ProjectStatus.COLLECTED,
+    RunItemOutcome.SKIPPED_NO_DATA: ProjectStatus.SKIPPED,
+    RunItemOutcome.FAILED: ProjectStatus.FAILED,
+}
+"""`SKIPPED_ABORTED` намеренно отсутствует: по такому домену мы ничего не
+спрашивали, и менять его статус значило бы записать незнание как результат."""
+
+
+async def _apply_project_status(session: AsyncSession, item: _TaskOutcome) -> None:
     """Статус проекта по исходу сбора.
 
     Статус двигает прогон, а не приём списка (см. `intake/upsert.py`): иначе
     повторная загрузка файла обнуляла бы результат последнего сбора.
     """
-    by_outcome = {
-        RunItemOutcome.OK: ProjectStatus.COLLECTED,
-        RunItemOutcome.SKIPPED_NO_DATA: ProjectStatus.SKIPPED,
-        RunItemOutcome.FAILED: ProjectStatus.FAILED,
-    }
+    status = _PROJECT_STATUS_BY_OUTCOME.get(item.outcome)
+    if status is None:
+        return
+    project = await session.get(Project, item.task.project_id)
+    if project is not None:
+        project.status = status
+
+
+async def _mark_projects(session: AsyncSession, outcomes: Sequence[_TaskOutcome]) -> None:
+    """Совместимость: статусы теперь проставляются по мере готовности задач."""
     for item in outcomes:
-        status = by_outcome.get(item.outcome)
-        if status is None:
-            continue
-        project = await session.get(Project, item.task.project_id)
-        if project is not None:
-            project.status = status
+        await _apply_project_status(session, item)
+
+
+async def _fail_run(session: AsyncSession, run: Run, exc: Exception) -> None:
+    """Закрыть прогон как упавший, не потеряв причину.
+
+    Откат обязателен: сессия после ошибки в транзакции не примет ни одной
+    записи, и попытка сохранить статус упала бы второй ошибкой, затерев первую.
+    Уже собранное при этом не теряется — оно зафиксировано чекпойнтами.
+    """
+    try:
+        await session.rollback()
+        await finish_run(session, run, error=f"{type(exc).__name__}: {exc}")
+        await session.commit()
+    except SQLAlchemyError:
+        # База недоступна совсем: статус сохранить нечем. Прогон останется в
+        # `running` и его подметёт реапер — ради этого случая он и написан.
+        logger.exception("collect_run_status_not_saved", extra={"run_id": run.id})

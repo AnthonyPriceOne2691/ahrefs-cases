@@ -99,6 +99,17 @@ async def build_stage1_plan(
     for project in projects:
         for spec in STAGE1_SPECS:
             request = history_request(project)
+            skip_reason = await _skip_reason(session, project, refresh=refresh)
+            if skip_reason is not None:
+                cached.append(
+                    CachedTask(
+                        project_id=project.id,
+                        domain=project.domain,
+                        spec=spec,
+                        reason=skip_reason,
+                    )
+                )
+                continue
             date_from = await _incremental_from(
                 session, project, spec, request, source=source, now=now, refresh=refresh
             )
@@ -114,6 +125,22 @@ async def build_stage1_plan(
                 )
             )
     return CollectPlan(tasks=tasks, cached=cached)
+
+
+async def _skip_reason(session: AsyncSession, project: Project, *, refresh: bool) -> str | None:
+    """Причина не спрашивать домен вовсе, помимо «всё уже собрано».
+
+    Пока такая причина одна: по домену уже получали пустую историю недавно.
+    Без этой проверки молодой домен покупается заново каждым прогоном — данных
+    он не даёт, а стоит столько же, сколько домен с данными.
+    """
+    if refresh:
+        return None
+    checked_at = await cache.empty_since(session, project.id)
+    if not cache.empty_is_remembered(checked_at):
+        return None
+    when = checked_at.date().isoformat() if checked_at else "?"
+    return f"истории нет, проверено {when} — повтор через {config.ahrefs.empty_retry_days} дн."
 
 
 async def _incremental_from(

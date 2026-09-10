@@ -20,8 +20,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.storage._enums import Metric, MetricSource
+from ahrefs_cases.storage._enums import Metric, MetricSource, RunItemOutcome
 from ahrefs_cases.storage.models.metric_point import MetricPoint
+from ahrefs_cases.storage.models.run import Run, RunItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +75,39 @@ async def coverage(
         last_point=min(row.last_point for row in rows),
         fetched_at=max(row.fetched_at for row in rows),
     )
+
+
+async def empty_since(session: AsyncSession, project_id: int) -> datetime | None:
+    """Когда по проекту последний раз получили пустую историю — если это
+    по-прежнему его последний известный исход.
+
+    Зачем отдельный вопрос: домен без данных не оставляет ни одной точки, и
+    обычный кэш о нём не знает ничего. Без этой памяти десять молодых доменов
+    в списке покупают одну и ту же пустоту каждый месяц.
+
+    Берётся **последний** `RunItem` проекта: если после пустого ответа домен
+    успели собрать, память о пустоте больше не действует.
+    """
+    stmt = (
+        select(RunItem.outcome, Run.finished_at)
+        .join(Run, Run.id == RunItem.run_id)
+        .where(RunItem.project_id == project_id)
+        .order_by(RunItem.id.desc())
+        .limit(1)
+    )
+    row = (await session.execute(stmt)).first()
+    if row is None or row.outcome is not RunItemOutcome.SKIPPED_NO_DATA:
+        return None
+    finished_at: datetime | None = row.finished_at
+    return finished_at
+
+
+def empty_is_remembered(checked_at: datetime | None, now: datetime | None = None) -> bool:
+    """Ещё действует ли память о пустом ответе."""
+    if checked_at is None or config.ahrefs.empty_retry_days == 0:
+        return False
+    moment = now or datetime.now(UTC)
+    return moment - checked_at < timedelta(days=config.ahrefs.empty_retry_days)
 
 
 def closed_through(now: date) -> date:

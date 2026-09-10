@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
@@ -96,6 +96,17 @@ async def add_item(
             units_actual=units_actual,
         )
     )
+
+
+async def count_outcome(session: AsyncSession, run_id: int, outcome: RunItemOutcome) -> int:
+    """Сколько задач прогона закончились этим исходом.
+
+    Запросом к журналу, а не счётчиком в памяти: то же правило, что у итогов в
+    `finish_run` — число, показанное человеку, берётся оттуда же, откуда
+    объясняется счёт.
+    """
+    stmt = select(func.count()).where(RunItem.run_id == run_id, RunItem.outcome == outcome)
+    return int((await session.execute(stmt)).scalar_one())
 
 
 async def finish_run(session: AsyncSession, run: Run, *, error: str = "") -> Run:
