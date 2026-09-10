@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_run_timeout.py::test_reaper_threshold_must_exceed_run_timeout
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** n/a reason=класс S, дефект найден расчётом и воспроизводится тестом
