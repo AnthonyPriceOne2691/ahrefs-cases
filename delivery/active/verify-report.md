@@ -3,8 +3,8 @@
 **Date:** 2026-09-10
 **Verifier:** human:anthony
 **asserts_reviewed_by:** n/a (класс S — дайджест утверждений обязателен для M/L)
-**CI run:** n/a reason=CI не развёрнут, волна В1 (предельный срок — начало Ф2); вместо ссылки — прогон в чистом клоне ниже
-**Commit:** 13c695c
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/34499884536
+**Commit:** 775122d
 
 ## Прогон в чистом клоне
 
@@ -23,10 +23,14 @@ $ git clone . <clone> && cd <clone> && python3 scripts/delivery_check.py
 поведение варианта D: контур в чужой истории работает, а сам в неё не уезжает.
 
 ## Shape oracles
-- [x] n/a — CQG не развёрнут (волна В1). `shape-oracles: weak` объявлено в STATUS с причиной.
+- [x] PASS — `pre-commit run --all-files`: 27 хуков, упавших 0. Проверено и со
+      сброшенным окружением (§6): значения путей живут в `entry:`, а не в шелле.
+- [x] PASS — гейты видят код: 42, 43, 50 (×8), 52, 54, 73 файла, 12 TS-модулей.
+- [x] PASS — `contour_doctor.py`: AUTO 42 · WEAK 10 · ABSENT 0 · DEAD 0 — «лжи нет».
 
 ## Behavior oracles
-- [x] PASS — `scripts/delivery_check.py` в чистом клоне: ошибок нет
+- [x] PASS — `pytest`: 16 тестов (включая цикл миграций в CI, где база одноразовая)
+- [x] PASS — `scripts/delivery_check.py`: 0 ошибок, 0 предупреждений
 - [x] PASS — `extract_payload.py --check-local .`: см. блок «Вариант D» ниже
 - [x] n/a — тестов продукта нет: кода продукта нет. Первые придут в Ф2.
 
