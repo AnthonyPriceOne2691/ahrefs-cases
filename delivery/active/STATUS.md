@@ -16,10 +16,13 @@
 - **artifact_oracle:** n/a reason=проект пока ничего не собирает; PDF появится в Ф4
 - **ci-oracles:** tooling
   <!-- Гейт мержа в репозитории (`scripts/merge_guard.sh` + pre-push hook + `needs:`
-       у downstream-джоб) — работает на любом тарифе. Серверной защиты ветки нет:
-       репозиторий публичный, значит правила ветки GitHub доступны бесплатно, но
-       включает их человек в UI (CQG §8.5.3). Незакрытый остаток до этого —
-       force-push и обход админом; назван в STACK-ACCEPTANCE, а не замолчан. -->
+       у downstream-джоб) плюс серверные правила ветки: ruleset `main` (id 22794937,
+       enforcement active, bypass пуст) закрывает force-push, удаление и создание.
+       Проверено не конфигурацией, а применением: `gh api rules/branches/main`
+       возвращает три правила. Остаётся `tooling`, а не `deployed`, потому что
+       required status checks НЕ включены осознанно: они блокируют прямые пуши в
+       main, а сейчас работа идёт именно так. Включаются при появлении второго
+       человека или при передаче компании — тогда же станет `deployed`. -->
 - **worktree:** none reason=единственный исполнитель, main без защиты до В1
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none

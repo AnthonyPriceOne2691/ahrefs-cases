@@ -17,7 +17,7 @@ stale_after: 2026-10-10
 | ① delivery/ | deployed | дерево §2.3 полностью, constitution заполнен под продукт |
 | ② гейты | deployed | 27 хуков зелёные; 15 скриптов, подключено 11, осознанно нет 4; адаптация — `scripts/lint/adapted.json` |
 | ③ knowledge/ | absent | волна В2, предельный срок — начало Ф8 (до калибровки порогов) |
-| ④ CI + гейт мержа | tooling | CI зелёный (gates + delivery + tests); merge_guard: да; pre-push hook: да; branch protection: **нет — включает человек** (репозиторий публичный, правила ветки доступны бесплатно, CQG §8.5.3) |
+| ④ CI + гейт мержа | tooling | CI зелёный (gates + delivery + tests); merge_guard: да; pre-push hook: да; branch protection: **да** — ruleset `main` (active, bypass пуст): deletion, non_fast_forward, creation |
 | ⑤ поведение модели | n/a | волна В3; в MVP текст кейса шаблонный, модель не вызывается |
 
 ## Карта ролей гейтов
@@ -78,7 +78,14 @@ $ contour_doctor.py
   AUTO 42 · WEAK 10 · ABSENT 0 · TOOL 3 · SKIP 2 · DEAD 0 — «лжи нет»
 
 CI (quality, коммит 775122d): gates success · delivery success · tests success
+
+$ gh api repos/.../rules/branches/main
+  deletion · non_fast_forward · creation ← ruleset 22794937
 ```
+
+Правила ветки проверены **применением, а не конфигурацией**: первая попытка дала
+ruleset с правилами и пустым `include` — активный, но ни к чему не привязанный.
+Различить это можно только запросом «что применяется к `main`».
 
 Клон несёт механику и не несёт текстов канонов — проверяемое поведение варианта D.
 Полный вывод: `delivery/active/verify-report.md`.
@@ -87,7 +94,8 @@ CI (quality, коммит 775122d): gates success · delivery success · tests s
 
 | Инвариант | Почему не закрыт | Компенсация |
 |---|---|---|
-| force-push / обход админом | серверная защита ветки не включена | `merge_guard.sh` + pre-push hook в репозитории; правила ветки GitHub доступны (репозиторий публичный) и ждут человека |
+| required status checks | **не включены осознанно**: на ruleset они блокируют прямые пуши в `main`, а сейчас работа идёт так | зелёный CI обязателен по DoD (§10.4) и проверяется ссылкой в verify-report; включаются при втором человеке или при передаче |
+| обход админом | владелец репозитория может изменить ruleset | bypass-лист пуст, изменение ruleset видно в audit log GitHub |
 | ратчет на снимки | снимков ещё нет в `origin/main` (bootstrap) | заработает со следующей поставки; в этом прогоне честно сказал «сверено 0» |
 | «payload канонов не сломан» в CI проекта | вариант D: текстов канонов в репозитории нет по построению | `stack-selftest: external (~/Documents/Prepare)`, руками при каждой правке канона |
 | `git add -f` обходит `.git/info/exclude` | на репозитории, который станет чужим, закрыть нечем | остаток назван в STATUS; проверка `--check-local` даёт два нуля |
