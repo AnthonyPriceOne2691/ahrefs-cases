@@ -11,17 +11,50 @@
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases import config
 from ahrefs_cases.collect.provider import HistoryResult
 from ahrefs_cases.storage._enums import LedgerKind, RunStatus
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 
+logger = logging.getLogger(__name__)
+
+
+def _warn_if_estimate_missed(result: HistoryResult) -> None:
+    """Смета разошлась с фактом — значит модель стоимости неверна.
+
+    Проверяется на каждом ответе, потому что первый же живой прогон — это и
+    есть проверка гипотезы H1. Без сигнала расхождение всплыло бы в счёте
+    Ahrefs в конце месяца, когда units уже потрачены.
+
+    В fixture-режиме оба числа считаются одной формулой и совпадают по
+    построению, так что предупреждение здесь молчит — и это правильно: оно
+    сторожит живой режим.
+    """
+    if result.units_estimated <= 0 or result.units_actual <= 0:
+        return
+    drift = abs(result.units_actual - result.units_estimated) / result.units_estimated * 100
+    if drift > config.ahrefs.estimate_tolerance_pct:
+        logger.warning(
+            "ahrefs_estimate_missed",
+            extra={
+                "endpoint": result.endpoint,
+                "target": result.target,
+                "estimated": result.units_estimated,
+                "actual": result.units_actual,
+                "drift_pct": round(drift, 1),
+            },
+        )
+
 
 async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult) -> None:
     """Записать стоимость одного ответа провайдера."""
+    _warn_if_estimate_missed(result)
     session.add(
         UnitsLedger(
             run_id=run_id,

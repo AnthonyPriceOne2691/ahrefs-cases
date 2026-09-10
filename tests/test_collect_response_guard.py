@@ -151,3 +151,58 @@ def test_shallow_history_is_measured() -> None:
 def test_fixture_quota_is_unaffected() -> None:
     """Дев-режим не должен зависеть от формы живого ответа."""
     assert FixtureQuota(left=42).left == 42
+
+
+def test_estimate_drift_is_reported(caplog: pytest.LogCaptureFixture) -> None:
+    """H1: расхождение сметы с фактом обязано быть слышно в первом же прогоне.
+
+    Модель стоимости — гипотеза: документация Ahrefs называет и минимум 50
+    units, и цену `refdomains-history` в 5, не объясняя их сочетания. Если
+    модель неверна, это выяснится либо здесь, либо из счёта в конце месяца.
+    """
+    import logging
+
+    from ahrefs_cases.collect.budget import _warn_if_estimate_missed
+    from ahrefs_cases.collect.provider import HistoryResult
+    from ahrefs_cases.storage._enums import MetricSource
+
+    result = HistoryResult(
+        endpoint="metrics-history",
+        target="example.com",
+        points=(),
+        units_estimated=50,
+        units_actual=180,
+        source=MetricSource.LIVE,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_estimate_missed(result)
+
+    assert "ahrefs_estimate_missed" in caplog.text
+
+
+def test_estimate_within_tolerance_is_silent(caplog: pytest.LogCaptureFixture) -> None:
+    """Обратная сторона H1: небольшое расхождение не шумит.
+
+    Предупреждение, срабатывающее на каждом ответе, перестают читать — и
+    настоящее расхождение утонет вместе с остальными.
+    """
+    import logging
+
+    from ahrefs_cases.collect.budget import _warn_if_estimate_missed
+    from ahrefs_cases.collect.provider import HistoryResult
+    from ahrefs_cases.storage._enums import MetricSource
+
+    result = HistoryResult(
+        endpoint="metrics-history",
+        target="example.com",
+        points=(),
+        units_estimated=50,
+        units_actual=55,
+        source=MetricSource.LIVE,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _warn_if_estimate_missed(result)
+
+    assert caplog.text == ""
