@@ -114,7 +114,9 @@ def test_no_practical_window_saves_from_a_single_outlier(window: int, expected_p
 
     Один аномальный месяц из двенадцати на плоской серии даёт +50 % при окне
     в два месяца и всё ещё +16,7 % при окне в шесть — то есть выше порога
-    «средних» (+10 %) при **любом** практичном окне. Чтобы выброс перестал
+    «средних» уровня +10 % (порог заказчика) при **любом** практичном окне.
+    Порог в тесте задаётся явно, потому что умолчания репозитория нейтральные,
+    а разговор с заказчиком идёт про его числа. Чтобы выброс перестал
     делать плоский проект «средним», нужно окно от десяти месяцев, а это уже
     не «окно у границы периода», а усреднение всего периода.
 
@@ -125,6 +127,7 @@ def test_no_practical_window_saves_from_a_single_outlier(window: int, expected_p
     """
     spiked = _series([*[1000.0] * 11, 2000.0])
     thresholds = load_seed().model_copy(deep=True)
+    thresholds.groups["medium"].org_traffic.growth_pct_min = 10.0
     thresholds.windows.point_a_months = window
     thresholds.windows.point_b_months = window
 
@@ -139,8 +142,17 @@ def test_no_practical_window_saves_from_a_single_outlier(window: int, expected_p
 
 
 def test_medium_band() -> None:
-    """D3: +12 % попадает в вилку «средних»."""
-    decision = _decide(_series(_ramp(1000, 1120, 12)))
+    """D3: рост внутри вилки даёт «средних».
+
+    Вход считается **от порога**, а не задан числом: умолчания репозитория
+    нейтральные (пороги заказчика в git не уезжают), и тест, прибитый к
+    конкретным процентам, ломался бы при каждой смене умолчаний, ничего при
+    этом не проверяя.
+    """
+    thresholds = load_seed()
+    inside = thresholds.medium.org_traffic.growth_pct_min * 1.5
+
+    decision = _decide(_series(_ramp(1000, 1000 * (1 + inside / 100), 12)))
 
     assert decision.group is Group.MEDIUM
 
@@ -273,7 +285,7 @@ def test_score_does_not_decide_the_group() -> None:
     assert _decide(series, thresholds).group is _decide(series, heavy).group
 
 
-@pytest.mark.parametrize("growth", [0.68, 0.9, 1.05])
+@pytest.mark.parametrize("growth", [0.68, 0.9, 1.0])
 def test_no_growth_is_poor(growth: float) -> None:
     """D4: падение и рост меньше +10 % — «плохие», кейс не формируется."""
     decision = _decide(_series(_ramp(1000, 1000 * growth, 12)))

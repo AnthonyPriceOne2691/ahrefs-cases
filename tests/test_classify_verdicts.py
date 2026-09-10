@@ -36,6 +36,7 @@ COLUMNS = (
     "work_volume,client,owner,publishable,target_mode,notes"
 )
 NOW = __import__("datetime").date(2026, 9, 15)
+DEFAULTS_PATH = Path("config/thresholds.default.yml")
 
 
 @pytest.fixture(autouse=True)
@@ -52,6 +53,18 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(httpx.AsyncClient, "request", forbidden)
     monkeypatch.setattr(httpx.AsyncClient, "send", forbidden)
+
+
+def _defaults_with_changed_threshold(value: float) -> dict[str, object]:
+    """Копия умолчаний с другим порогом «хороших».
+
+    Чтение файла вынесено из async-теста намеренно: блокирующий ввод-вывод
+    внутри корутины — то, что ловит гейт `ASYNC240`, и правило разумное, хотя
+    в тесте на пять строк выглядит формальностью.
+    """
+    raw = yaml.safe_load(DEFAULTS_PATH.read_text(encoding="utf-8"))
+    raw["groups"]["good"]["org_traffic"]["growth_pct_min"] = value
+    return dict(raw)
 
 
 async def _prepare(
@@ -72,7 +85,9 @@ async def _prepare(
     await collect_all(session, AhrefsFixture(), now=NOW)
     projects = list((await session.execute(select(Project))).scalars().all())
     if stage2:
-        await collect_stage2(session, [project.id for project in projects], AhrefsFixture(), now=NOW)
+        await collect_stage2(
+            session, [project.id for project in projects], AhrefsFixture(), now=NOW
+        )
     return projects
 
 
@@ -118,15 +133,15 @@ async def test_thresholds_come_from_database_not_file(
     Проверяется, а не подразумевается: файл с другими порогами читается только
     как новая версия, а действующие пороги остаются теми, что в базе.
     """
+    changed = _defaults_with_changed_threshold(999)
     await seed_thresholds(db_session)
-    changed = yaml.safe_load(Path("config/thresholds.example.yml").read_text(encoding="utf-8"))
-    changed["groups"]["good"]["org_traffic"]["growth_pct_min"] = 999
-    other = tmp_path / "changed.yml"
-    other.write_text(yaml.safe_dump(changed, allow_unicode=True), encoding="utf-8")
+    (tmp_path / "changed.yml").write_text(
+        yaml.safe_dump(changed, allow_unicode=True), encoding="utf-8"
+    )
 
     active = await active_ruleset(db_session)
 
-    assert thresholds_of(active).good.org_traffic.growth_pct_min == 50
+    assert thresholds_of(active).good.org_traffic.growth_pct_min == 100
 
 
 async def test_no_active_ruleset_is_an_error(db_session: AsyncSession) -> None:
@@ -189,7 +204,7 @@ async def test_classify_all_reports_distribution(db_session: AsyncSession) -> No
 
     assert report.total == 3
     assert sum(report.by_group.values()) == 3
-    assert report.ruleset_version == "0.1.0-draft"
+    assert report.ruleset_version == "0.0.0-default"
 
 
 async def test_classified_project_changes_status(db_session: AsyncSession) -> None:

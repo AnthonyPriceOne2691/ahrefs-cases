@@ -1,0 +1,59 @@
+# Пороги классификации: СТРУКТУРА и безопасные умолчания.
+#
+# Это НЕ пороги заказчика. Значения здесь нейтральные и подобраны так, чтобы
+# сервис запускался и тестировался на любой машине, включая CI. Рабочие пороги
+# приходят от заказчика отдельным файлом, который в репозиторий не уезжает
+# (вариант D, см. AGENTS.md): у нас это `config/thresholds.example.yml` с
+# Приложением А, и путь к нему задаётся переменной THRESHOLDS_SEED_PATH.
+#
+# Почему файл вообще нужен: тесты классификации и первый запуск на пустой базе
+# должны работать без клиентских данных. До этого файла golden-таблица стояла
+# на пороге заказчика и краснела в CI — там его нет по построению.
+
+version: "0.0.0-default"
+
+windows:
+  point_a_months: 2
+  point_b_months: 2
+  baseline: period
+  pre_start_baseline_months: 0
+
+eligibility:
+  min_months_after_start: 3
+  max_series_gap_months: 2
+  min_traffic_point_b: 0
+
+groups:
+  good:
+    org_traffic:
+      growth_pct_min: 100        # нейтральное «удвоение», не порог заказчика
+      growth_abs_min: 2000
+    supporting_required: 1
+    supporting:
+      refdomains_growth_pct_min: 50
+      kw_top10_growth_pct_min: 50
+    min_months_after_start: 6
+
+  medium:
+    org_traffic:
+      growth_pct_min: 20
+      growth_pct_max: 100
+      or_high_pct_low_abs: true
+    supporting_required: 0
+    supporting:
+      refdomains_growth_pct_min: 10
+      kw_top10_growth_pct_min: 20
+    min_months_after_start: 3
+
+duration:
+  normalize_after_months: 0
+
+guards:
+  end_vs_peak_min_pct: 0
+
+score:
+  weights:
+    org_traffic_growth_pct: 0.4
+    org_traffic_growth_abs: 0.3
+    kw_top3_growth_abs: 0.2
+    refdomains_growth_pct: 0.1
