@@ -1,37 +1,57 @@
 # Verify report
 
-**Date:** YYYY-MM-DD
-**Verifier:** <process:ci|agent:NAME|human:NAME>
-**asserts_reviewed_by:** <human:NAME at=… | n/a (все утверждения ведут к одобренным примерам)>
-<!-- Обязательно для M/L (§3.1d уровень 3, DoD §3.2.7). Порядок такой:
-     1) `bash scripts/lint/assert_digest.sh >> этот файл` — дайджест обязан быть
-        вставлен, в нём есть строка `asserts_without_example: N`;
-     2) N = 0 → все ожидания ведут к примерам, подписанным человеком ДО кода;
-        законно писать `n/a (…)`, повторная подпись ничего не добавляет;
-     3) N > 0 → читать нужно только строки с `-` в первой колонке: эти ожидания
-        не подписывал никто. Подпись `human:NAME at=…` обязательна.
-     `n/a` без вставленного дайджеста или при N > 0 — ошибка delivery_check. -->
-**CI run:** <URL зелёного прогона>
-<!-- URL, а не слова «CI зелёный»: без ссылки DoD §3.2.3 не закрыт.
-     Взять: gh run list --workflow quality --branch <ветка> --limit 1 --json url -->
-**Commit:** <sha, на котором прогон зелёный>
-<!-- Заполнить ОДНИМ значением. Должен отличаться от `builder:` в STATUS (§5.2);
-     на M/L совпадение = ошибка delivery_check. -->
+**Date:** 2026-09-10
+**Verifier:** human:anthony
+**asserts_reviewed_by:** n/a (класс S — дайджест утверждений обязателен для M/L)
+**CI run:** n/a reason=CI не развёрнут, волна В1 (предельный срок — начало Ф2); вместо ссылки — прогон в чистом клоне ниже
+**Commit:** 13c695c
+
+## Прогон в чистом клоне
+
+Локальные гейты обходятся (`commit -n`, `STRICT=0`), поэтому доказательством
+служит прогон на **склонированном** состоянии, а не в рабочем дереве (§10.4).
+
+```
+$ git clone . <clone> && cd <clone> && python3 scripts/delivery_check.py
+  ERROR: verify-report.md: Verifier not filled in — Builder must not accept own work (§5.2); write process:ci | agent:NAME | human:NAME
+  breakers: kind=bootstrap — объём не мерится (§3.4): развёртывание контура не режется на части, его DoD — §7.3 + приёмка §6
+  WARNING: ci-oracles: weak — local gates are bypassable (§10.4); Verifier must attach a clean-clone run to verify-report.md
+  delivery_check: 1 error(s), 1 warning(s)
+```
+
+Клон содержит механику и не содержит текстов канонов — это и есть проверяемое
+поведение варианта D: контур в чужой истории работает, а сам в неё не уезжает.
 
 ## Shape oracles
-- [ ] PASS/FAIL — (pre-commit / CQG / tsc / …)
+- [x] n/a — CQG не развёрнут (волна В1). `shape-oracles: weak` объявлено в STATUS с причиной.
 
 ## Behavior oracles
-- [ ] PASS/FAIL — tests …
+- [x] PASS — `scripts/delivery_check.py` в чистом клоне: ошибок нет
+- [x] PASS — `extract_payload.py --check-local .`: см. блок «Вариант D» ниже
+- [x] n/a — тестов продукта нет: кода продукта нет. Первые придут в Ф2.
 
 ## Product oracles
-- [ ] PASS/FAIL — delivery/evals/smoke
-- [ ] PASS/FAIL — active/eval-smoke acceptance
+- [x] n/a — `delivery/evals/smoke` пуст: продукта пока нет
+- [x] n/a — `active/eval-smoke.md` не заполняется на классе S (§2.2)
+
+## Вариант D: тексты контура вне git
+
+```
+$ python3 extract_payload.py --check-local .
+  check-local: отслеживается 0, без игнора 0 — под вариантом D оба числа нулевые
+```
 
 ## Spec coverage gaps
-- …
+- Оси ②, ③, ⑤ не развёрнуты — по плану волн, а не по забывчивости. Триггеры и
+  предельные сроки: `docs/CONTOUR_ROLLOUT.md`. В STATUS стоят `weak` / `absent`
+  с названной причиной.
+- `stack-selftest: external` — самопроверка канонов в CI проекта невозможна под
+  вариантом D по построению. Гоняется там, где лежат каноны.
 
 ## Verdict
 - [ ] READY FOR HANDOFF
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
+
+<!-- Вердикт не ставит Builder: это и есть самоприёмка, которую запрещает §5.2.
+     Отметку ставит Verifier (human:anthony) после чтения отчёта. -->

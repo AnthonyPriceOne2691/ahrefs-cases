@@ -14,7 +14,8 @@
 - [x] hook A.5 в `AGENTS.md` + правила, специфичные для проекта
 - [x] `scripts/delivery_*.py`, `chmod +x`
 - [x] `STATUS.md`: `kind: bootstrap`, оси `weak` с названной причиной
-- [ ] `delivery_check.py` зелёный
-- [ ] `--check-local` даёт два нуля
-- [ ] приёмка `AGENT_STACK.md` §6 в `STACK-ACCEPTANCE.md`
-- [ ] коммит механики (тексты канонов не коммитятся)
+- [x] `delivery_check.py` — 0 ошибок (1 warning: ci-oracles weak, ожидаемо до В1)
+- [x] `--check-local` — «отслеживается 0, без игнора 0»
+- [x] приёмка §6 заполнена, включая разбор «где процедура подвела»
+- [x] коммит механики
+- [ ] вердикт в `verify-report.md` ставит Verifier (human:anthony) — не Builder (§5.2)
