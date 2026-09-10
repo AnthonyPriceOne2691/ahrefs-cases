@@ -18,7 +18,7 @@ _EXIT_BAD_SOURCE = 2
 
 
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(  # noqa: S603 — запускаем собственный скрипт фиксированным путём
+    return subprocess.run(
         [sys.executable, str(_SCRIPT), *args],
         capture_output=True,
         text=True,
