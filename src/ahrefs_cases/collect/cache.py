@@ -116,6 +116,69 @@ def empty_is_remembered(checked_at: datetime | None, now: datetime | None = None
     return moment - checked_at < timedelta(days=config.ahrefs.empty_retry_days)
 
 
+async def window_is_covered(
+    session: AsyncSession,
+    project_id: int,
+    metrics: Sequence[Metric],
+    source: MetricSource,
+    *,
+    window_from: date,
+    window_to: date,
+    now: date,
+) -> bool:
+    """Куплено ли окно целиком. Решение по окну **бинарное**, и это не упрощение.
+
+    Для истории есть смысл в инкрементальном `date_from` (`next_date_from`): там
+    цена растёт со строками, и докупить три месяца дешевле, чем девятнадцать. Для
+    окна точки это неверно: запрос на один месяц и на четыре стоит одинаково —
+    50 units, минимум за запрос. Значит частично покрытое окно надо покупать
+    целиком: экономии от сужения нет, а дыра внутри окна сдвинула бы точку.
+
+    Watermark (`coverage`) здесь не годится принципиально. Он хранит **одну**
+    границу «собрано по такой-то месяц», а в схеме «две точки» собраны два
+    разъединённых окна: watermark от точки Б объявил бы купленным и всё, что
+    между ними, и окно точки А не купили бы никогда. Поэтому вопрос задаётся
+    по конкретному окну, а не по проекту.
+
+    Текущий (незакрытый) месяц внутри окна учитывается тем же правилом, что в
+    `next_date_from`: окно считается покрытым, только если данные свежее TTL.
+    """
+    if not metrics:
+        return False
+
+    stmt = (
+        select(
+            MetricPoint.metric,
+            func.count(func.distinct(MetricPoint.point_date)).label("months"),
+            func.max(MetricPoint.fetched_at).label("fetched_at"),
+        )
+        .where(
+            MetricPoint.project_id == project_id,
+            MetricPoint.metric.in_(list(metrics)),
+            MetricPoint.source == source,
+            MetricPoint.point_date >= window_from,
+            MetricPoint.point_date <= window_to,
+        )
+        .group_by(MetricPoint.metric)
+    )
+    rows = (await session.execute(stmt)).all()
+    if len(rows) < len(set(metrics)):
+        return False
+
+    expected = _months_between(window_from, window_to)
+    if any(row.months < expected for row in rows):
+        return False
+    if window_to <= closed_through(now):
+        return True
+    return is_fresh(min(row.fetched_at for row in rows))
+
+
+def _months_between(window_from: date, window_to: date) -> int:
+    """Сколько месячных строк ожидается в окне. Обе границы включительно."""
+    months = (window_to.year - window_from.year) * 12 + (window_to.month - window_from.month)
+    return max(1, months + 1)
+
+
 def closed_through(now: date) -> date:
     """Последний месяц, который считается окончательным.
 
