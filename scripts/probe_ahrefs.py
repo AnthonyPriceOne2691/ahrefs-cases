@@ -50,26 +50,44 @@ def _shape(value: Any, depth: int = 0) -> str:
     return f"{type(value).__name__}"
 
 
+def _walk(value: Any, prefix: str = "") -> list[str]:
+    """Все числовые поля с их путями — чтобы найти остаток на любой глубине."""
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            found.extend(_walk(inner, f"{prefix}.{key}" if prefix else str(key)))
+    elif isinstance(value, int | float) and not isinstance(value, bool):
+        found.append(f"{prefix} = {value}")
+    return found
+
+
 async def _probe_quota(transport: AhrefsTransport) -> None:
     print("\n=== Шаг 1. Квота (0 units) ===")
     response = await transport.get(_QUOTA_PATH, {})
     print(f"форма ответа: {_shape(response.payload)}")
     for expected in ("units_limit", "units_usage"):
         mark = "✓" if expected in response.payload else "✗"
-        print(f"  {mark} ожидали ключ {expected!r}")
-    numbers = {k: v for k, v in response.payload.items() if isinstance(v, int | float)}
-    print(f"числовые поля: {numbers}")
+        print(f"  {mark} ожидали ключ {expected!r} на верхнем уровне")
+    print("числовые поля по путям (ищем остаток):")
+    for line in _walk(response.payload)[:20]:
+        print(f"    {line}")
 
 
-async def _probe_history(transport: AhrefsTransport, domain: str) -> None:
+async def _probe_history(
+    transport: AhrefsTransport,
+    domain: str,
+    date_from: str,
+    fields: tuple[str, ...] | None = None,
+) -> None:
     spec = METRICS_HISTORY
-    print(f"\n=== Шаг 2–4. История по {domain} (≈{spec.estimate_units()} units по нашей модели) ===")
+    select = fields or spec.select
+    print(f"\n=== История по {domain} с {date_from}, полей {len(select) - 1} ===")
     params = {
         "target": domain,
         "mode": "subdomains",
-        "date_from": "2024-01-01",
+        "date_from": date_from,
         "history_grouping": config.ahrefs.history_grouping,
-        "select": ",".join(spec.select),
+        "select": ",".join(select),
         "output": "json",
     }
     response = await transport.get(spec.path, params)
@@ -88,8 +106,16 @@ async def _probe_history(transport: AhrefsTransport, domain: str) -> None:
         monthly = all(isinstance(d, str) and d[8:10] in {"01", "1"} for d in dates if d)
         print(f"  {'✓' if monthly else '✗'} все точки — первые числа месяцев (H4)")
         print(f"  глубина: с {dates[0]} по {dates[-1]} — просили с 2024-01-01 (H3)")
-    print(f"стоимость по заголовкам: estimated={response.units_estimated}, actual={response.units_actual}")
+    rows_count = len(rows)
+    print(f"стоимость: estimated={response.units_estimated}, actual={response.units_actual}")
     print(f"наша модель обещала: {spec.estimate_units()} (H1)")
+    if rows_count and response.units_estimated:
+        per_row = response.units_estimated / rows_count
+        print(f"  → на строку: {per_row:.2f} units при {len(select) - 1} полях")
+    print("все заголовки цены, какие пришли:")
+    for name, value in sorted(response.headers.items()):
+        if name.lower().startswith("x-api"):
+            print(f"    {name}: {value}")
 
 
 async def _main(domains: list[str]) -> int:
@@ -104,8 +130,15 @@ async def _main(domains: list[str]) -> int:
     print(f"endpoint'ов в спеке: {len(ALL_SPECS)}; проверяем квоту и metrics-history")
     try:
         await _probe_quota(transport)
+        # Два замера разной глубины: одна точка не отличает «цена за запрос»
+        # от «цена за строку», а вся смета стоит на этом различии.
+        # Три замера: они отличают «цена за строку» от «фиксированная цена
+        # плюс строки» и показывают, есть ли минимум за запрос. Одной точки
+        # для формулы не хватает, а от формулы зависит вся смета.
         for domain in domains:
-            await _probe_history(transport, domain)
+            await _probe_history(transport, domain, "2026-09-01")  # 1 строка
+            await _probe_history(transport, domain, "2026-07-01")  # 3 строки
+            await _probe_history(transport, domain, "2026-01-01", fields=("date", "org_traffic"))
     except Exception as exc:
         print(f"\nответ не разобрался: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -48,6 +49,12 @@ class TransportResponse:
     payload: dict[str, Any]
     units_actual: int
     units_estimated: int
+    headers: Mapping[str, str] = field(default_factory=dict)
+    """Заголовки ответа целиком.
+
+    Нужны разведке Ф7: пока модель стоимости — гипотеза, важно видеть все
+    `x-api-*`, а не только те два, что мы решили читать. Секретов в них нет.
+    """
 
 
 class AhrefsTransport:
@@ -114,6 +121,7 @@ class AhrefsTransport:
             payload=payload,
             units_actual=_header_int(response, _UNITS_ACTUAL_HEADER),
             units_estimated=_header_int(response, _UNITS_TOTAL_HEADER),
+            headers=dict(response.headers),
         )
 
 

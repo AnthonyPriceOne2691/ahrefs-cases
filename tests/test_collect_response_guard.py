@@ -16,7 +16,7 @@ import pytest
 from ahrefs_cases.collect.ahrefs_transport import AhrefsTransport
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.live import AhrefsLive
-from ahrefs_cases.collect.provider import HistoryRequest
+from ahrefs_cases.collect.provider import HistoryRequest, HistoryResult
 from ahrefs_cases.collect.quota import FixtureQuota, LiveQuota, QuotaVerdict, preflight
 from ahrefs_cases.collect.response_guard import (
     AhrefsResponseError,
@@ -153,56 +153,44 @@ def test_fixture_quota_is_unaffected() -> None:
     assert FixtureQuota(left=42).left == 42
 
 
-def test_estimate_drift_is_reported(caplog: pytest.LogCaptureFixture) -> None:
-    """H1: расхождение сметы с фактом обязано быть слышно в первом же прогоне.
-
-    Модель стоимости — гипотеза: документация Ahrefs называет и минимум 50
-    units, и цену `refdomains-history` в 5, не объясняя их сочетания. Если
-    модель неверна, это выяснится либо здесь, либо из счёта в конце месяца.
-    """
-    import logging
-
-    from ahrefs_cases.collect.budget import _warn_if_estimate_missed
-    from ahrefs_cases.collect.provider import HistoryResult
+def _result(estimated: int, actual: int) -> HistoryResult:
     from ahrefs_cases.storage._enums import MetricSource
 
-    result = HistoryResult(
+    return HistoryResult(
         endpoint="metrics-history",
         target="example.com",
         points=(),
-        units_estimated=50,
-        units_actual=180,
+        units_estimated=estimated,
+        units_actual=actual,
         source=MetricSource.LIVE,
     )
 
-    with caplog.at_level(logging.WARNING):
-        _warn_if_estimate_missed(result)
 
-    assert "ahrefs_estimate_missed" in caplog.text
+def test_estimate_drift_is_measured() -> None:
+    """H1: расхождение сметы с фактом — число, а не ощущение.
 
+    Разведка живым ключом показала, что модель стоимости неверна в разы
+    (`estimated=693` против обещанных 50). Значит сигнал не теоретический:
+    без него расхождение всплыло бы в счёте Ahrefs в конце месяца.
 
-def test_estimate_within_tolerance_is_silent(caplog: pytest.LogCaptureFixture) -> None:
-    """Обратная сторона H1: небольшое расхождение не шумит.
-
-    Предупреждение, срабатывающее на каждом ответе, перестают читать — и
-    настоящее расхождение утонет вместе с остальными.
+    Проверяется возвращаемое число, а не запись в лог: тест на лог проходил
+    в одиночку и падал в общем прогоне — перехват логов зависит от раннера, а
+    поведение зависеть от него не должно.
     """
-    import logging
+    from ahrefs_cases.collect.budget import estimate_drift_pct
 
-    from ahrefs_cases.collect.budget import _warn_if_estimate_missed
-    from ahrefs_cases.collect.provider import HistoryResult
-    from ahrefs_cases.storage._enums import MetricSource
+    assert estimate_drift_pct(_result(50, 180)) == pytest.approx(260.0)
+    assert estimate_drift_pct(_result(50, 55)) == pytest.approx(10.0)
 
-    result = HistoryResult(
-        endpoint="metrics-history",
-        target="example.com",
-        points=(),
-        units_estimated=50,
-        units_actual=55,
-        source=MetricSource.LIVE,
-    )
 
-    with caplog.at_level(logging.WARNING):
-        _warn_if_estimate_missed(result)
+def test_estimate_drift_needs_both_numbers() -> None:
+    """Нет одного из чисел — сравнивать нечего, и это не «ноль расхождения».
 
-    assert caplog.text == ""
+    В fixture-режиме факт равен смете по построению, а нулевой факт означает
+    «цену не узнали» (заголовка не было) — считать это идеальным попаданием
+    значило бы похвалить модель за молчание.
+    """
+    from ahrefs_cases.collect.budget import estimate_drift_pct
+
+    assert estimate_drift_pct(_result(50, 0)) is None
+    assert estimate_drift_pct(_result(0, 50)) is None

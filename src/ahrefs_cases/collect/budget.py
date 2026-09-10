@@ -25,31 +25,38 @@ from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 logger = logging.getLogger(__name__)
 
 
-def _warn_if_estimate_missed(result: HistoryResult) -> None:
-    """Смета разошлась с фактом — значит модель стоимости неверна.
+def estimate_drift_pct(result: HistoryResult) -> float | None:
+    """На сколько процентов факт разошёлся со сметой. `None` — считать не по чему.
 
-    Проверяется на каждом ответе, потому что первый же живой прогон — это и
-    есть проверка гипотезы H1. Без сигнала расхождение всплыло бы в счёте
-    Ahrefs в конце месяца, когда units уже потрачены.
+    Возвращает число, а не пишет в лог: проверять логику по логам — значит
+    зависеть от того, как их перехватывает раннер (поймано тестом, который
+    проходил в одиночку и падал в общем прогоне). Лог остаётся, но он
+    следствие, а не результат.
 
-    В fixture-режиме оба числа считаются одной формулой и совпадают по
-    построению, так что предупреждение здесь молчит — и это правильно: оно
-    сторожит живой режим.
+    Зачем вообще: модель стоимости оказалась неверной в разы — разведка Ф7
+    показала `estimated=693` там, где мы обещали 50. Такое расхождение обязано
+    быть слышно в первом же прогоне, а не в счёте Ahrefs в конце месяца.
     """
     if result.units_estimated <= 0 or result.units_actual <= 0:
+        return None
+    return abs(result.units_actual - result.units_estimated) / result.units_estimated * 100
+
+
+def _warn_if_estimate_missed(result: HistoryResult) -> None:
+    """Записать расхождение в лог, если оно выше допустимого."""
+    drift = estimate_drift_pct(result)
+    if drift is None or drift <= config.ahrefs.estimate_tolerance_pct:
         return
-    drift = abs(result.units_actual - result.units_estimated) / result.units_estimated * 100
-    if drift > config.ahrefs.estimate_tolerance_pct:
-        logger.warning(
-            "ahrefs_estimate_missed",
-            extra={
-                "endpoint": result.endpoint,
-                "target": result.target,
-                "estimated": result.units_estimated,
-                "actual": result.units_actual,
-                "drift_pct": round(drift, 1),
-            },
-        )
+    logger.warning(
+        "ahrefs_estimate_missed",
+        extra={
+            "endpoint": result.endpoint,
+            "target": result.target,
+            "estimated": result.units_estimated,
+            "actual": result.units_actual,
+            "drift_pct": round(drift, 1),
+        },
+    )
 
 
 async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult) -> None:
