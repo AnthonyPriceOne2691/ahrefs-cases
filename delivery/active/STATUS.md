@@ -8,7 +8,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека C1–C10 подписана; закоммичена отдельным коммитом 25ce154 ДО первой строки кода, порядок виден в истории
