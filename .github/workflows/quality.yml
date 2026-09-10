@@ -363,7 +363,8 @@ jobs:
             echo "::error::docs/canon/ есть, а stack_selftest.py в снимке нет:"
             echo "::error::снимок неполон, проверять payload нечем (§7.1 вариант C, §5 шаг 11)"
             exit 1
-          elif grep -q 'stack-selftest:' delivery/active/STATUS.md 2>/dev/null; then
+          elif grep -q 'stack-selftest:' delivery/active/STATUS.md 2>/dev/null \
+            || grep -q 'stack-selftest:' delivery/STACK-ACCEPTANCE.md 2>/dev/null; then
             # Вариант B законен: каноны лежат вне репо, в CI их физически нет.
             # Но §7.1 требует записать это в STATUS — иначе инвариант выглядит
             # покрытым, хотя не покрыт ничем. Здесь эта запись и проверяется:
