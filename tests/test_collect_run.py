@@ -295,7 +295,7 @@ async def test_hundred_domains_do_not_fit_customer_budget(
     assert report.status == RunStatus.FAILED.value
     assert report.requests_made == 0
     assert "не хватает units" in report.error
-    assert report.units_estimated == 19_800
+    assert report.units_estimated == 19_800, "E8+E9: одно поле и запас по потребности"
 
 
 async def test_scheme_auto_halves_the_estimate_and_says_so(

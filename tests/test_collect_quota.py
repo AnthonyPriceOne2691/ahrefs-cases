@@ -63,7 +63,9 @@ async def test_estimate_counts_only_what_will_be_asked(db_session: AsyncSession)
 
     # 18 строк окна × 11 units за строку × 100 доменов. Было 21 строка и 21 unit:
     # ушли три месяца запаса до старта работ (читателя у них не было) и второе поле.
-    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units(rows=18)
+    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units(rows=18), (
+        "E8: запас до старта работ не покупается, окно 18 строк вместо 21"
+    )
     assert second.units_estimated == 0
 
 

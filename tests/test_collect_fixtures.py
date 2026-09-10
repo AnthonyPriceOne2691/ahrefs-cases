@@ -123,9 +123,7 @@ async def test_fixture_returns_only_requested_metrics() -> None:
     result = await AhrefsFixture().fetch_history(METRICS_HISTORY, REQUEST)
 
     assert result.source == MetricSource.FIXTURE
-    assert set(result.points[0].values) == {Metric.ORG_TRAFFIC}, (
-        "шаг 1 просит одно поле с тех пор, как замер показал построчный биллинг"
-    )
+    assert set(result.points[0].values) == {Metric.ORG_TRAFFIC}, "E9: шаг 1 просит одно поле"
 
 
 async def test_fixture_counts_units_by_the_same_model_as_live() -> None:
@@ -141,7 +139,7 @@ async def test_fixture_counts_units_by_the_same_model_as_live() -> None:
     # Биллинг построчный (замерено в Ф7), поэтому цена зависит от глубины:
     # 18 месяцев по 11 units за строку — 198. Было 378 при двух полях.
     assert metrics.units_actual == METRICS_HISTORY.estimate_units(len(metrics.points))
-    assert metrics.units_actual == 198
+    assert metrics.units_actual == 198, "E9: 18 строк по 11 units; было 378 при двух полях"
     assert refdomains.units_actual == REFDOMAINS_HISTORY.estimate_units(len(refdomains.points))
 
 
