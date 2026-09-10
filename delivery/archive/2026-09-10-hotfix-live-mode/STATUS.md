@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_run_timeout.py::test_reaper_threshold_must_exceed_run_timeout
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** n/a reason=класс S, дефект найден расчётом и воспроизводится тестом
@@ -27,7 +27,7 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** конфиг с `COLLECT_RUN_STALE_SEC` ≤ `COLLECT_RUN_TIMEOUT_SEC` не даёт процессу стартовать; прогон, упёршийся в лимит времени, закрывается `partial` с причиной, а не молча продолжает работу
+- **observe_signal:** смета прогона на сотню доменов равна 44 100 units (построчная модель), а не 5000; конфиг с `COLLECT_RUN_STALE_SEC` ≤ `COLLECT_RUN_TIMEOUT_SEC` не даёт процессу стартовать; прогон, упёршийся в лимит времени, закрывается `partial` с причиной, а не молча продолжает работу
 - **observe_until:** 2026-09-24
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
