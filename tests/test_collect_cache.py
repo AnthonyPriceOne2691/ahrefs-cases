@@ -32,6 +32,13 @@ WINDOW_FROM = date(2024, 10, 1)
 WINDOW_TO = date(2026, 8, 1)
 NOW = date(2026, 9, 15)
 STAGE1_METRICS = tuple(METRICS_HISTORY.metrics.values())
+MULTI_METRICS = (Metric.ORG_TRAFFIC, Metric.ORG_COST)
+"""Две метрики для правил, которые про **несколько** метрик в одном endpoint'е.
+
+Шаг 1 просит одно поле с тех пор, как замер показал построчный биллинг:
+`org_cost` удваивал цену строки и уехал в ступень графика Ф4. Правило «покрытие
+— минимум по метрикам» от этого не исчезло: у `keywords-history` пять полей, и
+проверять его надо на паре, а не на текущем составе шага 1."""
 
 COLUMNS = (
     "domain,period_start,period_end,niche,geo,service_type,"
@@ -180,7 +187,7 @@ async def test_coverage_takes_the_weakest_metric(db_session: AsyncSession) -> No
     )
     await db_session.flush()
 
-    known = await coverage(db_session, project.id, STAGE1_METRICS, MetricSource.FIXTURE)
+    known = await coverage(db_session, project.id, MULTI_METRICS, MetricSource.FIXTURE)
 
     assert known.last_point == date(2025, 4, 1)
 
@@ -204,7 +211,7 @@ async def test_missing_metric_means_nothing_is_covered(db_session: AsyncSession)
     )
     await db_session.flush()
 
-    known = await coverage(db_session, project.id, STAGE1_METRICS, MetricSource.FIXTURE)
+    known = await coverage(db_session, project.id, MULTI_METRICS, MetricSource.FIXTURE)
 
     assert known.is_empty
 

@@ -61,8 +61,9 @@ async def test_estimate_counts_only_what_will_be_asked(db_session: AsyncSession)
 
     second = await collect_all(db_session, AhrefsFixture(), now=NOW, quota=big)
 
-    # 21 строка окна × 21 unit за строку × 100 доменов: цена зависит от глубины.
-    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units(rows=21)
+    # 18 строк окна × 11 units за строку × 100 доменов. Было 21 строка и 21 unit:
+    # ушли три месяца запаса до старта работ (читателя у них не было) и второе поле.
+    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units(rows=18)
     assert second.units_estimated == 0
 
 

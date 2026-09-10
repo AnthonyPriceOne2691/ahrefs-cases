@@ -15,6 +15,7 @@ from ahrefs_cases.config._base import Settings
 
 Provider = Literal["fixture", "live"]
 HistoryGrouping = Literal["daily", "weekly", "monthly"]
+CollectSchemeMode = Literal["history", "auto"]
 
 
 class AhrefsSettings(Settings):
@@ -71,11 +72,28 @@ class AhrefsSettings(Settings):
     Приложения А и переопределяет отбор. Здесь только «стоит ли платить за
     дорогие метрики»."""
 
-    history_lead_months: int = Field(3, ge=0, le=12, validation_alias="AHREFS_HISTORY_LEAD_MONTHS")
-    """Сколько месяцев истории брать ДО старта работ. Нужны точке А (среднее по
-    окну вокруг границы периода) и baseline'у Ф3. По нашей модели стоимости цена
-    запроса не зависит от числа строк, поэтому запас почти бесплатен — но если
-    Ф7 покажет построчный биллинг, уменьшать надо будет здесь, а не в коде."""
+    history_lead_months: int = Field(0, ge=0, le=12, validation_alias="AHREFS_HISTORY_LEAD_MONTHS")
+    """Сколько месяцев истории брать ДО старта работ, **сверх** запаса, который
+    просят пороги (`windows.pre_start_baseline_months`).
+
+    Было 3 безусловных, стало 0. Прежний докстринг обещал: «если Ф7 покажет
+    построчный биллинг, уменьшать надо будет здесь». Ф7 показал — 33 units на
+    домен при цене строки 11. Потребителя у запаса нет: точка А считается окном
+    **вперёд** от `period_start` (`classify/points.py`), а расчёт baseline'а
+    выключен (`pre_start_baseline_months: 0`) и появится в Ф3б. Кто запас
+    просит, тот его и называет — версией порогов."""
+
+    collect_scheme: CollectSchemeMode = Field("history", validation_alias="AHREFS_COLLECT_SCHEME")
+    """Как покупать историю шага 1: `history` — целиком, `auto` — дешевле из
+    «целиком» и «две точки» на каждый проект.
+
+    Умолчание `history` — нынешнее поведение, и это не осторожность, а Z6 в
+    `docs/FINDINGS.md`: проект, собранный точками, имеет дыру во всю середину
+    периода, а правило достоверности серии (`max_series_gap_months`) считает
+    такую дыру недостоверной серией. Пока классификация не различает дыру
+    «не покупали» от дыры «у Ahrefs нет данных», `auto` означает дешёвый сбор
+    без кейсов. Планировщик и смета при этом считаются всегда: отчёт показывает,
+    сколько прогон стоил бы при `auto`."""
     collect_dr_history: bool = Field(False, validation_alias="AHREFS_COLLECT_DR_HISTORY")
     collect_pages_history: bool = Field(False, validation_alias="AHREFS_COLLECT_PAGES_HISTORY")
     collect_search_volume: bool = Field(False, validation_alias="AHREFS_COLLECT_SEARCH_VOLUME")

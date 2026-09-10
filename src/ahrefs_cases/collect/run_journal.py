@@ -71,6 +71,7 @@ async def open_run(session: AsyncSession, started_by: int, projects_total: int) 
             "provider": config.ahrefs.provider,
             "history_grouping": config.ahrefs.history_grouping,
             "max_history_months": config.ahrefs.max_history_months,
+            "collect_scheme": config.ahrefs.collect_scheme,
             "fixture_seed": config.ahrefs.fixture_seed,
         },
     )

@@ -78,3 +78,34 @@ def test_backoff_blank_input_keeps_tuple_type(blank: str) -> None:
     settings = AhrefsSettings(_env_file=None, retry_backoff_sec=blank)
 
     assert isinstance(settings.retry_backoff_sec, tuple)
+
+
+def test_collect_scheme_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """L4: переменная окружения читается по алиасу, и это надо проверять env'ом.
+
+    Опечатка в `validation_alias` здесь молчит громче обычного: умолчание
+    `history` — это и есть выключенное состояние флага. Оператор поставил бы
+    `AHREFS_COLLECT_SCHEME=auto`, увидел бы прежнюю смету и решил, что точки не
+    дешевле истории. Поэтому тест ставит **переменную**, а не поле: конструктор
+    по имени поля прошёл бы и при неверном алиасе.
+    """
+    monkeypatch.setenv("AHREFS_COLLECT_SCHEME", "auto")
+
+    assert AhrefsSettings(_env_file=None).collect_scheme == "auto"
+
+    monkeypatch.setenv("AHREFS_COLLECT_SCHEME", "points")
+    with pytest.raises(ValidationError) as excinfo:
+        AhrefsSettings(_env_file=None)
+    assert "AHREFS_COLLECT_SCHEME" in str(excinfo.value), (
+        "ошибка называет переменную окружения, а не поле: правит её человек, а не код"
+    )
+
+
+def test_history_lead_is_zero_by_default() -> None:
+    """E8: запас до старта работ по умолчанию не покупается.
+
+    Было три месяца безусловно — 33 units на домен при построчном биллинге.
+    Число живёт в конфиге, поэтому и проверяется здесь: правка «обратно на три»
+    прошла бы незаметно, а стоила бы 3300 units на каждом прогоне по сотне.
+    """
+    assert AhrefsSettings(_env_file=None).history_lead_months == 0

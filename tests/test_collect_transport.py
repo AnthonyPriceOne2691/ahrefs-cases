@@ -162,7 +162,8 @@ async def test_live_sends_minimal_select() -> None:
     async with _client(handler) as client:
         await AhrefsLive(AhrefsTransport(client)).fetch_history(METRICS_HISTORY, REQUEST)
 
-    assert seen["select"] == "date,org_traffic,org_cost"
+    assert seen["select"] == "date,org_traffic"
+    assert "org_cost" not in seen["select"], "второе поле удваивает цену строки, а читателя не имеет"
     assert "paid_traffic" not in seen["select"]
     assert seen["history_grouping"] == "monthly"
     assert seen["mode"] == "subdomains"
@@ -171,21 +172,23 @@ async def test_live_sends_minimal_select() -> None:
 def test_cost_model_is_one_place() -> None:
     """B10: модель стоимости считает по спеке endpoint'а, а не по имени в коде."""
     # Замерено живым ключом: строка стоит 10 за поле плюс 1, минимум запроса 50.
-    assert METRICS_HISTORY.row_units() == 21, "два поля: 10×2+1"
+    assert METRICS_HISTORY.row_units() == 11, "шаг 1 просит одно поле: 10×1+1"
     assert METRICS_HISTORY.estimate_units(rows=1) == 50, "минимум запроса бьёт цену строки"
-    assert METRICS_HISTORY.estimate_units(rows=3) == 63
-    assert METRICS_HISTORY.estimate_units(rows=21) == 441
+    assert METRICS_HISTORY.estimate_units(rows=9) == 99
+    assert METRICS_HISTORY.estimate_units(rows=19) == 209
+    assert METRICS_HISTORY.rows_under_minimum() == 4, "под минимум влезает четыре строки: 4×11=44"
 
-    one_field = EndpointSpec(
-        name="one-field",
+    two_fields = EndpointSpec(
+        name="two-fields",
         path="/x",
-        select=("date", "org_traffic"),
+        select=("date", "org_traffic", "org_cost"),
         list_key="rows",
         metrics={},
         stage=1,
     )
-    assert one_field.row_units() == 11, "одно поле: 10×1+1"
-    assert one_field.estimate_units(rows=9) == 99
+    assert two_fields.row_units() == 21, "два поля: 10×2+1"
+    assert two_fields.estimate_units(rows=21) == 441
+    assert two_fields.rows_under_minimum() == 2, "при цене строки 21 бесплатны только две строки"
 
 
 async def _no_sleep(_seconds: float) -> None:

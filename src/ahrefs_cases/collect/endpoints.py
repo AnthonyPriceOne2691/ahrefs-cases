@@ -69,6 +69,21 @@ class EndpointSpec:
             return self.flat_cost
         return FIELD_UNITS * len(self.billable_fields()) + ROW_UNITS
 
+    def rows_under_minimum(self) -> int:
+        """Сколько строк влезает в минимальную стоимость запроса.
+
+        Минимум в 50 units — не только ограничение, но и **неиспользованная
+        ёмкость**: при одном поле строка стоит 11, значит четыре строки (44)
+        стоят столько же, сколько одна, а пятая (55) минимум пробивает.
+
+        Живёт здесь, а не константой в планировщике, потому что это следствие
+        замеренной цены строки, а не свойство мира: при двух полях под минимум
+        влезает уже две строки. Константа 4 в планировщике разошлась бы с
+        моделью при первой правке `select` — и разошлась бы молча, потому что
+        цена осталась бы верной, а окно перестало бы быть бесплатным.
+        """
+        return max(1, MIN_REQUEST_UNITS // self.row_units())
+
     def estimate_units(self, rows: int = 1) -> int:
         """Стоимость запроса, возвращающего `rows` строк.
 
@@ -86,14 +101,18 @@ class EndpointSpec:
 METRICS_HISTORY = EndpointSpec(
     name="metrics-history",
     path="/v3/site-explorer/metrics-history",
-    select=("date", "org_traffic", "org_cost"),
+    select=("date", "org_traffic"),
     list_key="metrics",
-    metrics=MappingProxyType({"org_traffic": Metric.ORG_TRAFFIC, "org_cost": Metric.ORG_COST}),
+    metrics=MappingProxyType({"org_traffic": Metric.ORG_TRAFFIC}),
     stage=1,
 )
 """Шаг 1 воронки: единственный endpoint, который платится за все 100 проектов.
-`paid_traffic` и `paid_cost` не просим никогда — это +20 units на запрос за
-данные, которых нет в кейсе."""
+
+Поле **одно**. `org_cost` уехал отсюда после замера цены: второе биллингуемое
+поле удваивает цену строки (21 против 11), а читателя у него нет — ни в
+правилах Ф3, ни в блоках кейса по ТЗ. Вернётся ступенью графика в Ф4, где
+стоимость трафика показывают вместе с самим графиком и только тем проектам, у
+которых будет кейс. `paid_traffic` и `paid_cost` не просим никогда."""
 
 KEYWORDS_HISTORY = EndpointSpec(
     name="keywords-history",
