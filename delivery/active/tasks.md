@@ -1,21 +1,36 @@
-# Tasks: contour-wave-0 — развёртывание ① Delivery
+# Tasks: Ф1 — скелет и контракты
 
-Волна В0 по `docs/CONTOUR_ROLLOUT.md`. Порядок осей ① → ② → ③ обязателен;
-② и ③ приходят следующими волнами.
+Порядок снизу вверх: каждый шаг проверяется предыдущим (plan.md → Approach).
 
-- [x] `git init`, публичный ремоут, вариант D выбран и записан
-- [x] строки локального игнора в `.git/info/exclude` (каноны + клиентские документы)
-- [x] каноны и инструменты самопроверки положены локально
-- [x] payload извлечён `extract_payload.py --extract` (76 файлов), взято 28 путей Delivery
-- [x] дерево `delivery/` по §2.3: constitution, README, STACK-ACCEPTANCE, active/*, archive/INDEX, evals/smoke
-- [x] `delivery/active/.gitkeep` — иначе пустой `active/` исчезнет из git (§2.3a)
-- [x] `CONSTITUTION.md` заполнен под продукт: non-negotiables по units, кейсам и контенту
-- [x] `.claude/settings.json` из блока `agent-permissions` (§4.5)
-- [x] hook A.5 в `AGENTS.md` + правила, специфичные для проекта
-- [x] `scripts/delivery_*.py`, `chmod +x`
-- [x] `STATUS.md`: `kind: bootstrap`, оси `weak` с названной причиной
-- [x] `delivery_check.py` — 0 ошибок (1 warning: ci-oracles weak, ожидаемо до В1)
-- [x] `--check-local` — «отслеживается 0, без игнора 0»
-- [x] приёмка §6 заполнена, включая разбор «где процедура подвела»
-- [x] коммит механики
-- [ ] вердикт в `verify-report.md` ставит Verifier (human:anthony) — не Builder (§5.2)
+## Конфиг и зависимости
+- [ ] `pyproject.toml`: зависимости под Ф1, ruff, mypy strict, pytest
+- [ ] `src/ahrefs_cases/config/`: `_base.py`, `ahrefs.py`, `storage.py`, `auth.py`, `classify.py`, `export.py`
+- [ ] fail-fast на старте: `AHREFS_PROVIDER=live` без ключа → внятная ошибка (A5)
+- [ ] тест: дефолты без `.env`, провайдер `fixture` (A4)
+
+## Хранилище
+- [ ] `storage/models/`: User, Project, MetricPoint, Run, RunItem, Verdict, Ruleset, Case, CaseArtifact, UnitsLedger
+- [ ] `storage/session.py`: async engine, sessionmaker
+- [ ] Alembic: `alembic.ini`, `migrations/env.py`, первая ревизия
+- [ ] тест: upgrade → downgrade на пустой базе (A1)
+
+## Дев-окружение
+- [ ] `docker-compose.dev.yml`: postgres, redis, api (reload), web (vite)
+- [ ] `Dockerfile` бэкенда — с системными библиотеками WeasyPrint (нужны в Ф4)
+- [ ] `Dockerfile` фронта для дева
+
+## Каркасы
+- [ ] `api/main.py`: FastAPI, `GET /api/health` в трёх состояниях (A2, A3)
+- [ ] `api/routers/`: заготовки по `docs/IMPLEMENTATION_V3.md` §9
+- [ ] `workers/`: точка входа RQ, без задач
+- [ ] `web/`: Vite + React + Mantine, токены liquid glass, светлая и тёмная темы
+- [ ] раскладка приведена к документу реализации (`api/`, `workers/`, `web/`)
+
+## Инварианты как проверки
+- [ ] тест на импорты: ядро не тянет FastAPI и RQ
+- [ ] CI: линтеры, типы, тесты на push
+
+## Волна В1 — в конце фазы
+- [ ] развернуть ② CQG (11 шагов) + ④ гейт мержа
+- [ ] первый прогон гейтов **красный** либо с непустым числом просмотренных файлов
+- [ ] `ci-oracles` и `shape-oracles` в STATUS обновить по факту
