@@ -1,0 +1,57 @@
+# Гейты формы (ruff/mypy как гейты контура) приезжают волной В1 в конце Ф1.
+# Этот workflow — сквозной слой ④: он гоняет то, что есть, на СЛИТОМ состоянии.
+# Локальный прогон закрытием не является: хуки обходятся (`commit -n`, STRICT=0).
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cases
+          POSTGRES_PASSWORD: cases
+          POSTGRES_DB: cases
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cases -d cases"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://cases:cases@localhost:5432/cases
+      AHREFS_PROVIDER: fixture
+      # База в CI одноразовая, поэтому разрушающий тест цикла миграций включён.
+      MIGRATION_CYCLE_TEST: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check src tests
+
+      - name: Mypy
+        run: mypy
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Delivery contour
+        run: python scripts/delivery_check.py

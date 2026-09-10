@@ -1,32 +1,83 @@
-# Каркас. Зависимости объявлены под Ф1 и будут уточняться после спайка Ф0.
 [project]
 name = "ahrefs-cases"
-version = "0.0.1"
-description = "Автогенерация SEO-кейсов из динамики Ahrefs"
+version = "0.1.0"
+description = "Автоматическая генерация SEO-кейсов из динамики Ahrefs"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.14",
+    "asyncpg>=0.30",
     "httpx>=0.27",
-    "pydantic>=2.0",
-    "pydantic-settings>=2.0",
-    "python-dotenv>=1.0",
-    "PyYAML>=6.0",        # thresholds.yml
-    "sqlalchemy>=2.0",
-    "aiosqlite>=0.20",    # Ф1; Postgres/asyncpg — Ф5
-    "chardet>=5.0",       # defensive CSV (Excel в cp1251)
-    "typer>=0.12",        # CLI Ф1-Ф3
+    "redis>=5.2",
+    "rq>=1.16",
+    "PyYAML>=6.0",
+    "openpyxl>=3.1",
+    "chardet>=5.2",
+    "bcrypt>=4.2",
+    "PyJWT>=2.10",
 ]
 
 [project.optional-dependencies]
-export = ["jinja2>=3.1", "weasyprint>=62.0"]   # Ф3, после утверждения макета
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.6", "mypy>=1.11"]
+export = ["jinja2>=3.1", "weasyprint>=63.0"]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.115",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "greenlet>=3.1",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Набор под правила constitution: молчащий except запрещён, сложность ограничена.
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "TRY", "BLE", "S", "C90", "ARG", "PL"]
+ignore = [
+    "TRY003",   # длинные сообщения в исключениях — здесь это польза, а не шум
+    "PLR0913",  # число аргументов ограничено отдельным гейтом волны В1
+]
+
+[tool.ruff.lint.per-file-ignores]
+# assert — инструмент теста, а не риск; сравнение с кодом ответа читается лучше
+# числом, чем константой; локальный импорт в тесте отделяет загрузку конфига от
+# импорта модуля теста.
+"tests/*" = ["S101", "PLR2004", "PLC0415"]
+"migrations/*" = ["E501", "INP001"]     # тексты миграций генерируются, длина строк не наша
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.mypy]
 python_version = "3.12"
+# Без плагина pydantic mypy считает поля с Field(default, ...) обязательными
+# аргументами конструктора и краснеет на каждом `Settings()` — 24 ошибки на
+# пустом каркасе. Плагин учит его читать модели так же, как их читает pydantic.
+plugins = ["pydantic.mypy"]
 strict = true
+mypy_path = "src"
+packages = ["ahrefs_cases"]
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["rq.*", "weasyprint.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]

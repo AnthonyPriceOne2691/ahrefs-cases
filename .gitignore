@@ -23,3 +23,11 @@ coverage.json
 
 # os
 .DS_Store
+
+# node
+node_modules/
+web/dist/
+web/node_modules/
+.vite/
+
+# alembic: локальные версии не игнорируем — миграции часть кода

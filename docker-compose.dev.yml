@@ -1,0 +1,76 @@
+# Дев-окружение. Прод-компоуз появится в Ф9 отдельным файлом: смешивать их
+# значит держать в одном месте два разных набора решений про секреты и порты.
+name: ahrefs-cases-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cases
+      POSTGRES_PASSWORD: cases
+      POSTGRES_DB: cases
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cases -d cases"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    command: uvicorn ahrefs_cases.api.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cases:cases@postgres:5432/cases
+      REDIS_URL: redis://redis:6379/0
+      AHREFS_PROVIDER: fixture
+      JWT_SECRET: dev-only-not-a-secret
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - ./config:/app/config
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    command: python -m ahrefs_cases.workers.main
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cases:cases@postgres:5432/cases
+      REDIS_URL: redis://redis:6379/0
+      AHREFS_PROVIDER: fixture
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

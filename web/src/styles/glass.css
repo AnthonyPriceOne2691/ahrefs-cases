@@ -1,0 +1,136 @@
+/* ============================================================================
+   Liquid glass — визуальный язык интерфейса.
+
+   Перенесено из local-web-agent как рецепт, а не как механизм: там стекло
+   собрано утилитами Tailwind, здесь — CSS-переменные и модули поверх Mantine.
+   Тащить Tailwind в проект на Mantine значило бы держать две конкурирующие
+   системы стилей и красить каждый компонент дважды.
+
+   Три решения ниже появились там после реальных проблем, поэтому переносятся
+   вместе с числами:
+   1) полотно насыщенное, не бледное — стекло размывает то, что под ним, и на
+      бледном фоне размывать нечего: панель выглядит белой плашкой;
+   2) кромка двойная — светлая изнутри, тёмная снаружи; без внешней линии
+      стекло на светлом фоне не читается вовсе;
+   3) у статусов свои чернила — акцент хорош на белой кнопке, но на
+      полупрозрачной пилюле поверх насыщенного полотна сливается с фоном.
+   ============================================================================ */
+
+:root {
+  color-scheme: light dark;
+
+  --accent: oklch(58% 0.19 285);
+  --accent-soft: oklch(72% 0.12 285);
+  --mint: oklch(70% 0.14 165);      /* только «хороший» / «готово» */
+  --amber-warm: oklch(76% 0.14 75); /* только «средний» / «нужно внимание» */
+  --rose-warm: oklch(64% 0.19 15);  /* только «плохой» / ошибка */
+
+  --radius-glass: 1.25rem;
+  --blur-glass: 32px;
+
+  --glass-fill: rgb(255 255 255 / 0.55);
+  --glass-fill-strong: rgb(255 255 255 / 0.72);
+  --glass-fill-quiet: rgb(255 255 255 / 0.32);
+  --glass-edge: rgb(255 255 255 / 0.7);
+  --glass-shadow:
+    0 1px 1px -0.5px rgb(30 25 60 / 0.08), 0 4px 8px -3px rgb(30 25 60 / 0.1),
+    0 20px 44px -20px rgb(30 25 60 / 0.28), 0 0 0 0.5px rgb(30 25 60 / 0.07);
+  --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
+
+  --ink: oklch(24% 0.03 285);
+  --ink-soft: oklch(45% 0.025 285);
+  --ink-faint: oklch(58% 0.02 285);
+
+  --status-accent-ink: oklch(42% 0.17 285);
+  --status-mint-ink: oklch(44% 0.13 165);
+  --status-amber-ink: oklch(48% 0.13 75);
+  --status-rose-ink: oklch(48% 0.18 15);
+
+  --canvas:
+    radial-gradient(90% 90% at 10% 0%, oklch(84% 0.11 285) 0%, transparent 60%),
+    radial-gradient(80% 80% at 95% 5%, oklch(86% 0.1 205) 0%, transparent 55%),
+    radial-gradient(100% 100% at 70% 100%, oklch(88% 0.09 330) 0%, transparent 60%),
+    radial-gradient(70% 70% at 25% 95%, oklch(90% 0.05 200) 0%, transparent 55%),
+    linear-gradient(160deg, oklch(94% 0.03 285) 0%, oklch(91% 0.04 255) 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-fill: rgb(255 255 255 / 0.08);
+    --glass-fill-strong: rgb(255 255 255 / 0.13);
+    --glass-fill-quiet: rgb(255 255 255 / 0.05);
+    --glass-edge: rgb(255 255 255 / 0.16);
+    --glass-shadow: 0 20px 56px -24px rgb(0 0 0 / 0.7), 0 0 0 0.5px rgb(255 255 255 / 0.06);
+    --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.12);
+
+    --ink: oklch(96% 0.01 285);
+    --ink-soft: oklch(80% 0.015 285);
+    --ink-faint: oklch(65% 0.02 285);
+
+    --status-accent-ink: oklch(84% 0.13 285);
+    --status-mint-ink: oklch(84% 0.13 165);
+    --status-amber-ink: oklch(86% 0.12 75);
+    --status-rose-ink: oklch(80% 0.14 15);
+
+    --canvas:
+      radial-gradient(90% 90% at 10% 0%, oklch(42% 0.14 285) 0%, transparent 60%),
+      radial-gradient(80% 80% at 95% 5%, oklch(38% 0.12 205) 0%, transparent 55%),
+      radial-gradient(100% 100% at 70% 100%, oklch(36% 0.12 330) 0%, transparent 60%),
+      radial-gradient(70% 70% at 25% 95%, oklch(32% 0.07 205) 0%, transparent 55%),
+      linear-gradient(160deg, oklch(16% 0.03 285) 0%, oklch(12% 0.03 255) 100%);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  background-attachment: fixed;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- поверхности -------------------------------------------------------- */
+/* Стекло — на панелях и шапке, НЕ на каждой строке таблицы: сотня
+   размывающих элементов на экране заметно просаживает прокрутку. */
+
+.glass {
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(180%);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-glass);
+  box-shadow: var(--glass-shadow), var(--glass-inner);
+}
+
+.glassPanel {
+  composes: glass;
+  background: var(--glass-fill-strong);
+}
+
+/* Вложенный блок внутри стекла: второй слой того же рецепта читался бы как
+   грязь, поэтому меньше заливки и без тени. */
+.glassQuiet {
+  background: var(--glass-fill-quiet);
+  border: 1px solid var(--glass-edge);
+  border-radius: calc(var(--radius-glass) - 0.35rem);
+}
+
+/* Кликабельная строка: кромка держится всегда, прозрачная, и по наведению
+   меняется только её цвет. Иначе hover добавляет рамку в 1px, бокс становится
+   больше, и элемент дёргается под курсором. */
+.glassSlot {
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius-glass) - 0.35rem);
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.glassSlot:hover {
+  background: var(--glass-fill-quiet);
+  border-color: var(--glass-edge);
+}
