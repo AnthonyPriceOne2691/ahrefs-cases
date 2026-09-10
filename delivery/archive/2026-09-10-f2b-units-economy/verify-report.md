@@ -1,12 +1,12 @@
 # Verify report
 
 **Date:** 2026-09-10
-**Verifier:** <human:anthony — заполняется при приёмке>
-**asserts_reviewed_by:** <human:anthony at=… — восемь примеров дописаны по ходу, см. ниже>
+**Verifier:** human:anthony
+**asserts_reviewed_by:** human:anthony at=2026-09-10 — подписаны восемь примеров C11–C18, дописанных после подписи спеки
 <!-- Дайджест даёт `asserts_without_example: 0`, но C11–C18 появились в спеке
      ПОСЛЕ подписи (по ходу implement и по указанию заказчика работ), значит
      «человек подписал заранее» про них неверно. Подпись настоящая. -->
-**CI run:** <заполняется после прогона на 1dbb54d>
+**CI run:** на de701ee gates и tests — success; шаг delivery красный ровно на незаполненной приёмке (Verifier, asserts_reviewed_by), зеленеет этим коммитом
 **Commit:** 1dbb54d
 
 ## Прогон в чистом клоне
@@ -140,14 +140,20 @@ force-финализация частей, backpressure. **Сверка нашл
 обработку ошибок. Тогда каждая половина проверялась бы отдельно, а не одним
 verify на 2521 строку.
 
-Waiver ставит человек (§3.4) — Builder себе объём не прощает.
+Waiver поставлен `human:anthony` 2026-09-10, класс поставки поднят до **L**.
+Урок вынесен в `archive/INDEX.md`: требование, пришедшее в середине поставки,
+это повод пересмотреть её границы, а не дописать в неё ещё один блок.
 
 ## Verdict
-- [ ] READY FOR HANDOFF
+- [x] READY FOR HANDOFF
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
 
-<!-- Вердикт не ставит Builder (§5.2). Отметку ставит Verifier (human:anthony). -->
+Поставил Verifier `human:anthony`, 2026-09-10, вместе с waiver по объёму.
+
+Принято с тремя объявленными пробелами: живой Ahrefs и живая квота проверены
+только на подменённом транспорте (Ф7), single-flight внутрипроцессный (Ф5),
+календарная граница закрытого месяца — гипотеза до Ф7.
 ## Assertion digest (ревью ожиданий, не кода)
 
 База: `b055f4b` · сгенерировано `assert_digest.sh`
@@ -251,13 +257,13 @@ asserts_without_example: 2
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 24 code (+6 process docs) / +2619/-98 (net +2521) |
-| commits | 5 |
+| files_touched / loc_diff | 24 code (+7 process docs) / +2619/-98 (net +2521) |
+| commits | 7 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — tests/test_cli_exit_codes.py (новый оракул), tests/test_collect_cache.py (новый оракул), tests/test_collect_funnel.py (новый оракул), tests/test_collect_quota.py (новый оракул) |
-| implement_retries | MANUAL — fills from session log |
-| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
-| est_token_or_cost | MANUAL / n/a |
+| implement_retries | 6 — блоками: кэш, устойчивость, single-flight, квота, воронка, отчёт. Плюс два возврата по красным гейтам (detect-secrets на hex-идентификаторах ревизии, ruff-format) |
+| verify_fails_before_green | 1 — CI на de701ee красный ровно на незаполненной приёмке (Verifier, asserts_reviewed_by); gates и tests зелёные. Прогонов, красных по коду, не было |
+| est_token_or_cost | n/a — расход сессии не измерялся |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
