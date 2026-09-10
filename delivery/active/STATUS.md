@@ -1,6 +1,6 @@
 # Active delivery status
 
-- **slug:** f1-skeleton
+- **slug:** f2a-intake-fixtures
 - **stack:** delivery@1.88, cqg@2.32, okf@absent
 - **class:** M
 - **kind:** feature
@@ -9,46 +9,39 @@
 - **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека с примерами A1–A5 подписана
+- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека с примерами B1–B12 и границей Ф2а/Ф2б подписана
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=проект пока ничего не собирает; PDF появится в Ф4
+- **artifact_oracle:** n/a reason=поставка не производит файловых артефактов; PDF и ZIP появятся в Ф4
 - **ci-oracles:** tooling
-  <!-- Гейт мержа в репозитории (`scripts/merge_guard.sh` + pre-push hook + `needs:`
-       у downstream-джоб) плюс серверные правила ветки: ruleset `main` (id 22794937,
-       enforcement active, bypass пуст) закрывает force-push, удаление и создание.
-       Проверено не конфигурацией, а применением: `gh api rules/branches/main`
-       возвращает три правила. Остаётся `tooling`, а не `deployed`, потому что
-       required status checks НЕ включены осознанно: они блокируют прямые пуши в
-       main, а сейчас работа идёт именно так. Включаются при появлении второго
-       человека или при передаче компании — тогда же станет `deployed`. -->
-- **worktree:** none reason=единственный исполнитель, main без защиты до В1
+  <!-- Без изменений с Ф1: гейт мержа (`scripts/merge_guard.sh` + pre-push hook +
+       `needs:`) и ruleset `main` id 22794937. Required status checks выключены
+       осознанно — см. решение в архиве `2026-09-10-f1-skeleton/decisions.md`. -->
+- **worktree:** none reason=единственный исполнитель, работа прямыми коммитами в main; пересматривается вместе с ci-oracles при появлении второго человека
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
+  <!-- Пример входного файла от заказчика не пришёл (см. «Подготовить до старта»),
+       но приём разрабатывается против собственного `config/projects.example.csv`
+       по десяти полям §4 — материал заказчика проверит форму, а не заменит её. -->
 - **waivers:** none
-- **new_dependency:** fastapi reason=веб-слой по docs/IMPLEMENTATION_V3.md §2 by=agent:claude
-- **new_dependency:** sqlalchemy reason=ORM и миграции, требование «хранить сырые данные» by=agent:claude
-- **new_dependency:** alembic reason=миграции схемы с первого дня by=agent:claude
-- **new_dependency:** asyncpg reason=асинхронный драйвер postgres для SQLAlchemy 2 by=agent:claude
-- **new_dependency:** pydantic-settings reason=типизированный конфиг, запрет os.getenv вне config/ by=agent:claude
-- **new_dependency:** uvicorn reason=ASGI-сервер для FastAPI by=agent:claude
-- **runtime_paths:** none reason=на этой поставке платформенных путей нет; объявляются в Ф2 (живой Ahrefs — сеть и квота) и Ф4 (PDF — системные библиотеки WeasyPrint)
+- **new_dependency:** openpyxl reason=чтение XLSX в intake; в манифест попал авансом в Ф1, в оборот вводится здесь by=agent:claude
+- **new_dependency:** chardet reason=определение кодировки CSV (выгрузка из Excel приходит в cp1251) by=agent:claude
+- **runtime_paths:** network:docs.google.com reason=CSV-экспорт опубликованной Google Sheet — единственный сетевой путь поставки; в тестах заглушен, fixture-провайдер наружу не ходит
 - **model_surface:** n/a reason=в MVP текст кейса шаблонный, модель не вызывается; ось ⑤ придёт волной В3
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** A1–A5 из spec подтверждены прогоном; `alembic upgrade head` на чистой базе проходит в чистом клоне
-- **observe_until:** 2026-09-24
+- **observe_signal:** <заполняется на handoff>
+- **observe_until:** <заполняется на handoff>
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
-## Волна В1 пройдена
+## Граница с Ф2б
 
-`stack-selftest: external (~/Documents/Prepare)` — вариант D: текстов канонов в
-репозитории нет по построению, шаг «Canon payload selftest» в CI невозможен.
-
-Адаптации объявлены в `scripts/lint/adapted.json`: правило `service-no-web`
-переписано под раскладку проекта (сервис-слоя `services/` здесь нет — ядро
-разложено по темам). С канонным фильтром гейт просматривал 0 файлов, то есть был
-зелёным, не просудив ничего.
+Экономия units (кэш закрытых месяцев, инкрементальный `date_from`, single-flight,
+смета, preflight квоты, воронка) вынесена в следующую поставку намеренно: главный
+DoD Ф2 — «повторный прогон не делает повторных запросов». Если бы кэш и тест на
+него писались в одной поставке с самим сбором, проверка экономии стояла бы на
+коде, написанном под неё же. Здесь сбор запрашивает всё честно и дорого; Ф2б
+делает его дешёвым и предъявляет разницу числом.
