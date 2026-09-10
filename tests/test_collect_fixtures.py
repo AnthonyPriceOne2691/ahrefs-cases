@@ -136,8 +136,11 @@ async def test_fixture_counts_units_by_the_same_model_as_live() -> None:
     metrics = await AhrefsFixture().fetch_history(METRICS_HISTORY, REQUEST)
     refdomains = await AhrefsFixture().fetch_history(REFDOMAINS_HISTORY, REQUEST)
 
-    assert metrics.units_actual == METRICS_HISTORY.estimate_units() == 50
-    assert refdomains.units_actual == REFDOMAINS_HISTORY.estimate_units() == 5
+    # Биллинг построчный (замерено в Ф7), поэтому цена зависит от глубины:
+    # 18 месяцев по 21 unit за строку — 378, а не «50 за запрос».
+    assert metrics.units_actual == METRICS_HISTORY.estimate_units(len(metrics.points))
+    assert metrics.units_actual == 378
+    assert refdomains.units_actual == REFDOMAINS_HISTORY.estimate_units(len(refdomains.points))
 
 
 async def test_empty_scenario_is_empty_and_free() -> None:

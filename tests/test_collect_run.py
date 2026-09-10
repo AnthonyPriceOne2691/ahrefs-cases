@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
+from ahrefs_cases.collect.quota import FixtureQuota
 from ahrefs_cases.collect.runner import collect_all, collect_projects
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import read_csv
@@ -37,6 +38,14 @@ DOMAINS = 100
 NOW = date(2026, 9, 15)
 """Граница закрытого месяца передаётся явно: период работ в списке кончается
 2026-06-30, значит всё окно закрыто и кэш обязан срабатывать целиком."""
+
+BIG_QUOTA = FixtureQuota(left=200_000)
+"""Квота, заведомо покрывающая прогон на сотню доменов.
+
+Указывается явно, потому что бюджет заказчика (10 000) такой прогон **не
+покрывает**: по замеренной цене он стоит 44 100 units. Это отдельная находка
+и отдельный тест (`test_hundred_domains_do_not_fit_customer_budget`); здесь же
+проверяется механика сбора, и подменять её проверкой бюджета нельзя."""
 
 
 @pytest.fixture(autouse=True)
@@ -75,7 +84,7 @@ async def test_hundred_domains_collected_without_network(
     """B6: сто синтетических доменов проходят целиком, серии оказываются в базе."""
     await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])
 
-    report = await collect_all(db_session, AhrefsFixture())
+    report = await collect_all(db_session, AhrefsFixture(), quota=BIG_QUOTA)
 
     assert report.status == RunStatus.DONE.value
     assert report.projects_total == DOMAINS
@@ -88,7 +97,7 @@ async def test_units_ledger_has_a_row_per_request(db_session: AsyncSession, tmp_
     """B10: строка журнала на каждый запрос, сумма — по модели стоимости."""
     await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])
 
-    report = await collect_all(db_session, AhrefsFixture())
+    report = await collect_all(db_session, AhrefsFixture(), quota=BIG_QUOTA)
 
     rows = (
         (await db_session.execute(select(UnitsLedger).where(UnitsLedger.kind == LedgerKind.SPENT)))
@@ -99,7 +108,13 @@ async def test_units_ledger_has_a_row_per_request(db_session: AsyncSession, tmp_
     assert {row.endpoint for row in rows} == {METRICS_HISTORY.name}
     assert {row.kind for row in rows} == {LedgerKind.SPENT}
     assert all(row.units_estimated == row.units_actual for row in rows)
-    assert report.units_spent == DOMAINS * METRICS_HISTORY.estimate_units() == 5000
+    # Цена построчная, поэтому она РАЗНАЯ у разных доменов: у сценария с
+    # короткой историей строк четыре, с дырой — пятнадцать. Прибивать сумму к
+    # числу значит проверять раскладку сценариев, а не модель стоимости.
+    assert report.units_spent == sum(row.units_actual or 0 for row in rows)
+    assert report.units_spent > DOMAINS * METRICS_HISTORY.estimate_units(rows=1), (
+        "цена не выросла с числом строк — модель стоимости снова «за запрос»"
+    )
 
 
 async def test_empty_history_is_skipped_run_continues(
@@ -251,3 +266,29 @@ async def test_run_snapshot_records_how_it_was_collected(
     assert run.params_snapshot["provider"] == "fixture"
     assert run.params_snapshot["history_grouping"] == "monthly"
     assert run.params_snapshot["fixture_seed"] == 42
+
+
+async def test_hundred_domains_do_not_fit_customer_budget(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """Прогон по ТЗ не влезает в бюджет ТЗ — и это надо знать до Ф7.
+
+    Заказчик называет 10 000 units на первичный прогон по сотне доменов. По
+    цене, замеренной живым ключом (21 unit за строку, 18–21 строка на домен),
+    один только шаг 1 стоит 44 100. Preflight отказывает — и правильно делает:
+    прогон, начатый вслепую, съел бы квоту на четверти списка.
+
+    Тест закрепляет факт, а не желаемое. Он станет зелёным по-другому, когда
+    схема сбора перейдёт на точки вместо истории (docs/UNITS_OPTIMIZATION.md),
+    и это будет видно как изменение здесь.
+    """
+    await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])
+
+    report = await collect_all(
+        db_session, AhrefsFixture(), now=NOW, quota=FixtureQuota(left=10_000)
+    )
+
+    assert report.status == RunStatus.FAILED.value
+    assert report.requests_made == 0
+    assert "не хватает units" in report.error
+    assert report.units_estimated == 44_100

@@ -56,11 +56,13 @@ async def test_estimate_counts_only_what_will_be_asked(db_session: AsyncSession)
     прогоне, который влезал в остаток.
     """
     await _load(db_session, 100)
-    first = await collect_all(db_session, AhrefsFixture(), now=NOW)
+    big = FixtureQuota(left=200_000)
+    first = await collect_all(db_session, AhrefsFixture(), now=NOW, quota=big)
 
-    second = await collect_all(db_session, AhrefsFixture(), now=NOW)
+    second = await collect_all(db_session, AhrefsFixture(), now=NOW, quota=big)
 
-    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units()
+    # 21 строка окна × 21 unit за строку × 100 доменов: цена зависит от глубины.
+    assert first.units_estimated == 100 * METRICS_HISTORY.estimate_units(rows=21)
     assert second.units_estimated == 0
 
 
@@ -72,10 +74,15 @@ async def test_estimate_matches_the_fact(db_session: AsyncSession) -> None:
     """
     await _load(db_session, 20)
 
-    report = await collect_all(db_session, AhrefsFixture(), now=NOW)
+    report = await collect_all(
+        db_session, AhrefsFixture(), now=NOW, quota=FixtureQuota(left=200_000)
+    )
 
-    assert report.units_estimated > 0
-    assert abs(report.units_estimated - report.units_spent) <= report.units_estimated * 0.1
+    # Смета считает окно запроса (21 месяц), факт — сколько строк реально
+    # пришло (18 у сценария). Смета обязана быть НЕ МЕНЬШЕ факта: занизить
+    # цену опаснее, чем завысить, — по заниженной смете прогон стартует и
+    # упирается в квоту на середине. Верхняя граница держит её от абсурда.
+    assert report.units_spent <= report.units_estimated <= report.units_spent * 1.5
 
 
 async def test_run_does_not_start_without_quota(db_session: AsyncSession) -> None:

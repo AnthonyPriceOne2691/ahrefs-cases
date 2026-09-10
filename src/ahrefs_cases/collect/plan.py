@@ -41,6 +41,19 @@ class CollectTask:
     spec: EndpointSpec
     request: HistoryRequest
 
+    def expected_rows(self) -> int:
+        """Сколько строк вернёт запрос: по одной на месяц окна.
+
+        От этого зависит цена — биллинг построчный (замерено в Ф7). Смета,
+        считающая «50 за запрос», занижала расход в девять раз на
+        полуторагодовом периоде.
+        """
+        end = self.request.date_to or self.request.date_from
+        months = (end.year - self.request.date_from.year) * 12 + (
+            end.month - self.request.date_from.month
+        )
+        return max(1, months + 1)
+
 
 @dataclass(frozen=True, slots=True)
 class CachedTask:
@@ -65,8 +78,12 @@ class CollectPlan:
     cached: list[CachedTask]
 
     def estimated_units(self) -> int:
-        """Смета: только по задачам, которые действительно уйдут в Ahrefs."""
-        return sum(task.spec.estimate_units() for task in self.tasks)
+        """Смета: только по задачам, которые действительно уйдут в Ahrefs.
+
+        Цена каждой задачи зависит от глубины окна, а не одинакова: запрос за
+        три месяца стоит 63 units, за двадцать один — 441.
+        """
+        return sum(task.spec.estimate_units(task.expected_rows()) for task in self.tasks)
 
 
 def plan_stage1(projects: Sequence[Project]) -> list[CollectTask]:

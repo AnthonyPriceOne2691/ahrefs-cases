@@ -117,10 +117,17 @@ class AhrefsTransport:
                 f"Ahrefs ответил {response.status_code} на {path}: {response.text[:200]}"
             )
         payload: dict[str, Any] = response.json()
+        estimated = _header_int(response, _UNITS_TOTAL_HEADER)
+        actual = _header_int(response, _UNITS_ACTUAL_HEADER)
         return TransportResponse(
             payload=payload,
-            units_actual=_header_int(response, _UNITS_ACTUAL_HEADER),
-            units_estimated=_header_int(response, _UNITS_TOTAL_HEADER),
+            # Замерено: `-total-actual` приходит нулём при ненулевом `-total`
+            # (три запроса подряд, `x-api-cache: miss`). Записать ноль в журнал
+            # значило бы отчитаться о бесплатном прогоне: расход есть, просто
+            # Ahrefs сообщает его другим заголовком. Берём `-total`, пока Ф7 не
+            # покажет, когда `-total-actual` осмыслен.
+            units_actual=actual or estimated,
+            units_estimated=estimated,
             headers=dict(response.headers),
         )
 

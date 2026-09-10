@@ -21,7 +21,6 @@ from ahrefs_cases.collect.ahrefs_transport import (
 )
 from ahrefs_cases.collect.endpoints import (
     METRICS_HISTORY,
-    REFDOMAINS_HISTORY,
     EndpointSpec,
 )
 from ahrefs_cases.collect.live import AhrefsLive
@@ -171,18 +170,22 @@ async def test_live_sends_minimal_select() -> None:
 
 def test_cost_model_is_one_place() -> None:
     """B10: модель стоимости считает по спеке endpoint'а, а не по имени в коде."""
-    assert METRICS_HISTORY.estimate_units() == 50
-    assert REFDOMAINS_HISTORY.estimate_units() == 5
+    # Замерено живым ключом: строка стоит 10 за поле плюс 1, минимум запроса 50.
+    assert METRICS_HISTORY.row_units() == 21, "два поля: 10×2+1"
+    assert METRICS_HISTORY.estimate_units(rows=1) == 50, "минимум запроса бьёт цену строки"
+    assert METRICS_HISTORY.estimate_units(rows=3) == 63
+    assert METRICS_HISTORY.estimate_units(rows=21) == 441
 
-    wide = EndpointSpec(
-        name="wide",
+    one_field = EndpointSpec(
+        name="one-field",
         path="/x",
-        select=("date", "a", "b", "c", "d", "e", "f"),
+        select=("date", "org_traffic"),
         list_key="rows",
         metrics={},
-        stage=2,
+        stage=1,
     )
-    assert wide.estimate_units() == 60
+    assert one_field.row_units() == 11, "одно поле: 10×1+1"
+    assert one_field.estimate_units(rows=9) == 99
 
 
 async def _no_sleep(_seconds: float) -> None:

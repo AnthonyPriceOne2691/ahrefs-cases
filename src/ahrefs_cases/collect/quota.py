@@ -29,8 +29,15 @@ from ahrefs_cases.collect.response_guard import AhrefsResponseError, require_int
 logger = logging.getLogger(__name__)
 
 _LIMITS_PATH = "/v3/subscription-info/limits-and-usage"
-_UNITS_LIMIT_KEY = "units_limit"
-_UNITS_USED_KEY = "units_usage"
+_ENVELOPE_KEY = "limits_and_usage"
+_UNITS_LIMIT_KEY = "units_limit_api_key"
+_UNITS_USED_KEY = "units_usage_api_key"
+"""Имена и вложенность замерены живым ключом 10.09.2026.
+
+Ответ приходит обёрткой `{limits_and_usage: {...}}`, а внутри две пары чисел:
+`*_workspace` — на весь воркспейс, `*_api_key` — на наш ключ. Считаем по
+ключу: воркспейс делится с другими сервисами агентства, и его остаток ничего
+не говорит о том, сколько можем потратить мы."""
 
 
 class QuotaVerdict(StrEnum):
@@ -77,8 +84,15 @@ class LiveQuota:
         # ноль». Разница решающая: fail-closed превратил бы ноль в вечный
         # запрет прогонов, и выглядело бы это как исчерпанная квота клиента,
         # хотя причина — наши угаданные имена полей (Z2 в docs/FINDINGS.md).
-        limit = require_int(response.payload, _UNITS_LIMIT_KEY, "subscription-info")
-        used = require_int(response.payload, _UNITS_USED_KEY, "subscription-info")
+        envelope = response.payload.get(_ENVELOPE_KEY)
+        if not isinstance(envelope, dict):
+            message = (
+                f"subscription-info: ожидали объект по ключу {_ENVELOPE_KEY!r}, "
+                f"пришли ключи: {', '.join(sorted(response.payload)) or '(пусто)'}"
+            )
+            raise AhrefsResponseError(message)
+        limit = require_int(envelope, _UNITS_LIMIT_KEY, "subscription-info")
+        used = require_int(envelope, _UNITS_USED_KEY, "subscription-info")
         return max(0, limit - used)
 
 

@@ -46,7 +46,10 @@ class AhrefsFixture:
             for point in series
             if point.at >= request.date_from
         )
-        units = spec.estimate_units() if points else 0
+        # Столько же строк, сколько отдаём: fixture обязан считать units по той
+        # же формуле, что применит live, иначе смета проверяется на выдуманных
+        # числах и «заработает» впервые на деньгах заказчика.
+        units = spec.estimate_units(len(points)) if points else 0
         return HistoryResult(
             endpoint=spec.name,
             target=request.target,

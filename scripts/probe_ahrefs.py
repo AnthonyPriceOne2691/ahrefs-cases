@@ -120,7 +120,10 @@ async def _probe_history(
 
 async def _main(domains: list[str]) -> int:
     if config.ahrefs.provider != "live":
-        print("провайдер не live: разведка не нужна, fixture ничего нового не покажет", file=sys.stderr)
+        print(
+            "провайдер не live: разведка не нужна, fixture ничего нового не покажет",
+            file=sys.stderr,
+        )
         return 2
     if not config.ahrefs.api_key:
         print("нет AHREFS_API_KEY", file=sys.stderr)

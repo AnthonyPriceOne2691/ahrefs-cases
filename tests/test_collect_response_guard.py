@@ -100,24 +100,36 @@ async def test_quota_without_keys_is_unknown_not_zero() -> None:
     """
 
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"limits": {"units": 10_000}})
+        return httpx.Response(200, json={"limits_and_usage": {"units": 10_000}})
 
     async with _client(handler) as client:
         state = await preflight(LiveQuota(AhrefsTransport(client)), needed=100)
 
     assert state.verdict is QuotaVerdict.UNKNOWN
-    assert "units_limit" in state.reason
+    assert "units_limit_api_key" in state.reason
 
 
 async def test_quota_with_expected_keys_works() -> None:
     """Обратная сторона Z2: ожидаемая форма разбирается и даёт остаток."""
 
     def handler(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"units_limit": 10_000, "units_usage": 2_500})
+        return httpx.Response(
+            200,
+            json={
+                "limits_and_usage": {
+                    "units_limit_workspace": 8_000_000,
+                    "units_usage_workspace": 3_697_675,
+                    "units_limit_api_key": 10_000,
+                    "units_usage_api_key": 2_500,
+                }
+            },
+        )
 
     async with _client(handler) as client:
         left = await LiveQuota(AhrefsTransport(client)).units_left()
 
+    # Считаем по ключу, а не по воркспейсу: воркспейс делится с другими
+    # сервисами агентства, и его остаток ничего не говорит о нашем.
     assert left == 7_500
 
 
