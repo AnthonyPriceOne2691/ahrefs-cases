@@ -64,6 +64,8 @@ async def classify_project(
         months_after_start=len(after_start),
         max_gap_months=series_module.max_gap_months(months),
         thresholds=thresholds,
+        history_starts_at=months[0] if months else None,
+        period_start=project.period_start,
     )
     await _store(session, project, ruleset, decision, point_a, point_b)
     return decision

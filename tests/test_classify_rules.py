@@ -304,3 +304,56 @@ def test_growth_from_zero_does_not_crash() -> None:
     decision = _decide(series)
 
     assert decision.group in {Group.POOR, Group.MEDIUM, Group.INSUFFICIENT_DATA}
+
+
+def test_truncated_history_is_reported_not_hidden() -> None:
+    """Z5: история короче периода работ — об этом сказано в вердикте.
+
+    Период работ длиннее доступной глубины обрезается молча: точка А берётся
+    не от старта работ, и «рост А → Б» описывает не весь срок. Группу это не
+    меняет — решать человеку, но узнать он обязан.
+    """
+    series = _series(_ramp(1000, 3000, 12), start=date(2025, 6, 1))
+    thresholds = load_seed()
+    months = months_covered(series, Metric.ORG_TRAFFIC)
+    a = point_a(series, months[0], thresholds.windows)
+    b = point_b(series, months[-1], thresholds.windows)
+
+    decision = decide(
+        between(a, b),
+        b,
+        months_after_start=len(months),
+        max_gap_months=0,
+        thresholds=thresholds,
+        history_starts_at=months[0],
+        period_start=date(2024, 1, 1),
+    )
+
+    truncated = next(r for r in decision.reasons if r.subject == "history_truncated")
+    assert truncated.fact == 17
+    assert truncated.decisive is False, "справочная запись не должна менять группу"
+
+
+def test_history_matching_the_period_adds_no_noise() -> None:
+    """Обратная сторона Z5: когда история совпадает с периодом, лишней записи нет.
+
+    Иначе предупреждение появлялось бы у каждого проекта и перестало бы
+    что-либо значить.
+    """
+    series = _series(_ramp(1000, 3000, 12))
+    thresholds = load_seed()
+    months = months_covered(series, Metric.ORG_TRAFFIC)
+    a = point_a(series, months[0], thresholds.windows)
+    b = point_b(series, months[-1], thresholds.windows)
+
+    decision = decide(
+        between(a, b),
+        b,
+        months_after_start=len(months),
+        max_gap_months=0,
+        thresholds=thresholds,
+        history_starts_at=months[0],
+        period_start=months[0],
+    )
+
+    assert all(reason.subject != "history_truncated" for reason in decision.reasons)

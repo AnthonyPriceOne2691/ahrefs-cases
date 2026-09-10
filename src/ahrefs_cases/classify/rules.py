@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 from ahrefs_cases.classify.deltas import Deltas
@@ -82,11 +83,14 @@ def decide(
     months_after_start: int,
     max_gap_months: int,
     thresholds: Thresholds,
+    history_starts_at: date | None = None,
+    period_start: date | None = None,
 ) -> Decision:
     """Вердикт по проекту. Чистая функция: ни базы, ни сети, ни времени."""
     blockers = _eligibility(deltas, point_b, months_after_start, max_gap_months, thresholds)
+    truncated = _truncated_history(history_starts_at, period_start)
     if blockers:
-        return Decision(group=Group.INSUFFICIENT_DATA, score=0.0, reasons=blockers)
+        return Decision(group=Group.INSUFFICIENT_DATA, score=0.0, reasons=[*blockers, *truncated])
 
     traffic = deltas.metric(_TRAFFIC)
     if traffic is None:  # pragma: no cover — отсечено eligibility выше
@@ -95,13 +99,48 @@ def decide(
 
     good_reasons = _check_group(deltas, thresholds.good, months_after_start, name="good")
     if _satisfied(good_reasons):
-        return _decided(Group.GOOD, good_reasons, deltas, thresholds)
+        return _decided(Group.GOOD, [*good_reasons, *truncated], deltas, thresholds)
 
     medium_reasons = _check_group(deltas, thresholds.medium, months_after_start, name="medium")
     if _satisfied(medium_reasons):
-        return _decided(Group.MEDIUM, [*good_reasons, *medium_reasons], deltas, thresholds)
+        return _decided(
+            Group.MEDIUM, [*good_reasons, *medium_reasons, *truncated], deltas, thresholds
+        )
 
-    return _decided(Group.POOR, [*good_reasons, *medium_reasons], deltas, thresholds)
+    return _decided(Group.POOR, [*good_reasons, *medium_reasons, *truncated], deltas, thresholds)
+
+
+def _truncated_history(history_starts_at: date | None, period_start: date | None) -> list[Reason]:
+    """История начинается позже старта работ — точка А не про старт.
+
+    Так бывает, когда период работ длиннее доступной глубины
+    (`AHREFS_MAX_HISTORY_MONTHS` минус запас) или когда Ahrefs просто не знает
+    домен так давно. Молчать об этом нельзя: точка А тогда взята не от начала
+    работ, и «рост А → Б» отвечает на другой вопрос, чем думает читатель кейса.
+
+    Запись справочная — группу она не меняет. Решать, годится ли такой кейс,
+    будет человек, а его дело — узнать (Z5 в docs/FINDINGS.md).
+    """
+    if history_starts_at is None or period_start is None:
+        return []
+    months_late = (history_starts_at.year - period_start.year) * 12 + (
+        history_starts_at.month - period_start.month
+    )
+    if months_late <= 1:
+        return []
+    return [
+        Reason(
+            subject="history_truncated",
+            fact=float(months_late),
+            threshold=1.0,
+            passed=False,
+            note=(
+                "история начинается позже старта работ: точка А посчитана не от начала "
+                "периода, и «рост А → Б» описывает не весь срок работ"
+            ),
+            decisive=False,
+        )
+    ]
 
 
 def _satisfied(reasons: list[Reason]) -> bool:

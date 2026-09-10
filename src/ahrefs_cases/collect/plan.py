@@ -21,8 +21,10 @@ from ahrefs_cases import config
 from ahrefs_cases.collect import cache
 from ahrefs_cases.collect.endpoints import (
     DOMAIN_RATING_HISTORY,
+    PAGES_HISTORY,
     STAGE1_SPECS,
     STAGE2_SPECS,
+    TOTAL_SEARCH_VOLUME_HISTORY,
     EndpointSpec,
 )
 from ahrefs_cases.collect.provider import HistoryRequest
@@ -100,17 +102,25 @@ async def build_stage1_plan(
 
 
 def stage2_specs() -> tuple[EndpointSpec, ...]:
-    """Endpoint'ы шага 2 с учётом флага DR.
+    """Endpoint'ы шага 2: обязательные плюс включённые флагами.
 
-    `domain-rating-history` под флагом не по привередливости: DR приятно
-    показать в кейсе, но группу он не определяет, а стоит как полноценный
-    запрос — то есть это чистая надбавка к цене прогона.
+    Под флагами — те, которых нет ни в правилах Ф3, ни в блоках кейса по ТЗ.
+    Каждый стоит как полноценный запрос (50 units за домен), то есть чистая
+    надбавка к цене прогона: на тридцати кандидатах это 3000 units, треть
+    бюджета первичного прогона за данные без читателя (Z4 в docs/FINDINGS.md).
+
+    Соответствие «endpoint → флаг» написано явно, а не через `getattr` по
+    имени поля: доступ к конфигу отражением запрещён правилом проекта и ловится
+    гейтом `config-access` — он и поймал первую версию этой функции. Опечатка
+    в имени поля при отражении не видна ни mypy, ни на ревью, а стоит она
+    здесь трети бюджета.
     """
-    return tuple(
-        spec
-        for spec in STAGE2_SPECS
-        if spec is not DOMAIN_RATING_HISTORY or config.ahrefs.collect_dr_history
-    )
+    enabled: dict[str, bool] = {
+        DOMAIN_RATING_HISTORY.name: config.ahrefs.collect_dr_history,
+        PAGES_HISTORY.name: config.ahrefs.collect_pages_history,
+        TOTAL_SEARCH_VOLUME_HISTORY.name: config.ahrefs.collect_search_volume,
+    }
+    return tuple(spec for spec in STAGE2_SPECS if enabled.get(spec.name, True))
 
 
 async def build_stage2_plan(

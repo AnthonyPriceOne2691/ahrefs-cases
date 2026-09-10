@@ -39,7 +39,18 @@ class AhrefsSettings(Settings):
     смена seed переписывает все синтетические серии, а на них стоят golden-тесты Ф3."""
 
     # --- экономия units (docs/UNITS_ECONOMY.md) ---
-    units_min_left: int = Field(5000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
+    units_min_left: int = Field(1000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
+    """Неснижаемый остаток units: запас на срочный ручной запрос аналитика.
+
+    Был 5000 — половина всего бюджета заказчика (10 000 на первичный прогон).
+    По нашей же модели стоимости первичный прогон стоит ≈ 9650 units, поэтому
+    preflight отказывал бы на первом реальном запуске: 10 000 − 9650 < 5000.
+    Сервис исправно не работал бы, а причина выглядела бы как нехватка квоты
+    у заказчика (Z4 в docs/FINDINGS.md).
+
+    Тысяча — это примерно двадцать ручных запросов истории: запас есть, а
+    прогон проходит. Число уточняется в Ф7, когда станет известна настоящая
+    цена запроса."""
     history_grouping: HistoryGrouping = Field("monthly", validation_alias="AHREFS_HISTORY_GROUPING")
     max_history_months: int = Field(24, ge=1, le=60, validation_alias="AHREFS_MAX_HISTORY_MONTHS")
     current_month_ttl_hours: int = Field(
@@ -66,6 +77,18 @@ class AhrefsSettings(Settings):
     запроса не зависит от числа строк, поэтому запас почти бесплатен — но если
     Ф7 покажет построчный биллинг, уменьшать надо будет здесь, а не в коде."""
     collect_dr_history: bool = Field(False, validation_alias="AHREFS_COLLECT_DR_HISTORY")
+    collect_pages_history: bool = Field(False, validation_alias="AHREFS_COLLECT_PAGES_HISTORY")
+    collect_search_volume: bool = Field(False, validation_alias="AHREFS_COLLECT_SEARCH_VOLUME")
+    """Три endpoint'а шага 2, выключенные по умолчанию, — по 50 units за домен каждый.
+
+    Ни `pages`, ни `search_volume`, ни `dr` не участвуют в правилах
+    классификации и не входят в блоки кейса по ТЗ (гео, период, задача, что
+    сделали, А → Б по трафику, позициям и ссылкам). На тридцати кандидатах
+    это 3000 units — треть бюджета первичного прогона за данные, которые
+    никто не читает.
+
+    Включаются осознанно, когда для них появится потребитель (Z4 в
+    docs/FINDINGS.md)."""
     stage2_only_for_cases: bool = Field(True, validation_alias="AHREFS_STAGE2_ONLY_FOR_CASES")
     max_parallel: int = Field(3, ge=1, le=10, validation_alias="COLLECT_MAX_PARALLEL")
 
