@@ -4,23 +4,23 @@
 (plan.md → Approach).
 
 ## Приём: форма входа
-- [ ] `config/projects.example.csv` → десять обязательных полей §4 + служебные
-- [ ] `intake/rows.py`: `RawRow` (значения + номер строки в источнике)
-- [ ] `intake/normalize.py`: домен → канонический хост (punycode, www, путь, точка в конце)
-- [ ] тест: golden-таблица нормализации, включая мусор (B4)
+- [x] `config/projects.example.csv` → десять обязательных полей §4 + служебные
+- [x] `intake/rows.py`: `RawRow`, `RawTable`, номера строк как в Excel
+- [x] `intake/normalize.py`: домен → канонический хост (punycode, www, путь, порт, креды)
+- [x] тест: golden-таблица нормализации, 25 случаев + канарейка (B4)
 
 ## Приём: источники
-- [ ] `intake/csv_source.py`: определение кодировки, цепочка fallback (B3)
-- [ ] `intake/xlsx_source.py`: `openpyxl`, `data_only=True`, явное приведение дат
-- [ ] `intake/gsheet_source.py`: ссылка `/edit` → `/export?format=csv&gid=`, чистая функция + таблица примеров
-- [ ] тест: три источника с одинаковым содержимым дают идентичный отчёт (B2)
+- [x] `intake/csv_source.py`: кодировка цепочкой, разделитель по заголовку (B3)
+- [x] `intake/xlsx_source.py`: `openpyxl`, `data_only=True`, даты и числа к строкам
+- [x] `intake/gsheet_source.py`: ссылка → экспорт, HTML вместо CSV = отказ в доступе
+- [x] тест: три источника дают идентичную таблицу (B2)
 
 ## Приём: правила и отчёт
-- [ ] `intake/validate.py`: десять обязательных полей таблицей правил, не лестницей `if`
-- [ ] `intake/report.py`: `IntakeReport` (`accepted`, `created`, `updated`, `rejected[]`)
-- [ ] `intake/upsert.py`: проект по домену — создать или обновить (B5)
-- [ ] тест: 100 строк, 7 негодных → 93 проекта, отчёт с причинами построчно (B1)
-- [ ] тест: повторная загрузка не удваивает проекты (B5)
+- [x] `intake/validate.py`: десять колонок таблицей, приведение типов — функциями
+- [x] `intake/report.py`: `IntakeReport` + сводка по причинам
+- [x] `intake/upsert.py`: ключ `(domain, target_mode, period_start)`, `status` не перезаписывается (B5)
+- [x] тест: 100 строк, 7 негодных → 93 проекта, причина по каждой строке (B1)
+- [x] тест: повторная загрузка обновляет; один домен с разными периодами — два проекта (B5)
 
 ## Провайдер
 - [ ] `collect/endpoints.py`: `EndpointSpec` данными — шесть history-endpoint'ов

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Тесты не читают .env разработчика: иначе результат зависит от чужой машины.
 os.environ.setdefault("AHREFS_PROVIDER", "fixture")
@@ -95,3 +96,41 @@ def migrated_db(needs_db: None) -> None:
     cfg = Config(str(root / "alembic.ini"))
     cfg.set_main_option("script_location", str(root / "migrations"))
     command.upgrade(cfg, "head")
+
+
+@pytest.fixture
+async def db_session(migrated_db: None) -> AsyncIterator[AsyncSession]:
+    """Сессия в транзакции, которую откатывают после теста.
+
+    Не `TRUNCATE` после каждого теста и не отдельная база на тест: откат внешней
+    транзакции оставляет базу ровно в том состоянии, в каком тест её застал, и
+    два теста подряд не видят следов друг друга — даже если один из них упал на
+    середине записи.
+
+    Движок здесь **свой**, а не кэшированный `storage.get_engine()`. Общий движок
+    создаёт соединения в цикле pytest-asyncio, а автофикстура `dispose_engine`
+    закрывает их в новом цикле через `asyncio.run` — закрытие в чужом цикле не
+    доходит до сокета, и он всплывает `ResourceWarning`ом на финализации, то есть
+    падением сьюта при `filterwarnings = ["error"]`. Создать и закрыть движок в
+    одном цикле дешевле, чем чинить порядок фикстур.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from ahrefs_cases import config
+
+    engine = create_async_engine(config.storage.database_url)
+    try:
+        async with engine.connect() as connection:
+            transaction = await connection.begin()
+            session = _AsyncSession(bind=connection, expire_on_commit=False)
+            try:
+                yield session
+            finally:
+                await session.close()
+                await transaction.rollback()
+    finally:
+        await engine.dispose()
+        # Дать циклу закрыть транспорт asyncpg — см. `storage.session`.
+        for _ in range(3):
+            await asyncio.sleep(0)
