@@ -1,0 +1,55 @@
+# Ahrefs Cases — инструкции агенту
+
+Сервис автоматической генерации SEO-кейсов из динамики Ahrefs. Клиентский проект;
+репозиторий передаётся компании.
+
+## Canon stack / Agent Delivery Harness
+
+- **Start here:** `AGENT_STACK.md` (order: Delivery → CQG → OKF).
+- Process canon: `AGENT_DELIVERY_HARNESS.md`.
+- Active delivery: `delivery/active/STATUS.md` — read before coding.
+- **Order:** follow delivery phases. Do not oneshot large work.
+- **Done:** only when verify oracles pass; never declare done on red.
+- Prefer git worktree for class M/L (Delivery §5.1).
+- Smoke/evals: `delivery/evals/smoke/` + `active/eval-smoke.md` (Delivery §6).
+- Metrics on handoff: Delivery §9 / A.10.
+- Hooks if deployed: Delivery §10.
+- Skills/prompts: `skills/README.md` (Delivery §11); no inline prompts (CQG).
+- Do **not** duplicate code-quality rules here — use `CODE_QUALITY_GATES.md` if present.
+- Do **not** invent domain canon — use `knowledge/` / OKF if present.
+- Deploy order for missing layers: Delivery → CQG → OKF (see `AGENT_STACK.md`).
+
+## Контур развёрнут волнами
+
+Развёрнута волна В0 (① Delivery). Не развёрнуты: В1 (② CQG + CI + гейт мержа),
+В2 (③ OKF), В3 (⑤ оракулы поведения модели). Триггеры и предельные сроки —
+`docs/CONTOUR_ROLLOUT.md`. Состояние осей — в `delivery/active/STATUS.md`, и оно
+записано честно: `weak` там не забывчивость, а объявленный пробел.
+
+**Вариант D:** тексты канонов (`AGENT_*.md`, `CODE_QUALITY_GATES.md`,
+`OKF_KNOWLEDGE_BUNDLE.md`, `stack_selftest.py`, `selftest_sizes.py`,
+`extract_payload.py`) лежат локально и в git не уезжают — `.git/info/exclude`.
+Механика (`scripts/**`, `delivery/**`, конфиги, workflow) коммитится: без коммита
+она не может отклонить.
+
+## Что нельзя делать в этом проекте
+
+- **Переключать провайдера Ahrefs в `live`.** Разработка идёт на `AHREFS_PROVIDER=fixture`:
+  записанные и синтетические ответы, без сети и без расхода квоты. Живой ключ жжёт
+  units заказчика — переключение решает человек.
+- **Класть клиентские документы в git.** ТЗ, план фаз, оценки, пороги и внутренние
+  разборы перечислены в `.git/info/exclude` и остаются локально. Проверка:
+  `python3 extract_payload.py --check-local .` — оба числа должны быть нулевыми.
+- **Писать `os.getenv` вне `src/ahrefs_cases/config/`.** Конфиг типизированный,
+  доступ только через `config.X`.
+- **Молча глотать ошибки.** Каждый `except` — либо лог с контекстом, либо `raise`.
+
+## Ориентиры
+
+| Что | Где |
+|---|---|
+| Документ реализации (архитектура, модель данных, экраны) | `docs/IMPLEMENTATION_V3.md` (локальный) |
+| Фазы Ф1–Ф9 с критериями готовности | `docs/PHASES_V3.md` (локальный) |
+| ТЗ заказчика и его ответы | `docs/SPEC_FROM_SHEET.md` (локальный) |
+| Экономия units — приёмы и обоснование | `docs/UNITS_ECONOMY.md` (локальный) |
+| Ahrefs API v3: endpoint'ы и стоимость | `docs/RESEARCH_AHREFS_API.md` |

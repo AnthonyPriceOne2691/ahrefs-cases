@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push:* --force-with-lease)",
+      "Bash(rm -rf /:*)",
+      "Bash(psql:*)",
+      "Bash(mysql:*)",
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Bash(AHREFS_PROVIDER=live:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(pip install:*)",
+      "Bash(npm install:*)",
+      "Bash(docker compose up:*)",
+      "WebFetch"
+    ]
+  }
+}
