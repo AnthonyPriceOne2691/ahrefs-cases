@@ -148,7 +148,8 @@ async def finish_run(session: AsyncSession, run: Run, *, error: str = "") -> Run
     run.units_actual = sum(item.units_actual for item in items)
     run.finished_at = datetime.now(UTC)
     run.error = error
-    run.status = _verdict(run, error=error)
+    aborted = sum(1 for outcome in by_project.values() if outcome is RunItemOutcome.SKIPPED_ABORTED)
+    run.status = _verdict(run, error=error, aborted=aborted)
     await session.flush()
     return run
 
@@ -173,15 +174,21 @@ def _fold_by_project(items: Sequence[RunItem]) -> dict[int | None, RunItemOutcom
     return folded
 
 
-def _verdict(run: Run, *, error: str) -> RunStatus:
+def _verdict(run: Run, *, error: str, aborted: int = 0) -> RunStatus:
     """`done`, `partial` или `failed` — три разных исхода, а не «успех/провал».
 
     Прогон, где половина доменов пропущена без данных, завершился успешно, но
     сказать «done» о нём нельзя: человек должен увидеть разницу до того, как
     начнёт собирать кейсы.
+
+    Невыполненные задачи (предохранитель, лимит времени) делают прогон
+    `partial` наравне с упавшими. Без этого прогон, где **ни одна** задача не
+    выполнялась, отчитывался `done` — поймано слабым утверждением в тесте
+    лимита времени: «done или partial» вместо конкретного ожидания и было
+    признаком, что поведение не продумано.
     """
     if error:
         return RunStatus.FAILED
-    if run.projects_failed:
+    if run.projects_failed or aborted:
         return RunStatus.PARTIAL
     return RunStatus.DONE

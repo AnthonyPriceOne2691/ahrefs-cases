@@ -259,6 +259,14 @@ async def _execute_tasks(
     """
     semaphore = asyncio.Semaphore(config.ahrefs.max_parallel)
     breaker = ConsecutiveFailureBreaker(limit=config.ahrefs.breaker_max_failures)
+    deadline = asyncio.get_running_loop().time() + config.ahrefs.run_timeout_sec
+    """Прогон обязан закончиться до дедлайна.
+
+    Не для красоты: реапер судит о смерти прогона по возрасту, и это верно
+    только пока живой прогон физически не может идти дольше своего лимита. В
+    CRM гарантию давал таймаут RQ-джобы, у нас до Ф5 очереди нет — значит
+    лимит держит сам прогон (Z1 в docs/FINDINGS.md).
+    """
 
     async def one(task: CollectTask) -> _TaskOutcome:
         """Одна задача под семафором.
@@ -276,6 +284,16 @@ async def _execute_tasks(
             if breaker.tripped:
                 return _TaskOutcome(
                     task=task, outcome=RunItemOutcome.SKIPPED_ABORTED, reason=breaker.reason()
+                )
+            if asyncio.get_running_loop().time() >= deadline:
+                return _TaskOutcome(
+                    task=task,
+                    outcome=RunItemOutcome.SKIPPED_ABORTED,
+                    reason=(
+                        f"прогон превысил лимит {config.ahrefs.run_timeout_sec} с и остановлен. "
+                        "Запрос по этому домену не делался; собранное сохранено, "
+                        "повторный запуск догрузит остаток."
+                    ),
                 )
             outcome = await _fetch_one(engine, task)
             breaker.record(ok=outcome.outcome is not RunItemOutcome.FAILED)

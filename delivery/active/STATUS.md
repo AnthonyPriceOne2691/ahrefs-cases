@@ -1,42 +1,39 @@
 # Active delivery status
 
-- **slug:** f3b-recalc-preview
+- **slug:** hotfix-reaper-kills-live-run
 - **stack:** delivery@1.88, cqg@2.32, okf@absent
-- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** M
-- **kind:** feature
-- **repro_test:** n/a reason=не bugfix
-- **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** tests/test_collect_run_timeout.py::test_reaper_threshold_must_exceed_run_timeout
+- **diagnosis:** delivery/active/diagnosis.md
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** pending — спека E1–E8 коммитится до кода
-- **human_ok_plan:** n/a reason=класс M
+- **human_ok_spec:** n/a reason=класс S, дефект найден расчётом и воспроизводится тестом
+- **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=файловых артефактов нет; PDF и ZIP — Ф4
+- **artifact_oracle:** n/a reason=файловых артефактов нет
 - **ci-oracles:** tooling
-- **worktree:** none reason=единственный исполнитель, прямые коммиты в main
-- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **worktree:** none reason=единственный исполнитель
+- **hooks:** claude
 - **blockers:** none
 - **waivers:** none
-  <!-- Цель поставки — уложиться в порог 800 без waiver: это первая поставка
-       по новому правилу (два-три модуля вместо половины фазы, урок L20). -->
-- **new_dependency:** none reason=пересчёт на существующих таблицах и правилах Ф3а
-- **runtime_paths:** none reason=пересчёт и предпросмотр не ходят в сеть; проверяется тестом
-- **model_surface:** n/a reason=текст кейса шаблонный; ось ⑤ придёт волной В3
+- **new_dependency:** none
+- **runtime_paths:** none reason=правка касается времени и конфига, не сети
+- **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** конфиг с `COLLECT_RUN_STALE_SEC` ≤ `COLLECT_RUN_TIMEOUT_SEC` не даёт процессу стартовать; прогон, упёршийся в лимит времени, закрывается `partial` с причиной, а не молча продолжает работу
+- **observe_until:** 2026-09-24
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
-## Первая поставка по новому правилу размера
+## Почему поставка вклинилась перед Ф3б
 
-Ф2б (2521 строка) и Ф3а (1584) прошли под waiver. Правило из `AGENTS.md`:
-единица поставки — два-три модуля. Здесь их два — `classify/recalc.py` и
-`classify/preview.py` — плюс две подкоманды CLI и тесты. Если и она выйдет за
-800, значит проблема не в размере фаз, а в самом пороге, и это будет видно
-на третьем случае подряд, а не по ощущению.
+Дефект Z1 из `docs/FINDINGS.md`: реапер добьёт живой прогон. Он не проявляется
+на фикстурах и не проявится до Ф7 — а к Ф7 он будет стоить платного прогона,
+убитого на середине. Ф3б (её спека уже в git, коммит 9990114) открывается
+сразу после.

@@ -98,12 +98,26 @@ class AhrefsSettings(Settings):
     непустым не завтра — месяца достаточно. Дыра найдена сверкой с CRM
     агентства, где то же лечится счётчиком пустых прогонов."""
 
-    run_stale_sec: int = Field(3600, ge=60, validation_alias="COLLECT_RUN_STALE_SEC")
+    run_timeout_sec: int = Field(14_400, ge=60, validation_alias="COLLECT_RUN_TIMEOUT_SEC")
+    """Жёсткий лимит длительности одного прогона (по умолчанию 4 часа).
+
+    Существует ради реапера. Тот судит о смерти по возрасту прогона, и это
+    работает, только если живой прогон **физически не может** идти дольше
+    порога. В CRM такую гарантию давал таймаут RQ-джобы; у нас очереди нет до
+    Ф5, поэтому лимит держит сам прогон.
+
+    Расчёт худшего случая шага 1: 100 доменов ÷ 3 параллельно × (60 с таймаут ×
+    3 попытки + 36 с backoff) = 120 минут. Четыре часа дают двукратный запас
+    и на шаг 2 (четыре endpoint'а по кандидатам)."""
+
+    run_stale_sec: int = Field(16_200, ge=60, validation_alias="COLLECT_RUN_STALE_SEC")
     """После скольких секунд прогон в `running` считается мёртвым.
 
-    Аналог жёсткого таймаута джобы из CRM (`run_reaper.py`): живой прогон
-    физически не идёт дольше, значит признак смерти — возраст, а не отсутствие
-    heartbeat'а. Поля `last_heartbeat` и миграции для этого не нужно."""
+    Обязан быть **строго больше** `run_timeout_sec` — иначе реапер добивает
+    работающий прогон: помечает его `failed`, освобождает резерв units, а
+    прогон продолжает писать в базу, не зная об этом. Инвариант проверяется
+    ниже и падает на старте, потому что подобрать несогласованные числа
+    молча — ровно то, как дефект и появился (Z1 в docs/FINDINGS.md)."""
 
     @field_validator("retry_backoff_sec", mode="before")
     @classmethod
@@ -117,6 +131,24 @@ class AhrefsSettings(Settings):
             parts = [p.strip() for p in value.split(",") if p.strip()]
             return tuple(float(p) for p in parts)
         return value
+
+    @model_validator(mode="after")
+    def _reaper_must_outlive_the_run(self) -> AhrefsSettings:
+        """Порог реапера строго больше лимита прогона — иначе отказ на старте.
+
+        Не предупреждение и не «по умолчанию нормально»: при нарушении сервис
+        убивает собственные платные прогоны на середине, и заметить это можно
+        только по недобранным данным.
+        """
+        if self.run_stale_sec <= self.run_timeout_sec:
+            message = (
+                f"COLLECT_RUN_STALE_SEC={self.run_stale_sec} должен быть строго больше "
+                f"COLLECT_RUN_TIMEOUT_SEC={self.run_timeout_sec}: иначе реапер пометит "
+                "работающий прогон мёртвым, освободит его резерв units, а прогон "
+                "продолжит писать в базу. Оставьте запас хотя бы в несколько минут."
+            )
+            raise ValueError(message)
+        return self
 
     @model_validator(mode="after")
     def _live_needs_key(self) -> AhrefsSettings:
