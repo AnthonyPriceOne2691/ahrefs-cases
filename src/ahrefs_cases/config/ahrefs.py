@@ -31,9 +31,7 @@ class AhrefsSettings(Settings):
 
     # --- экономия units (docs/UNITS_ECONOMY.md) ---
     units_min_left: int = Field(5000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
-    history_grouping: HistoryGrouping = Field(
-        "monthly", validation_alias="AHREFS_HISTORY_GROUPING"
-    )
+    history_grouping: HistoryGrouping = Field("monthly", validation_alias="AHREFS_HISTORY_GROUPING")
     max_history_months: int = Field(24, ge=1, le=60, validation_alias="AHREFS_MAX_HISTORY_MONTHS")
     collect_dr_history: bool = Field(False, validation_alias="AHREFS_COLLECT_DR_HISTORY")
     stage2_only_for_cases: bool = Field(True, validation_alias="AHREFS_STAGE2_ONLY_FOR_CASES")

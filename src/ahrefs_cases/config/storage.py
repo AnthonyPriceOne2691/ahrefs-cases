@@ -15,9 +15,7 @@ class StorageSettings(Settings):
     database_url: str = Field(_DEV_DSN, validation_alias="DATABASE_URL")
     redis_url: str = Field("redis://localhost:6379/0", validation_alias="REDIS_URL")
     queue_name: str = Field("cases", validation_alias="QUEUE_NAME")
-    worker_concurrency: int = Field(
-        1, ge=1, le=2, validation_alias="WORKER_CONCURRENCY"
-    )
+    worker_concurrency: int = Field(1, ge=1, le=2, validation_alias="WORKER_CONCURRENCY")
     """Прогонов одновременно. Верхняя граница 2 — не осторожность, а арифметика:
     параллельные прогоны делят одну квоту Ahrefs и ломают смету (см.
     docs/IMPLEMENTATION_V3.md §3)."""

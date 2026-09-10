@@ -17,10 +17,15 @@ PyJWT>=2.10
 [dev]
 pytest>=8.3
 pytest-asyncio>=0.24
+pytest-cov>=6.0
 hypothesis>=6.115
 ruff>=0.8
 mypy>=1.13
 greenlet>=3.1
+pre-commit>=4.0
+pip-audit>=2.7
+mutmut>=3.2
+import-linter>=2.1
 
 [export]
 jinja2>=3.1

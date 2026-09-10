@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
@@ -46,13 +47,24 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
             raise
 
 
+# Сколько итераций отдать циклу после закрытия пула. Закрытие транспорта asyncpg
+# ставится в цикл через `call_soon`, поэтому мгновенно после `dispose()` оно ещё
+# не выполнено: если цикл закрыть сразу (а `asyncio.run` так и делает), сокет
+# доживает до сборки мусора и всплывает `ResourceWarning: unclosed transport`
+# уже вне теста. Три итерации — с запасом на цепочку колбэков; проверено
+# повторными прогонами сьюта под `filterwarnings = ["error"]`.
+_TRANSPORT_DRAIN_ITERATIONS = 3
+
+
 async def dispose_engine() -> None:
-    """Закрыть пул и сбросить кэш. Нужен на shutdown и между тестами.
+    """Закрыть пул, дать транспорту закрыться и сбросить кэш.
 
     Порядок важен: сначала закрыть соединения, потом забыть движок. Наоборот —
     пул останется висеть без владельца.
     """
     if get_engine.cache_info().currsize:
         await get_engine().dispose()
+        for _ in range(_TRANSPORT_DRAIN_ITERATIONS):
+            await asyncio.sleep(0)
     get_sessionmaker.cache_clear()
     get_engine.cache_clear()

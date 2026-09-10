@@ -14,9 +14,7 @@ export function App() {
     <Container size="sm" py="xl">
       <Stack gap="lg">
         <Title order={1}>Ahrefs Cases</Title>
-        <Text c="dimmed">
-          Каркас. Сбор, классификация и кейсы приходят фазами Ф2–Ф4.
-        </Text>
+        <Text c="dimmed">Каркас. Сбор, классификация и кейсы приходят фазами Ф2–Ф4.</Text>
 
         <Paper className="glass" p="lg">
           <Stack gap="sm">

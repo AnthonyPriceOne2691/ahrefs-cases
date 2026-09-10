@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** f1-skeleton
-- **stack:** delivery@1.88, cqg@absent, okf@absent
+- **stack:** delivery@1.88, cqg@2.32, okf@absent
 - **class:** M
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
@@ -9,15 +9,19 @@
 - **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** deferred (reason=человек дал ход работе, спеку с примерами не подписывал, at=2026-09-10) — §2.2b; на handoff требуется yes
+- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека с примерами A1–A5 подписана
 - **human_ok_plan:** n/a reason=класс M
-- **shape-oracles:** weak — дёшево: ruff + mypy --strict ставятся волной В1 в конце этой фазы; ставить их врозь значит снимать baseline дважды
+- **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** n/a reason=проект пока ничего не собирает; PDF появится в Ф4
-- **ci-oracles:** weak
-  <!-- CI приезжает волной В1 в конце фазы. До этого Verifier приложит прогон в чистом клоне. -->
+- **ci-oracles:** tooling
+  <!-- Гейт мержа в репозитории (`scripts/merge_guard.sh` + pre-push hook + `needs:`
+       у downstream-джоб) — работает на любом тарифе. Серверной защиты ветки нет:
+       репозиторий публичный, значит правила ветки GitHub доступны бесплатно, но
+       включает их человек в UI (CQG §8.5.3). Незакрытый остаток до этого —
+       force-push и обход админом; назван в STACK-ACCEPTANCE, а не замолчан. -->
 - **worktree:** none reason=единственный исполнитель, main без защиты до В1
-- **hooks:** not-deployed
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **waivers:** none
 - **new_dependency:** fastapi reason=веб-слой по docs/IMPLEMENTATION_V3.md §2 by=agent:claude
@@ -35,3 +39,13 @@
 - **observe_signal:** A1–A5 из spec подтверждены прогоном; `alembic upgrade head` на чистой базе проходит в чистом клоне
 - **observe_until:** 2026-09-24
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
+
+## Волна В1 пройдена
+
+`stack-selftest: external (~/Documents/Prepare)` — вариант D: текстов канонов в
+репозитории нет по построению, шаг «Canon payload selftest» в CI невозможен.
+
+Адаптации объявлены в `scripts/lint/adapted.json`: правило `service-no-web`
+переписано под раскладку проекта (сервис-слоя `services/` здесь нет — ядро
+разложено по темам). С канонным фильтром гейт просматривал 0 файлов, то есть был
+зелёным, не просудив ничего.

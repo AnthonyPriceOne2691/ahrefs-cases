@@ -1,0 +1,7 @@
+{
+  "check_grep_gate.sh": {
+    "reason": "раскладка проекта: сервис-слой не называется services/ — ядро разложено по темам intake/collect/classify/cases/export/storage/config, и инвариант «ядро не знает про обвязку» относится к ним. С канонным FILTER гейт просматривал 0 файлов, то есть был зелёным, не просудив ничего",
+    "changed": "правило service-no-web: FILTER дополнен ветвью /ahrefs_cases/(intake|collect|classify|cases|export|storage|config)/; PATTERN дополнен starlette и rq (обвязка проекта — не только fastapi). Канонные ветви FILTER и PATTERN сохранены",
+    "kind": "adaptation"
+  }
+}

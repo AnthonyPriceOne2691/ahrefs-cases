@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,11 +11,20 @@ from ahrefs_cases.api.main import app
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app, raise_server_exceptions=False)
+def client() -> Iterator[TestClient]:
+    """TestClient как контекстный менеджер — это не стиль, а работа lifespan.
+
+    Без `with` startup и shutdown приложения не выполняются вовсе: движок базы
+    создаётся внутри цикла TestClient'а, а закрыть его наш `dispose_engine`
+    не успевает — цикл уже мёртв, транспорт asyncpg остаётся висеть и всплывает
+    `ResourceWarning` в следующем тесте. То есть shutdown приложения не был
+    покрыт ничем, и это нашёл строгий рантайм, а не ревью.
+    """
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        yield test_client
 
 
-def test_health_ok_with_database(client: TestClient, needs_db: None) -> None:  # noqa: ARG001
+def test_health_ok_with_database(client: TestClient, needs_db: None) -> None:
     """A2: при поднятой базе — 200, версия миграции и текущий провайдер."""
     response = client.get("/api/health")
 

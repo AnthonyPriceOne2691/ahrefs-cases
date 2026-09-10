@@ -31,7 +31,7 @@ async def _migration_revision() -> str | None:
         async with asyncio.timeout(_PROBE_TIMEOUT_SEC), engine.connect() as conn:
             result = await conn.execute(text("SELECT version_num FROM alembic_version"))
             return str(result.scalar_one())
-    except Exception as exc:  # noqa: BLE001 -- health обязан отвечать при любом отказе
+    except Exception as exc:
         # Тип исключения намеренно широкий: до базы можно не дойти и OSError'ом
         # (порт закрыт), и TimeoutError, и SQLAlchemyError. Молчания при этом нет —
         # причина уходит в лог и в тело ответа.

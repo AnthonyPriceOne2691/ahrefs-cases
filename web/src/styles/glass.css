@@ -21,9 +21,9 @@
 
   --accent: oklch(58% 0.19 285);
   --accent-soft: oklch(72% 0.12 285);
-  --mint: oklch(70% 0.14 165);      /* только «хороший» / «готово» */
+  --mint: oklch(70% 0.14 165); /* только «хороший» / «готово» */
   --amber-warm: oklch(76% 0.14 75); /* только «средний» / «нужно внимание» */
-  --rose-warm: oklch(64% 0.19 15);  /* только «плохой» / ошибка */
+  --rose-warm: oklch(64% 0.19 15); /* только «плохой» / ошибка */
 
   --radius-glass: 1.25rem;
   --blur-glass: 32px;
@@ -32,8 +32,7 @@
   --glass-fill-strong: rgb(255 255 255 / 0.72);
   --glass-fill-quiet: rgb(255 255 255 / 0.32);
   --glass-edge: rgb(255 255 255 / 0.7);
-  --glass-shadow:
-    0 1px 1px -0.5px rgb(30 25 60 / 0.08), 0 4px 8px -3px rgb(30 25 60 / 0.1),
+  --glass-shadow: 0 1px 1px -0.5px rgb(30 25 60 / 0.08), 0 4px 8px -3px rgb(30 25 60 / 0.1),
     0 20px 44px -20px rgb(30 25 60 / 0.28), 0 0 0 0.5px rgb(30 25 60 / 0.07);
   --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
 
@@ -46,8 +45,7 @@
   --status-amber-ink: oklch(48% 0.13 75);
   --status-rose-ink: oklch(48% 0.18 15);
 
-  --canvas:
-    radial-gradient(90% 90% at 10% 0%, oklch(84% 0.11 285) 0%, transparent 60%),
+  --canvas: radial-gradient(90% 90% at 10% 0%, oklch(84% 0.11 285) 0%, transparent 60%),
     radial-gradient(80% 80% at 95% 5%, oklch(86% 0.1 205) 0%, transparent 55%),
     radial-gradient(100% 100% at 70% 100%, oklch(88% 0.09 330) 0%, transparent 60%),
     radial-gradient(70% 70% at 25% 95%, oklch(90% 0.05 200) 0%, transparent 55%),
@@ -72,8 +70,7 @@
     --status-amber-ink: oklch(86% 0.12 75);
     --status-rose-ink: oklch(80% 0.14 15);
 
-    --canvas:
-      radial-gradient(90% 90% at 10% 0%, oklch(42% 0.14 285) 0%, transparent 60%),
+    --canvas: radial-gradient(90% 90% at 10% 0%, oklch(42% 0.14 285) 0%, transparent 60%),
       radial-gradient(80% 80% at 95% 5%, oklch(38% 0.12 205) 0%, transparent 55%),
       radial-gradient(100% 100% at 70% 100%, oklch(36% 0.12 330) 0%, transparent 60%),
       radial-gradient(70% 70% at 25% 95%, oklch(32% 0.07 205) 0%, transparent 55%),
@@ -127,7 +124,9 @@ body {
 .glassSlot {
   border: 1px solid transparent;
   border-radius: calc(var(--radius-glass) - 0.35rem);
-  transition: background 180ms ease, border-color 180ms ease;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
 }
 
 .glassSlot:hover {

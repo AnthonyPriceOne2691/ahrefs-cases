@@ -49,9 +49,7 @@ def _enum_types(url: str) -> list[str]:
     return asyncio.run(_query())
 
 
-def test_upgrade_downgrade_upgrade_cycle(
-    alembic_config: Config, needs_db: None  # noqa: ARG001
-) -> None:
+def test_upgrade_downgrade_upgrade_cycle(alembic_config: Config, needs_db: None) -> None:
     """A1: три шага подряд без ошибок, и после downgrade не остаётся ENUM-типов.
 
     Проверка типов здесь не педантизм: autogenerate создаёт их неявно и не

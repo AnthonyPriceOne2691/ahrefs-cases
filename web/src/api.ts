@@ -1,11 +1,11 @@
 /** Тонкий слой доступа к API. Адрес не хардкодится — ходим через прокси Vite. */
 
-export type HealthResponse = {
+export interface HealthResponse {
   status: 'ok' | 'unavailable';
   provider: string;
   migration?: string;
   reason?: string;
-};
+}
 
 export async function fetchHealth(): Promise<HealthResponse> {
   const response = await fetch('/api/health');

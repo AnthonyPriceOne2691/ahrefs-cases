@@ -49,9 +49,18 @@ def run_migrations_offline() -> None:
 async def _run_async() -> None:
     section = config.get_section(config.config_ini_section, {})
     engine = async_engine_from_config(section, prefix="sqlalchemy.")
-    async with engine.connect() as connection:
-        await connection.run_sync(_run_migrations)
-    await engine.dispose()
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(_run_migrations)
+    finally:
+        await engine.dispose()
+        # Отдать циклу одну итерацию, чтобы транспорт asyncpg успел закрыться.
+        # `dispose()` закрывает соединение, а закрытие транспорта asyncpg ставит
+        # в цикл `call_soon` — и `asyncio.run()` внутри alembic закрывает цикл
+        # раньше, чем колбэк выполнится. Наружу это вылезает `ResourceWarning:
+        # unclosed transport` при сборке мусора, то есть уже вне теста: обычный
+        # прогон его не замечал, поймал строгий рантайм (`filterwarnings=error`).
+        await asyncio.sleep(0)
 
 
 def run_migrations_online() -> None:

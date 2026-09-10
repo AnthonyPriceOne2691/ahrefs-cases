@@ -26,10 +26,18 @@ export = ["jinja2>=3.1", "weasyprint>=63.0"]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
     "hypothesis>=6.115",
     "ruff>=0.8",
     "mypy>=1.13",
     "greenlet>=3.1",
+    # Инструменты гейтов контура: без них гейт мягко пропускается и говорит об
+    # этом. Идут в манифест, а не устанавливаются командой мимо него — иначе
+    # окружение разработчика и CI расходятся молча.
+    "pre-commit>=4.0",
+    "pip-audit>=2.7",
+    "mutmut>=3.2",
+    "import-linter>=2.1",
 ]
 
 [build-system]
@@ -40,44 +48,114 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.ruff]
-line-length = 100
 target-version = "py312"
+line-length = 100
 src = ["src", "tests"]
-
-[tool.ruff.lint]
-# Набор под правила constitution: молчащий except запрещён, сложность ограничена.
-select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "TRY", "BLE", "S", "C90", "ARG", "PL"]
-ignore = [
-    "TRY003",   # длинные сообщения в исключениях — здесь это польза, а не шум
-    "PLR0913",  # число аргументов ограничено отдельным гейтом волны В1
+# Payload контура исключается из линтеров: это код, который проект не писал и
+# чинить не может — он приезжает перевендориванием, а переписанное форматтером
+# тело расходится со снимком, и доктор объявит адаптацию, которой не делали.
+extend-exclude = [
+    "migrations",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "scripts/lint",
+    "scripts/delivery_artifact.py",
+    "scripts/delivery_base.py",
+    "scripts/delivery_check.py",
+    "scripts/delivery_decisions.py",
+    "scripts/delivery_diff.py",
+    "scripts/delivery_evidence.py",
+    "scripts/delivery_history.py",
+    "scripts/delivery_journals.py",
+    "scripts/delivery_limits.py",
+    "scripts/delivery_metrics.py",
+    "scripts/delivery_risk.py",
+    "scripts/delivery_runtime.py",
+    "scripts/delivery_status.py",
 ]
 
-[tool.ruff.lint.per-file-ignores]
-# assert — инструмент теста, а не риск; сравнение с кодом ответа читается лучше
-# числом, чем константой; локальный импорт в тесте отделяет загрузку конфига от
-# импорта модуля теста.
-"tests/*" = ["S101", "PLR2004", "PLC0415"]
-"migrations/*" = ["E501", "INP001"]     # тексты миграций генерируются, длина строк не наша
+[tool.ruff.lint]
+# Набор канона (CQG Приложение B). Пять комплексити-правил лежат в ignore
+# намеренно: сложность судит гейт `complexity` со снимком-ратчетом, а не хук —
+# иначе снимок ни на что не влияет и pre-commit на легаси красный навсегда.
+select = ["E","W","F","I","N","UP","B","C4","C90","SIM","RUF","ASYNC","S","PT","RET","PIE","PL","TRY400","DTZ"]
+ignore = [
+    "E501",                 # длину разрулит форматтер
+    "S101",                 # assert разрешён
+    "S104",                 # bind 0.0.0.0 — в контейнере норма
+    "S607",                 # частичный путь: `git`/`npm` по имени штатно
+    "C901","PLR0911","PLR0912","PLR0913","PLR0915",  # сложность судит ГЕЙТ со снимком
+    "PLR2004",              # magic-value — шумно
+    "B008",                 # DI-объект как default аргумента (FastAPI Depends)
+    "RUF001","RUF002","RUF003",  # ambiguous unicode: комментарии проекта по-русски
+    "PLC0415",              # осознанный lazy-import паттерн
+]
+per-file-ignores = { "tests/**/*.py" = ["S","PLR2004","PLR0915","PLR0912","C901","PLC0415","B017","PT011","PT012","PT018","N806","N803","N802","E402","SIM117","PT006","E741","PLW0108","DTZ"] }
 
+# Пороги на уровне ФУНКЦИИ: плохой код живёт в функциях, а не в файлах —
+# функция на 400 строк внутри файла на 480 проходит file-length свободно.
 [tool.ruff.lint.mccabe]
 max-complexity = 10
 
+[tool.ruff.lint.pylint]
+max-args = 8
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
 [tool.mypy]
 python_version = "3.12"
-# Без плагина pydantic mypy считает поля с Field(default, ...) обязательными
-# аргументами конструктора и краснеет на каждом `Settings()` — 24 ошибки на
-# пустом каркасе. Плагин учит его читать модели так же, как их читает pydantic.
-plugins = ["pydantic.mypy"]
 strict = true
+warn_unreachable = true
+warn_return_any = true
+explicit_package_bases = true
+namespace_packages = true
+implicit_reexport = true
 mypy_path = "src"
 packages = ["ahrefs_cases"]
-warn_unreachable = true
-
-[[tool.mypy.overrides]]
-module = ["rq.*", "weasyprint.*"]
+exclude = ["migrations/", "tests/", ".venv/", "venv/", "scripts/"]
+# Без плагина pydantic mypy считает поля с Field(default, ...) обязательными
+# аргументами конструктора и краснеет на каждом `Settings()`.
+plugins = ["pydantic.mypy"]
 ignore_missing_imports = true
+follow_imports = "silent"
 
 [tool.pytest.ini_options]
+# `mutants/` исключён не для косметики: мутационный гейт оставляет там копию
+# tests/, и следующий pytest иначе не СОБИРАЕТСЯ (import file mismatch).
+# Список ДОПОЛНЯЕТ дефолты pytest, а не заменяет их: `norecursedirs` затирает
+# встроенный набор целиком, и hypothesis тогда предупреждает о пропуске
+# `.hypothesis` — а при `filterwarnings = ["error"]` это падение СБОРА, то есть
+# «проект сломан» вместо «упал тест». Поэтому дефолты выписаны явно.
+norecursedirs = [
+    "*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}",
+    "mutants", "web",
+]
+pythonpath = [".", "src"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+addopts = "--strict-markers --strict-config"
+xfail_strict = true
+# Каждое предупреждение = падение теста. Исключения — поштучно и с причиной:
+# это тот же ратчет, список только сокращается.
+filterwarnings = [
+    "error",
+    # Апстрим starlette: их TestClient предупреждает на ИМПОРТЕ, что хочет httpx2.
+    # Наш код тут ни при чём, а падает сбор тестов целиком. Форма трёхполевая —
+    # четвёртое поле (модуль) для предупреждений на импорте не срабатывает
+    # никогда: контекстный модуль фильтра это импортирующий файл, а не библиотека.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:Warning",
+    # Апстрим anyio: starlette.testclient обращается к устаревшему алиасу
+    # `anyio.abc.BlockingPortal` при импорте. Тоже не наш код и тоже падение сбора.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
+
+# Область мутационного гейта: имя пакета относительно этого файла.
+[tool.mutmut]
+paths_to_mutate = ["src/ahrefs_cases"]
