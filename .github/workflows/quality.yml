@@ -215,6 +215,15 @@ jobs:
           MIN_PCT: "70"
         run: bash scripts/lint/check_diff_coverage.sh
 
+      # Гейт печатает только счётчик, поэтому рядом стоит информационный шаг:
+      # ставить waiver на неназванные уязвимости нельзя, а список нужен именно
+      # из CI — локально окружение другое (питон и разрешение версий).
+      - name: Vulnerable dependencies (список, информационно)
+        continue-on-error: true
+        run: |
+          .venv/bin/pip-audit --progress-spinner off --format columns || true
+          if [ -d web ]; then (cd web && npm audit --audit-level=high || true); fi
+
       - name: Vulnerable dependencies
         if: always()
         run: bash scripts/lint/check_deps_audit.sh
