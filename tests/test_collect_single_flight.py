@@ -76,7 +76,7 @@ async def test_different_domains_are_not_blocked() -> None:
 
 
 async def test_different_windows_are_not_merged() -> None:
-    """Разные `date_from` — разные данные, склеивать нельзя.
+    """C4: разные `date_from` — разные данные, склеивать нельзя.
 
     Один прогон идёт инкрементально, другой с `--refresh`: выдать второму ответ
     первого значило бы молча отдать не те данные, и заметить это было бы
@@ -96,7 +96,7 @@ async def test_different_windows_are_not_merged() -> None:
 
 
 async def test_failed_request_does_not_lock_the_domain() -> None:
-    """Упавший запрос не должен сделать домен неопрашиваемым.
+    """C4: упавший запрос не должен сделать домен неопрашиваемым.
 
     Ключ снимается в `finally`: иначе одна ошибка блокировала бы домен до
     перезапуска процесса, и это выглядело бы как «Ahrefs не отвечает по
@@ -128,7 +128,7 @@ async def test_failed_request_does_not_lock_the_domain() -> None:
 
 
 async def test_source_is_passed_through() -> None:
-    """Обёртка не подменяет источник данных: точки помечаются как у обёрнутого."""
+    """C4: обёртка не подменяет источник данных — точки помечаются как у обёрнутого."""
     provider = SingleFlightProvider(AhrefsFixture())
 
     assert provider.source is MetricSource.FIXTURE

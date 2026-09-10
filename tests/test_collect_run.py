@@ -184,7 +184,7 @@ async def test_second_run_ledger_is_all_cached(db_session: AsyncSession, tmp_pat
 async def test_refresh_rewrites_points_without_duplicating(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Принудительное обновление снова платит — и не удваивает точки.
+    """C18: принудительное обновление снова платит — и не удваивает точки.
 
     Инвариант `(project, metric, date, source)` проверяется именно здесь: при
     обычном втором прогоне запись не происходит вовсе, и `ON CONFLICT` остался

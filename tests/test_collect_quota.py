@@ -120,7 +120,7 @@ async def test_unknown_and_not_enough_are_different_verdicts() -> None:
 
 
 async def test_soft_floor_keeps_a_reserve(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Мягкий стоп: прогон не съедает квоту до нуля.
+    """C6: мягкий стоп — прогон не съедает квоту до нуля.
 
     Заказчику нужен запас на срочный ручной запрос — иначе сервис исправно
     работает и при этом блокирует работу людей.
@@ -156,7 +156,7 @@ async def test_reserve_is_visible_to_the_next_estimate(db_session: AsyncSession)
 
 
 async def test_finished_run_releases_its_reserve(db_session: AsyncSession) -> None:
-    """Резерв снимается сменой статуса, а не компенсирующей строкой.
+    """C8: резерв снимается сменой статуса, а не компенсирующей строкой.
 
     Два способа сказать одно и то же разошлись бы на первом прогоне, упавшем
     в середине: строка есть, компенсации нет, квота занята навсегда.

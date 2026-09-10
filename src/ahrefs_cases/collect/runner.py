@@ -33,7 +33,7 @@ from ahrefs_cases.collect.budget import (
     run_spend,
 )
 from ahrefs_cases.collect.factory import build_provider
-from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan
+from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan, build_stage2_plan
 from ahrefs_cases.collect.provider import AhrefsProvider, HistoryResult
 from ahrefs_cases.collect.quota import FixtureQuota, QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
@@ -77,9 +77,13 @@ class RunReport:
     число, потому что это не «упало», а «не спрашивали» — и повторный прогон
     по ним обязателен."""
 
-    points_written: int
-    units_spent: int
-    units_estimated: int
+    tasks_total: int = 0
+    """Задач в прогоне: на шаге 2 их вчетверо больше, чем проектов. Отдельное
+    число, потому что «проектов 3, собрано 12» человеку показывать нельзя."""
+
+    points_written: int = 0
+    units_spent: int = 0
+    units_estimated: int = 0
     """Смета до старта. Хранится рядом с фактом: расхождение между ними —
     единственный способ узнать, что модель стоимости врёт, до Ф7."""
 
@@ -95,6 +99,7 @@ class RunReport:
             f"проектов: {self.projects_total} "
             f"(собрано {self.projects_ok}, пропущено {self.projects_skipped}, "
             f"упало {self.projects_failed}, не выполнено {self.projects_aborted})",
+            f"задач: {self.tasks_total}",
             f"точек записано: {self.points_written}",
             f"запросов: сделано {self.requests_made}, сэкономлено кэшем {self.requests_saved}",
             f"units: смета {self.units_estimated}, потрачено {self.units_spent}",
@@ -161,9 +166,11 @@ async def _execute_run(
     now: date | None,
     refresh: bool,
     quota: QuotaSource | None,
+    stage: int = 1,
 ) -> RunReport:
     """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
-    plan = await build_stage1_plan(
+    build = build_stage1_plan if stage == 1 else build_stage2_plan
+    plan = await build(
         session,
         projects,
         source=engine.source,
@@ -224,6 +231,7 @@ async def _execute_run(
         projects_ok=run.projects_ok,
         projects_skipped=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_NO_DATA),
         projects_aborted=await count_outcome(session, run.id, RunItemOutcome.SKIPPED_ABORTED),
+        tasks_total=len(plan.tasks) + len(plan.cached),
         projects_failed=run.projects_failed,
         points_written=points,
         units_spent=await run_spend(session, run.id),
@@ -304,6 +312,49 @@ async def _store_outcome(session: AsyncSession, run: Run, item: _TaskOutcome) ->
     )
     await _apply_project_status(session, item)
     return points
+
+
+async def collect_stage2(
+    session: AsyncSession,
+    project_ids: Sequence[int],
+    provider: AhrefsProvider | None = None,
+    *,
+    now: date | None = None,
+    refresh: bool = False,
+    quota: QuotaSource | None = None,
+) -> RunReport:
+    """Шаг 2 воронки: дорогие метрики только по переданным проектам.
+
+    Список кандидатов приходит **снаружи** — от `funnel.preliminary_candidates`,
+    а с Ф3 от классификации. Здесь механизм, а не критерий: правило отбора,
+    оказавшись и тут, и там, разошлось бы при первой же правке порогов.
+    """
+    engine = provider or build_provider()
+    await reap_stale_runs(session)
+    user = await system_user(session)
+    projects = list(
+        (await session.execute(select(Project).where(Project.id.in_(list(project_ids)))))
+        .scalars()
+        .all()
+    )
+    run = await open_run(session, started_by=user.id, projects_total=len(projects))
+    await session.commit()
+
+    try:
+        return await _execute_run(
+            session,
+            engine,
+            run,
+            projects,
+            now=now,
+            refresh=refresh,
+            quota=quota,
+            stage=2,
+        )
+    except Exception as exc:
+        logger.exception("collect_stage2_crashed", extra={"run_id": run.id})
+        await _fail_run(session, run, exc)
+        raise
 
 
 async def collect_all(

@@ -21,8 +21,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from sqlalchemy import select
+
 from ahrefs_cases import config
-from ahrefs_cases.collect.runner import collect_all
+from ahrefs_cases.collect.funnel import preliminary_candidates
+from ahrefs_cases.collect.runner import collect_all, collect_stage2
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
     UnknownSourceError,
@@ -30,6 +33,8 @@ from ahrefs_cases.intake.accept import (
     read_source,
 )
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError
+from ahrefs_cases.storage._enums import MetricSource
+from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 
 _SOURCE_ERRORS = (SourceNotFoundError, UnknownSourceError, SheetLinkError, SheetAccessError)
@@ -66,6 +71,33 @@ async def _collect(*, refresh: bool = False) -> int:
     return 0 if report.projects_ok else 1
 
 
+async def _stage2(*, refresh: bool = False) -> int:
+    """Шаг 2 воронки по предварительным кандидатам.
+
+    Кандидатов считает `funnel.preliminary_candidates` — грубый префильтр по
+    росту трафика. С Ф3 сюда придёт результат классификации, и команда
+    останется той же.
+    """
+    async with get_sessionmaker()() as session:
+        projects = (await session.execute(select(Project))).scalars().all()
+        candidates = await preliminary_candidates(
+            session, [project.id for project in projects], source=config_source()
+        )
+        if not candidates:
+            print("кандидатов нет: шаг 2 не нужен — за «плохих» дорогие метрики не платятся")
+            return 0
+        print(f"кандидатов: {len(candidates)} из {len(projects)}")
+        report = await collect_stage2(session, candidates, refresh=refresh)
+        await session.commit()
+    print("\n".join(report.as_lines()))
+    return 0 if report.projects_ok else 1
+
+
+def config_source() -> MetricSource:
+    """Каким источником помечены точки текущего режима."""
+    return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
+
+
 async def _main(args: argparse.Namespace) -> int:
     """Разбор команды. Наружу не выходит ни одна необработанная ошибка.
 
@@ -80,6 +112,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _intake(args.source)
         if args.command == "collect":
             return await _collect(refresh=args.refresh)
+        if args.command == "stage2":
+            return await _stage2(refresh=args.refresh)
         code = await _intake(args.source)
         return code or await _collect(refresh=args.refresh)
     except KeyboardInterrupt:
@@ -108,10 +142,13 @@ def main() -> int:
     intake_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
     collect_parser = sub.add_parser("collect", help="собрать историю по проектам в базе")
+    stage2_parser = sub.add_parser(
+        "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
+    )
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
-    for parser_with_refresh in (collect_parser, all_parser):
+    for parser_with_refresh in (collect_parser, stage2_parser, all_parser):
         parser_with_refresh.add_argument(
             "--refresh",
             action="store_true",

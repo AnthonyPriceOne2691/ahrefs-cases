@@ -19,7 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.collect import cache
-from ahrefs_cases.collect.endpoints import STAGE1_SPECS, EndpointSpec
+from ahrefs_cases.collect.endpoints import (
+    DOMAIN_RATING_HISTORY,
+    STAGE1_SPECS,
+    STAGE2_SPECS,
+    EndpointSpec,
+)
 from ahrefs_cases.collect.provider import HistoryRequest
 from ahrefs_cases.storage._enums import MetricSource
 from ahrefs_cases.storage.models.project import Project
@@ -88,7 +93,55 @@ async def build_stage1_plan(
     now: date,
     refresh: bool = False,
 ) -> CollectPlan:
-    """План шага 1 с учётом того, что уже куплено.
+    """План шага 1: `metrics-history` всем проектам списка."""
+    return await build_plan(
+        session, projects, STAGE1_SPECS, source=source, now=now, refresh=refresh
+    )
+
+
+def stage2_specs() -> tuple[EndpointSpec, ...]:
+    """Endpoint'ы шага 2 с учётом флага DR.
+
+    `domain-rating-history` под флагом не по привередливости: DR приятно
+    показать в кейсе, но группу он не определяет, а стоит как полноценный
+    запрос — то есть это чистая надбавка к цене прогона.
+    """
+    return tuple(
+        spec
+        for spec in STAGE2_SPECS
+        if spec is not DOMAIN_RATING_HISTORY or config.ahrefs.collect_dr_history
+    )
+
+
+async def build_stage2_plan(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    *,
+    source: MetricSource,
+    now: date,
+    refresh: bool = False,
+) -> CollectPlan:
+    """План шага 2: дорогие метрики только по переданным проектам.
+
+    Кто попал в список, решает вызывающий (`funnel.preliminary_candidates`, а
+    с Ф3 — классификация). Планировщик не выбирает кандидатов сам: иначе
+    правило отбора оказалось бы в двух местах и разошлось бы.
+    """
+    return await build_plan(
+        session, projects, stage2_specs(), source=source, now=now, refresh=refresh
+    )
+
+
+async def build_plan(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    specs: Sequence[EndpointSpec],
+    *,
+    source: MetricSource,
+    now: date,
+    refresh: bool = False,
+) -> CollectPlan:
+    """План по набору endpoint'ов с учётом того, что уже куплено.
 
     `refresh=True` игнорирует кэш целиком — на случай, когда Ahrefs пересчитал
     историю задним числом. По умолчанию выключен: иначе экономия исчезает от
@@ -97,7 +150,7 @@ async def build_stage1_plan(
     tasks: list[CollectTask] = []
     cached: list[CachedTask] = []
     for project in projects:
-        for spec in STAGE1_SPECS:
+        for spec in specs:
             request = history_request(project)
             skip_reason = await _skip_reason(session, project, refresh=refresh)
             if skip_reason is not None:

@@ -97,7 +97,7 @@ def test_current_month_within_ttl_is_not_refetched() -> None:
 
 
 def test_freshness_is_measured_in_hours() -> None:
-    """TTL считается от `fetched_at`, а не от даты точки."""
+    """C3: TTL считается от `fetched_at`, а не от даты точки."""
     now = datetime(2026, 9, 15, 12, 0, tzinfo=UTC)
 
     assert is_fresh(now - timedelta(hours=1), now) is True
@@ -106,7 +106,7 @@ def test_freshness_is_measured_in_hours() -> None:
 
 
 def test_window_from_wins_over_older_increment() -> None:
-    """Инкремент не уводит запрос левее окна проекта.
+    """C2: инкремент не уводит запрос левее окна проекта.
 
     Иначе проект с длинной историей в базе и коротким периодом работ
     докупал бы месяцы, которые кейсу не нужны, — и платил за них.
@@ -151,7 +151,7 @@ async def test_coverage_reads_what_is_in_the_database(db_session: AsyncSession) 
 
 
 async def test_coverage_takes_the_weakest_metric(db_session: AsyncSession) -> None:
-    """Покрытие — минимум по метрикам, а не максимум.
+    """C2: покрытие — минимум по метрикам, а не максимум.
 
     `org_traffic` собран по май, `org_cost` по апрель: докупать надо с апреля.
     Максимум оставил бы `org_cost` без мая навсегда, и дыра выглядела бы как
@@ -186,7 +186,7 @@ async def test_coverage_takes_the_weakest_metric(db_session: AsyncSession) -> No
 
 
 async def test_missing_metric_means_nothing_is_covered(db_session: AsyncSession) -> None:
-    """Нет хотя бы одной метрики — серия не собрана.
+    """C2: нет хотя бы одной метрики — серия не собрана.
 
     Иначе `org_cost`, которого нет вовсе, никогда бы и не появился: инкремент
     считался бы от `org_traffic` и пропускал бы всю историю второй метрики.
@@ -210,7 +210,7 @@ async def test_missing_metric_means_nothing_is_covered(db_session: AsyncSession)
 
 
 async def test_source_separates_fixture_from_live(db_session: AsyncSession) -> None:
-    """Синтетика не считается покрытием живых данных.
+    """C2: синтетика не считается покрытием живых данных.
 
     Иначе переключение на живой ключ в Ф7 «увидело» бы историю собранной и не
     купило бы ничего — сервис молча показывал бы заказчику синтетику.

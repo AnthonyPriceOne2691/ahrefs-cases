@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -139,14 +140,37 @@ async def finish_run(session: AsyncSession, run: Run, *, error: str = "") -> Run
     середине — и расхождение обнаруживается на экране расхода, где уже поздно.
     """
     items = (await session.execute(select(RunItem).where(RunItem.run_id == run.id))).scalars().all()
-    run.projects_ok = sum(1 for item in items if item.outcome is RunItemOutcome.OK)
-    run.projects_failed = sum(1 for item in items if item.outcome is RunItemOutcome.FAILED)
+    by_project = _fold_by_project(items)
+    run.projects_ok = sum(1 for outcome in by_project.values() if outcome is RunItemOutcome.OK)
+    run.projects_failed = sum(
+        1 for outcome in by_project.values() if outcome is RunItemOutcome.FAILED
+    )
     run.units_actual = sum(item.units_actual for item in items)
     run.finished_at = datetime.now(UTC)
     run.error = error
     run.status = _verdict(run, error=error)
     await session.flush()
     return run
+
+
+def _fold_by_project(items: Sequence[RunItem]) -> dict[int | None, RunItemOutcome]:
+    """Исход **проекта**, а не задачи.
+
+    На шаге 2 у одного проекта четыре запроса, и подсчёт по задачам давал в
+    отчёте «проектов 3, собрано 12» — число, которое нельзя показать человеку.
+    Правило свёртки: одна упавшая задача делает проект упавшим (данные кейса
+    неполны), иначе достаточно одной успешной.
+    """
+    folded: dict[int | None, RunItemOutcome] = {}
+    for item in items:
+        current = folded.get(item.project_id)
+        if current is RunItemOutcome.FAILED:
+            continue
+        if item.outcome is RunItemOutcome.FAILED or current is None:
+            folded[item.project_id] = item.outcome
+        elif current is not RunItemOutcome.OK and item.outcome is RunItemOutcome.OK:
+            folded[item.project_id] = RunItemOutcome.OK
+    return folded
 
 
 def _verdict(run: Run, *, error: str) -> RunStatus:
