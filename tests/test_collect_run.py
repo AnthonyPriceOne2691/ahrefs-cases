@@ -10,6 +10,7 @@ B10 (журнал units), B11 (пустая история — пропуск, �
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -33,6 +34,9 @@ COLUMNS = (
     "work_volume,client,owner,publishable,target_mode,notes"
 )
 DOMAINS = 100
+NOW = date(2026, 9, 15)
+"""Граница закрытого месяца передаётся явно: период работ в списке кончается
+2026-06-30, значит всё окно закрыто и кэш обязан срабатывать целиком."""
 
 
 @pytest.fixture(autouse=True)
@@ -123,22 +127,64 @@ async def test_short_history_is_marked_not_dropped(
     assert "short_history" in item.reason
 
 
-async def test_repeat_run_updates_points_not_duplicates(
-    db_session: AsyncSession, tmp_path: Path
-) -> None:
-    """B21: повторный прогон переписывает точки, а не удваивает их.
+async def test_second_run_asks_nothing(db_session: AsyncSession, tmp_path: Path) -> None:
+    """C1: второй прогон по тому же списку не делает ни одного запроса.
 
-    Это ещё не экономия Ф2б (запросы всё ещё делаются), но инвариант
-    `(project, metric, date, source)`, на котором она будет стоять, обязан
-    держаться уже сейчас — иначе кэш строился бы на дублирующихся строках.
+    Считаются оба прогона, а не только второй: «ноль запросов» у одного лишь
+    второго прогона одинаково хорошо доказывает и работающий кэш, и сломанный
+    сбор. Первый обязан сделать свой запрос, второй — не сделать ни одного.
     """
     await _load(db_session, tmp_path, ["d1.example.com"])
-    first = await collect_all(db_session, AhrefsFixture())
 
-    second = await collect_all(db_session, AhrefsFixture())
+    first = await collect_all(db_session, AhrefsFixture(), now=NOW)
+    second = await collect_all(db_session, AhrefsFixture(), now=NOW)
 
+    assert (first.requests_made, first.requests_saved) == (1, 0)
+    assert (second.requests_made, second.requests_saved) == (0, 1)
+    assert second.units_spent == 0
     total = (await db_session.execute(select(func.count()).select_from(MetricPoint))).scalar_one()
-    assert first.points_written == second.points_written == total
+    assert total == first.points_written
+
+
+async def test_second_run_ledger_is_all_cached(db_session: AsyncSession, tmp_path: Path) -> None:
+    """C10: экономия предъявлена журналом, а не отсутствием строк.
+
+    Прогон без единой строки в `UnitsLedger` неотличим от прогона, который не
+    состоялся. Строки `kind=cached` и есть ответ на вопрос «во что обошёлся
+    второй запуск».
+    """
+    await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(5)])
+    await collect_all(db_session, AhrefsFixture(), now=NOW)
+
+    second = await collect_all(db_session, AhrefsFixture(), now=NOW)
+
+    rows = (
+        (await db_session.execute(select(UnitsLedger).where(UnitsLedger.run_id == second.run_id)))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 5
+    assert {row.kind for row in rows} == {LedgerKind.CACHED}
+    assert second.requests_saved == 5
+
+
+async def test_refresh_rewrites_points_without_duplicating(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """Принудительное обновление снова платит — и не удваивает точки.
+
+    Инвариант `(project, metric, date, source)` проверяется именно здесь: при
+    обычном втором прогоне запись не происходит вовсе, и `ON CONFLICT` остался
+    бы непроверенным ровно с той поставки, где на нём стоит вся экономия.
+    """
+    await _load(db_session, tmp_path, ["d1.example.com"])
+    first = await collect_all(db_session, AhrefsFixture(), now=NOW)
+
+    forced = await collect_all(db_session, AhrefsFixture(), now=NOW, refresh=True)
+
+    assert forced.requests_made == 1
+    total = (await db_session.execute(select(func.count()).select_from(MetricPoint))).scalar_one()
+    assert total == first.points_written == forced.points_written
 
 
 async def test_project_status_follows_collection(db_session: AsyncSession, tmp_path: Path) -> None:

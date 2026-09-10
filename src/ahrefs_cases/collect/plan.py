@@ -1,24 +1,27 @@
-"""План сбора: какие запросы к каким доменам.
+"""План сбора: какие запросы к каким доменам — и каких запросов не будет.
 
-Ф2а планирует **шаг 1** воронки — `metrics-history` всем проектам. Шаг 2
-(`keywords-history`, `refdomains-history`, срезы) приходит в Ф2б: отбирать
-кандидатов нечем, пока нет предварительной группы, а платить за дорогие метрики
-по «плохим» проектам — ровно то, чего воронка избегает.
+Планировщик отвечает на два вопроса сразу: что спросить у Ahrefs и что уже
+куплено. Второе — не оптимизация внутри исполнителя, а часть плана: смета
+считается до старта, и она обязана видеть кэш (пример C5).
 
-Границы периода запроса считаются здесь, а не в исполнителе: это правило
-предметной области («сколько истории нужно кейсу»), и проверять его надо без
-базы и без провайдера.
+Границы периода — чистые функции без базы и провайдера: это правило предметной
+области («сколько истории нужно кейсу»). Чтение того, что уже собрано, живёт в
+`build_stage1_plan`, и это единственное место плана, которому нужна сессия.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ahrefs_cases import config
+from ahrefs_cases.collect import cache
 from ahrefs_cases.collect.endpoints import STAGE1_SPECS, EndpointSpec
 from ahrefs_cases.collect.provider import HistoryRequest
+from ahrefs_cases.storage._enums import MetricSource
 from ahrefs_cases.storage.models.project import Project
 
 
@@ -32,8 +35,39 @@ class CollectTask:
     request: HistoryRequest
 
 
+@dataclass(frozen=True, slots=True)
+class CachedTask:
+    """Запрос, которого не будет: всё нужное уже в базе.
+
+    Хранится наравне с задачами, потому что это предъявляемая экономия: строка
+    `kind=cached` в журнале и число «запросов сэкономлено» в отчёте берутся
+    отсюда. Молчаливый пропуск выглядел бы как «прогон ничего не делал».
+    """
+
+    project_id: int
+    domain: str
+    spec: EndpointSpec
+    reason: str = "вся история уже собрана"
+
+
+@dataclass(frozen=True, slots=True)
+class CollectPlan:
+    """Что будет запрошено и что сэкономлено."""
+
+    tasks: list[CollectTask]
+    cached: list[CachedTask]
+
+    def estimated_units(self) -> int:
+        """Смета: только по задачам, которые действительно уйдут в Ahrefs."""
+        return sum(task.spec.estimate_units() for task in self.tasks)
+
+
 def plan_stage1(projects: Sequence[Project]) -> list[CollectTask]:
-    """Задачи шага 1 — по одной на проект."""
+    """Задачи шага 1 без учёта кэша — полный проход по проектам.
+
+    Остаётся отдельной функцией: она чистая и ею меряется «сколько стоил бы
+    прогон без экономии» — то самое число, с которым сравнивают смету.
+    """
     return [
         CollectTask(
             project_id=project.id,
@@ -44,6 +78,64 @@ def plan_stage1(projects: Sequence[Project]) -> list[CollectTask]:
         for project in projects
         for spec in STAGE1_SPECS
     ]
+
+
+async def build_stage1_plan(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    *,
+    source: MetricSource,
+    now: date,
+    refresh: bool = False,
+) -> CollectPlan:
+    """План шага 1 с учётом того, что уже куплено.
+
+    `refresh=True` игнорирует кэш целиком — на случай, когда Ahrefs пересчитал
+    историю задним числом. По умолчанию выключен: иначе экономия исчезает от
+    одного забытого флага.
+    """
+    tasks: list[CollectTask] = []
+    cached: list[CachedTask] = []
+    for project in projects:
+        for spec in STAGE1_SPECS:
+            request = history_request(project)
+            date_from = await _incremental_from(
+                session, project, spec, request, source=source, now=now, refresh=refresh
+            )
+            if date_from is None:
+                cached.append(CachedTask(project_id=project.id, domain=project.domain, spec=spec))
+                continue
+            tasks.append(
+                CollectTask(
+                    project_id=project.id,
+                    domain=project.domain,
+                    spec=spec,
+                    request=replace(request, date_from=date_from),
+                )
+            )
+    return CollectPlan(tasks=tasks, cached=cached)
+
+
+async def _incremental_from(
+    session: AsyncSession,
+    project: Project,
+    spec: EndpointSpec,
+    request: HistoryRequest,
+    *,
+    source: MetricSource,
+    now: date,
+    refresh: bool,
+) -> date | None:
+    if refresh:
+        return request.date_from
+    known = await cache.coverage(session, project.id, tuple(spec.metrics.values()), source)
+    return cache.next_date_from(
+        known,
+        window_from=request.date_from,
+        window_to=request.date_to or project.period_end,
+        now=now,
+        fresh=cache.is_fresh(known.fetched_at),
+    )
 
 
 def history_request(project: Project) -> HistoryRequest:

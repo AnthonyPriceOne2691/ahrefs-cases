@@ -34,6 +34,35 @@ async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult
     )
 
 
+async def record_cached(session: AsyncSession, run_id: int, endpoint: str, target: str) -> None:
+    """Записать запрос, которого не было: цена 0, вид `cached`.
+
+    Строка нужна не для бухгалтерии — экономия обязана быть **предъявляемой**.
+    Заказчик меряет сервис «стоимостью запуска на 100 URL»: без этих строк
+    второй прогон выглядел бы как прогон, который ничего не делал, и объяснить
+    разницу в счёте было бы нечем.
+    """
+    session.add(
+        UnitsLedger(
+            run_id=run_id,
+            kind=LedgerKind.CACHED,
+            endpoint=endpoint,
+            target=target,
+            units_estimated=0,
+            units_actual=0,
+            rows=0,
+        )
+    )
+
+
+async def run_saved(session: AsyncSession, run_id: int) -> int:
+    """Сколько запросов прогон **не** сделал благодаря кэшу."""
+    stmt = select(func.count()).where(
+        UnitsLedger.run_id == run_id, UnitsLedger.kind == LedgerKind.CACHED
+    )
+    return int((await session.execute(stmt)).scalar_one())
+
+
 async def run_spend(session: AsyncSession, run_id: int) -> int:
     """Сколько units стоил прогон по журналу.
 

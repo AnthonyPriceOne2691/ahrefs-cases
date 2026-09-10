@@ -42,6 +42,24 @@ class AhrefsSettings(Settings):
     units_min_left: int = Field(5000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
     history_grouping: HistoryGrouping = Field("monthly", validation_alias="AHREFS_HISTORY_GROUPING")
     max_history_months: int = Field(24, ge=1, le=60, validation_alias="AHREFS_MAX_HISTORY_MONTHS")
+    current_month_ttl_hours: int = Field(
+        24, ge=0, le=720, validation_alias="AHREFS_CURRENT_MONTH_TTL_HOURS"
+    )
+    """Как долго текущий (незакрытый) месяц считается свежим.
+
+    Закрытый месяц не меняется никогда, и TTL по времени для него бессмыслен.
+    Текущий — меняется, но не ежеминутно: без TTL два прогона в один день
+    платили бы за него дважды, а шесть сотрудников из четырёх отделов запускают
+    прогоны в один день регулярно."""
+
+    stage2_min_growth: float = Field(
+        1.1, ge=1.0, le=10.0, validation_alias="AHREFS_STAGE2_MIN_GROWTH"
+    )
+    """Порог предварительного отбора кандидатов шага 2 (во сколько раз вырос
+    трафик). Это НЕ классификация: группу с объяснением даёт Ф3 по порогам
+    Приложения А и переопределяет отбор. Здесь только «стоит ли платить за
+    дорогие метрики»."""
+
     history_lead_months: int = Field(3, ge=0, le=12, validation_alias="AHREFS_HISTORY_LEAD_MONTHS")
     """Сколько месяцев истории брать ДО старта работ. Нужны точке А (среднее по
     окну вокруг границы периода) и baseline'у Ф3. По нашей модели стоимости цена

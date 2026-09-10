@@ -8,10 +8,10 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** pending — спека с примерами C1–C10 написана и закоммичена ДО кода (урок Ф2а: порядок должен быть виден в истории)
+- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека C1–C10 подписана; закоммичена отдельным коммитом 25ce154 ДО первой строки кода, порядок виден в истории
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present

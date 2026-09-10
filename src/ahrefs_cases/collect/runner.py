@@ -15,15 +15,16 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import AhrefsHTTPError, AhrefsUnavailableError
-from ahrefs_cases.collect.budget import record_spend, run_spend
+from ahrefs_cases.collect.budget import record_cached, record_spend, run_saved, run_spend
 from ahrefs_cases.collect.factory import build_provider
-from ahrefs_cases.collect.plan import CollectTask, plan_stage1
+from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan
 from ahrefs_cases.collect.provider import AhrefsProvider, HistoryResult
 from ahrefs_cases.collect.run_journal import add_item, finish_run, open_run, system_user
 from ahrefs_cases.collect.series import store_history
@@ -53,6 +54,10 @@ class RunReport:
     projects_failed: int
     points_written: int
     units_spent: int
+    requests_made: int
+    requests_saved: int
+    """Сколько запросов сделано и сколько не понадобилось. Два числа, а не одно:
+    «сделано 0» без «сэкономлено 100» читается как сломанный прогон."""
 
     def as_lines(self) -> list[str]:
         return [
@@ -61,6 +66,7 @@ class RunReport:
             f"(собрано {self.projects_ok}, пропущено {self.projects_skipped}, "
             f"упало {self.projects_failed})",
             f"точек записано: {self.points_written}",
+            f"запросов: сделано {self.requests_made}, сэкономлено кэшем {self.requests_saved}",
             f"units потрачено: {self.units_spent}",
         ]
 
@@ -79,14 +85,27 @@ async def collect_projects(
     session: AsyncSession,
     projects: Sequence[Project],
     provider: AhrefsProvider | None = None,
+    *,
+    now: date | None = None,
+    refresh: bool = False,
 ) -> RunReport:
-    """Собрать шаг 1 по списку проектов. Провайдер — из конфига, если не задан."""
+    """Собрать шаг 1 по списку проектов. Провайдер — из конфига, если не задан.
+
+    `now` параметром: от него зависит граница закрытого месяца, и тест не должен
+    подкручивать системные часы, чтобы её проверить.
+    """
     engine = provider or build_provider()
     user = await system_user(session)
     run = await open_run(session, started_by=user.id, projects_total=len(projects))
-    tasks = plan_stage1(projects)
+    plan = await build_stage1_plan(
+        session,
+        projects,
+        source=engine.source,
+        now=now or date.today(),  # noqa: DTZ011 — календарная граница месяца
+        refresh=refresh,
+    )
 
-    outcomes = await _run_tasks(engine, tasks)
+    outcomes = await _run_tasks(engine, plan.tasks)
 
     points = 0
     for item in outcomes:
@@ -102,6 +121,16 @@ async def collect_projects(
             reason=item.reason,
             units_actual=item.result.units_actual if item.result else 0,
         )
+    for skipped in plan.cached:
+        await record_cached(session, run.id, skipped.spec.name, skipped.domain)
+        await add_item(
+            session,
+            run,
+            project_id=skipped.project_id,
+            raw_domain=skipped.domain,
+            outcome=RunItemOutcome.OK,
+            reason=skipped.reason,
+        )
     await _mark_projects(session, outcomes)
     await finish_run(session, run)
 
@@ -116,13 +145,23 @@ async def collect_projects(
         projects_failed=run.projects_failed,
         points_written=points,
         units_spent=await run_spend(session, run.id),
+        requests_made=len(plan.tasks),
+        # Из журнала, а не из длины плана: число, которое покажут заказчику,
+        # обязано браться оттуда же, откуда объясняется счёт (как units_spent).
+        requests_saved=await run_saved(session, run.id),
     )
 
 
-async def collect_all(session: AsyncSession, provider: AhrefsProvider | None = None) -> RunReport:
+async def collect_all(
+    session: AsyncSession,
+    provider: AhrefsProvider | None = None,
+    *,
+    now: date | None = None,
+    refresh: bool = False,
+) -> RunReport:
     """Прогон по всем проектам в базе — то, что делает CLI."""
     projects = (await session.execute(select(Project))).scalars().all()
-    return await collect_projects(session, list(projects), provider)
+    return await collect_projects(session, list(projects), provider, now=now, refresh=refresh)
 
 
 async def _run_tasks(provider: AhrefsProvider, tasks: Sequence[CollectTask]) -> list[_TaskOutcome]:
