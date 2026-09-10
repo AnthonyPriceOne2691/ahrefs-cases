@@ -116,7 +116,7 @@ async def test_declining_projects_have_no_expensive_metrics(db_session: AsyncSes
 
 
 async def test_project_without_data_is_not_a_candidate(db_session: AsyncSession) -> None:
-    """Платить за дорогие метрики там, где нет дешёвых, — покупать пустой кейс."""
+    """C9: платить за дорогие метрики там, где нет дешёвых, — покупать пустой кейс."""
     await _load(db_session, ["empty.example.com"])
     await collect_all(db_session, AhrefsFixture(), now=NOW)
     ids = await _ids(db_session)
@@ -129,7 +129,7 @@ async def test_project_without_data_is_not_a_candidate(db_session: AsyncSession)
 
 
 def test_dr_history_is_behind_the_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """DR стоит как полноценный запрос, а группу не определяет.
+    """C9: DR стоит как полноценный запрос, а группу не определяет.
 
     Флаг выключен по умолчанию: включать надо осознанно, потому что это чистая
     надбавка к цене прогона.
