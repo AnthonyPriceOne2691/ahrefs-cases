@@ -49,7 +49,7 @@ def _client(handler: object, **kwargs: object) -> httpx.AsyncClient:
 
 
 async def test_units_headers_are_read() -> None:
-    """Фактическая цена берётся из заголовка, а не из нашей оценки.
+    """B18: фактическая цена берётся из заголовка, а не из нашей оценки.
 
     Заголовок — единственный источник правды о списании; наша модель стоимости
     останется гипотезой до Ф7, и подменять ею факт значило бы вести журнал units
@@ -70,7 +70,7 @@ async def test_units_headers_are_read() -> None:
 
 
 async def test_missing_units_header_is_zero_not_a_guess() -> None:
-    """Нет заголовка — ноль и запись в лог, а не подстановка оценки.
+    """B18: нет заголовка — ноль и запись в лог, а не подстановка оценки.
 
     Журнал units обязан отличать «стоило ноль» от «мы не узнали цену»; вторая
     ситуация видна расхождением с оценкой, если её не затереть этой же оценкой.
@@ -86,7 +86,7 @@ async def test_missing_units_header_is_zero_not_a_guess() -> None:
 
 
 async def test_retries_on_429_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
-    """429 повторяется: лимит запросов — временное состояние, а не отказ."""
+    """B18: 429 повторяется — лимит запросов есть временное состояние, а не отказ."""
     monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _no_sleep)
     calls = {"n": 0}
 
@@ -104,7 +104,7 @@ async def test_retries_on_429_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 async def test_bad_key_is_not_retried() -> None:
-    """401 не повторяется: три попытки с неверным ключом — три записи и ноль пользы."""
+    """B18: 401 не повторяется — три попытки с неверным ключом дают три записи и ноль пользы."""
     calls = {"n": 0}
 
     def handler(_request: httpx.Request) -> httpx.Response:
@@ -119,7 +119,7 @@ async def test_bad_key_is_not_retried() -> None:
 
 
 async def test_gives_up_with_named_reason(monkeypatch: pytest.MonkeyPatch) -> None:
-    """После всех попыток — внятная ошибка, а не пустой результат.
+    """B18: после всех попыток — внятная ошибка, а не пустой результат.
 
     Пустой результат означал бы «у домена нет истории», и прогон записал бы
     молодой домен и упавший Ahrefs одинаково.
@@ -135,7 +135,7 @@ async def test_gives_up_with_named_reason(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 async def test_live_parses_points_and_skips_none() -> None:
-    """`None` в значении пропускается, а не становится нулём (готовит B8).
+    """B8: `None` в значении пропускается, а не становится нулём.
 
     Ноль вместо пропуска превратил бы месяц без данных в месяц с нулевым
     трафиком, и классификация Ф3 увидела бы провал там, где его не было.
@@ -153,7 +153,7 @@ async def test_live_parses_points_and_skips_none() -> None:
 
 
 async def test_live_sends_minimal_select() -> None:
-    """`select` уходит минимальным: каждое лишнее поле в metrics-history — +10 units."""
+    """B18: `select` уходит минимальным — каждое лишнее поле metrics-history это +10 units."""
     seen: dict[str, str] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -170,7 +170,7 @@ async def test_live_sends_minimal_select() -> None:
 
 
 def test_cost_model_is_one_place() -> None:
-    """Модель стоимости считает по спеке endpoint'а, а не по имени в коде."""
+    """B10: модель стоимости считает по спеке endpoint'а, а не по имени в коде."""
     assert METRICS_HISTORY.estimate_units() == 50
     assert REFDOMAINS_HISTORY.estimate_units() == 5
 

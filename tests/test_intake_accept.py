@@ -121,7 +121,7 @@ async def test_reload_updates_and_does_not_duplicate(
 
 
 async def test_changed_field_is_applied_on_reload(db_session: AsyncSession, tmp_path: Path) -> None:
-    """Обновление обязано что-то менять: иначе `updated=93` было бы пустым словом."""
+    """B5: обновление обязано что-то менять, иначе `updated=93` — пустое слово."""
     path = tmp_path / "list.csv"
     header_and_row = [
         COLUMNS,
@@ -141,7 +141,7 @@ async def test_changed_field_is_applied_on_reload(db_session: AsyncSession, tmp_
 async def test_same_domain_different_period_is_two_projects(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Один домен с разными периодами работ — два кейса, а не дубль.
+    """B5: один домен с разными периодами работ — два кейса, а не дубль.
 
     Обратная сторона B5: если бы ключом был домен, второй период молча затёр бы
     первый, и агентство потеряло бы кейс прошлого года.
@@ -166,7 +166,7 @@ async def test_same_domain_different_period_is_two_projects(
 
 
 async def test_duplicate_in_source_is_reported(db_session: AsyncSession, tmp_path: Path) -> None:
-    """Дубль внутри файла: побеждает последняя строка, обе видны в отчёте."""
+    """B5: дубль внутри файла — побеждает последняя строка, обе видны в отчёте."""
     path = tmp_path / "dup.csv"
     path.write_text(
         "\n".join(
@@ -191,7 +191,7 @@ async def test_duplicate_in_source_is_reported(db_session: AsyncSession, tmp_pat
 async def test_missing_column_is_one_rejection_not_hundred(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Нет колонки — брак файла: одна строка в отчёте, а не сто одинаковых."""
+    """B15: нет колонки — брак файла, одна строка в отчёте, а не сто одинаковых."""
     path = tmp_path / "no_client.csv"
     path.write_text(
         "\n".join(
@@ -213,7 +213,7 @@ async def test_missing_column_is_one_rejection_not_hundred(
 
 
 def test_unknown_source_is_named() -> None:
-    """`.pdf` вместо списка — внятный отказ, а не `AttributeError` в разборе.
+    """B16: `.pdf` вместо списка — внятный отказ, а не `AttributeError` в разборе.
 
     Формат судится раньше существования файла: сказать про `.pdf` «файл не
     найден» значит отправить человека искать файл, который всё равно не прочтут.
@@ -223,7 +223,7 @@ def test_unknown_source_is_named() -> None:
 
 
 def test_missing_file_is_named_too(tmp_path: Path) -> None:
-    """Опечатка в пути — самая частая ошибка запуска, и отвечать на неё
+    """B16: опечатка в пути — самая частая ошибка запуска, и отвечать на неё
     трассировкой `io.open` значит требовать чтения стека ради строки «файла нет»."""
     with pytest.raises(SourceNotFoundError, match="файл не найден"):
         read_source(tmp_path / "нет-такого.csv")

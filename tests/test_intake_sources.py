@@ -70,7 +70,7 @@ def test_three_sources_give_identical_table(tmp_path: Path) -> None:
 
 
 def test_semicolon_delimiter_is_detected(tmp_path: Path) -> None:
-    """Excel в русской локали сохраняет CSV с `;` — файл обязан читаться как есть."""
+    """B17: Excel в русской локали сохраняет CSV с `;` — файл читается как есть."""
     path = tmp_path / "ru.csv"
     path.write_text(_csv_text(delimiter=";"), encoding="utf-8")
 
@@ -91,7 +91,7 @@ def test_cp1251_is_read_without_mojibake(tmp_path: Path) -> None:
 
 
 def test_utf8_wins_over_detector() -> None:
-    """UTF-8 проверяется первым и строго: успех — доказательство, а не вероятность.
+    """B3: UTF-8 проверяется первым и строго — успех есть доказательство, а не вероятность.
 
     На коротком тексте `chardet` уверенно предлагает `windows-1252`; если бы его
     подсказка шла раньше, кириллица в UTF-8-файле портилась бы именно на
@@ -101,7 +101,7 @@ def test_utf8_wins_over_detector() -> None:
 
 
 def test_xlsx_dates_and_numbers_are_strings(tmp_path: Path) -> None:
-    """Excel хранит дату числом, а объём работ — float: наружу идут строки.
+    """B2: Excel хранит дату числом, а объём работ — float, наружу идут строки.
 
     Иначе `120.0` и `2025-01-01 00:00:00` попали бы в правила и в отчёт.
     """
@@ -139,17 +139,18 @@ def test_xlsx_dates_and_numbers_are_strings(tmp_path: Path) -> None:
     ],
 )
 def test_sheet_link_to_export_url(link: str, expected: str) -> None:
-    """Ссылку присылают в четырёх формах; экспорт из них один."""
+    """B2: ссылку присылают в четырёх формах, экспорт из них один."""
     assert sheet_export_url(link) == expected
 
 
 def test_sheet_link_must_look_like_sheet() -> None:
+    """B16: не ссылка на таблицу — внятный отказ, а не попытка её скачать."""
     with pytest.raises(SheetLinkError):
         sheet_export_url("https://example.com/list.csv")
 
 
 def test_private_sheet_is_an_error_not_an_empty_list() -> None:
-    """Закрытая таблица отдаёт страницу входа со статусом 200.
+    """B16: закрытая таблица отдаёт страницу входа со статусом 200.
 
     Без этой проверки приём отчитался бы «принято 0, отклонено 0» — соврал бы
     успехом там, где список просто не прочитан.

@@ -53,7 +53,7 @@ def test_same_seed_gives_identical_series() -> None:
 
 
 def test_different_seed_gives_different_series() -> None:
-    """Обратная сторона B7: seed действительно влияет.
+    """B7: обратная сторона — seed действительно влияет.
 
     Без этой проверки генератор мог бы игнорировать seed, и «детерминизм» был бы
     следствием того, что случайности нет вовсе.
@@ -65,7 +65,7 @@ def test_different_seed_gives_different_series() -> None:
 
 
 def test_domain_changes_series() -> None:
-    """Разные домены — разные уровни: иначе сотня доменов была бы одним доменом."""
+    """B7: разные домены дают разные уровни, иначе сотня доменов была бы одним."""
     first = generate_series("d1.example.com", ScenarioName.STEADY_GROWTH, seed=42, end=END)
     second = generate_series("d2.example.com", ScenarioName.STEADY_GROWTH, seed=42, end=END)
 
@@ -93,7 +93,7 @@ def test_short_history_is_short() -> None:
 
 
 def test_late_drop_falls_at_the_end() -> None:
-    """Провал в конце: рост есть, но последняя точка ниже предпоследних.
+    """B19: провал в конце — рост есть, но последняя точка ниже предпоследних.
 
     Это ловушка для классификации: по краям периода «А → Б» такой проект
     выглядит успешным, а работы закончились падением.
@@ -105,7 +105,7 @@ def test_late_drop_falls_at_the_end() -> None:
 
 
 def test_backlink_spike_moves_refdomains_not_traffic() -> None:
-    """Скачок ссылочного: refdomains прыгает, трафик — нет.
+    """B19: скачок ссылочного — refdomains прыгает, трафик нет.
 
     Сценарий существует ради правила «главная метрика И подтверждающая»: рост
     одних ссылок кейсом не является.
@@ -119,7 +119,7 @@ def test_backlink_spike_moves_refdomains_not_traffic() -> None:
 
 
 async def test_fixture_returns_only_requested_metrics() -> None:
-    """Провайдер отдаёт метрики запрошенного endpoint'а, а не всё, что сгенерировано."""
+    """B10: провайдер отдаёт метрики запрошенного endpoint'а, а не всё подряд."""
     result = await AhrefsFixture().fetch_history(METRICS_HISTORY, REQUEST)
 
     assert result.source == MetricSource.FIXTURE
@@ -127,7 +127,7 @@ async def test_fixture_returns_only_requested_metrics() -> None:
 
 
 async def test_fixture_counts_units_by_the_same_model_as_live() -> None:
-    """Условные units считаются моделью стоимости, а не нулём.
+    """B10: условные units считаются моделью стоимости, а не нулём.
 
     Ноль был бы проще и вреднее: смета и экран расхода (Ф2б) разрабатывались бы
     на нулях и «заработали» бы только с живым ключом — то есть в Ф7, где чинить
@@ -157,7 +157,7 @@ async def test_empty_scenario_is_empty_and_free() -> None:
 
 
 async def test_date_from_cuts_the_series() -> None:
-    """`date_from` режет историю — на этом стоит инкрементальный догруз Ф2б."""
+    """B6: `date_from` режет историю — на этом будет стоять догруз Ф2б."""
     request = HistoryRequest(
         target="d1.example.com",
         mode=TargetMode.SUBDOMAINS,
@@ -173,7 +173,7 @@ async def test_date_from_cuts_the_series() -> None:
 
 
 def test_table_assigns_by_name_and_falls_back() -> None:
-    """Таблица читается из файла проекта; неизвестный домен получает `default`."""
+    """B20: таблица читается из файла проекта, неизвестный домен получает `default`."""
     table = load_table()
 
     assert table.scenario_for("d47.example.com") is ScenarioName.LATE_DROP
@@ -182,7 +182,7 @@ def test_table_assigns_by_name_and_falls_back() -> None:
 
 
 def test_unknown_scenario_is_an_error_not_a_default(tmp_path: Path) -> None:
-    """Опечатка в таблице падает, а не откатывается к `steady_growth`.
+    """B20: опечатка в таблице падает, а не откатывается к `steady_growth`.
 
     Молчаливый откат нарисовал бы всем доменам одну форму, и Ф3 показала бы
     стопроцентное согласие с порогами — самый дорогой сорт зелёного.
@@ -195,7 +195,7 @@ def test_unknown_scenario_is_an_error_not_a_default(tmp_path: Path) -> None:
 
 
 def test_missing_table_is_not_a_crash(tmp_path: Path) -> None:
-    """Нет файла — пустая таблица с дефолтом: сервис обязан работать на чужом списке."""
+    """B20: нет файла — пустая таблица с дефолтом, сервис работает на чужом списке."""
     table = load_table(tmp_path / "nope.yml")
 
     assert isinstance(table, ScenarioTable)

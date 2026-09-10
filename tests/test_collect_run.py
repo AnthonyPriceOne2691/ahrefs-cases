@@ -37,7 +37,7 @@ DOMAINS = 100
 
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Любой HTTP-запрос в этих тестах — падение.
+    """B6: любой HTTP-запрос в этих тестах — падение.
 
     Проверяется не «fixture не ходит в сеть» на словах, а то, что путь целиком —
     планирование, провайдер, запись — обходится без единого запроса наружу.
@@ -126,7 +126,7 @@ async def test_short_history_is_marked_not_dropped(
 async def test_repeat_run_updates_points_not_duplicates(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Повторный прогон переписывает точки, а не удваивает их.
+    """B21: повторный прогон переписывает точки, а не удваивает их.
 
     Это ещё не экономия Ф2б (запросы всё ещё делаются), но инвариант
     `(project, metric, date, source)`, на котором она будет стоять, обязан
@@ -142,7 +142,7 @@ async def test_repeat_run_updates_points_not_duplicates(
 
 
 async def test_project_status_follows_collection(db_session: AsyncSession, tmp_path: Path) -> None:
-    """Статус проекта двигает прогон: собран → `collected`, пуст → `skipped`."""
+    """B21: статус проекта двигает прогон — собран → `collected`, пуст → `skipped`."""
     await _load(db_session, tmp_path, ["d1.example.com", "empty.example.com"])
 
     await collect_all(db_session, AhrefsFixture())
@@ -156,7 +156,7 @@ async def test_project_status_follows_collection(db_session: AsyncSession, tmp_p
 async def test_failed_provider_does_not_stop_the_run(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Падение по одному домену — `partial`, а не потеря всего прогона."""
+    """B21: падение по одному домену — `partial`, а не потеря всего прогона."""
     from ahrefs_cases.collect.ahrefs_transport import AhrefsUnavailableError
     from ahrefs_cases.collect.endpoints import EndpointSpec
     from ahrefs_cases.collect.provider import HistoryRequest, HistoryResult
@@ -179,7 +179,7 @@ async def test_failed_provider_does_not_stop_the_run(
 async def test_run_snapshot_records_how_it_was_collected(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """Снимок параметров: через полгода «почему такие числа» упрётся именно в них."""
+    """B21: снимок параметров — через полгода «почему такие числа» упрётся в них."""
     await _load(db_session, tmp_path, ["d1.example.com"])
 
     await collect_projects(

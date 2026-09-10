@@ -41,7 +41,7 @@ def _validate(row: str) -> tuple[list[ProjectDraft], list[Rejection]]:
     ],
 )
 def test_bad_value_gets_its_code(row: str, reason: RejectReason) -> None:
-    """Каждое правило отвечает своим кодом, а не общим «строка плохая»."""
+    """B1: каждое правило отвечает своим кодом, а не общим «строка плохая»."""
     drafts, rejections = _validate(row)
 
     assert not drafts
@@ -58,7 +58,7 @@ def test_bad_value_gets_its_code(row: str, reason: RejectReason) -> None:
     ],
 )
 def test_date_formats_people_actually_type(written: str, expected: date) -> None:
-    """Список правят в Excel руками, и дата приходит в четырёх видах.
+    """B13: список правят в Excel руками, и дата приходит в четырёх видах.
 
     Требовать ISO значило бы браковать половину файла из-за региональных
     настроек Excel — то есть возвращать список отделу вместо приёма.
@@ -71,7 +71,7 @@ def test_date_formats_people_actually_type(written: str, expected: date) -> None
 
 @pytest.mark.parametrize("flag", ["yes", "да", "1", "true", "+"])
 def test_publishable_true_forms(flag: str) -> None:
-    """«Можно публиковать» пишут пятью способами, и все они означают одно."""
+    """B14: «можно публиковать» пишут пятью способами, и все они означают одно."""
     drafts, _ = _validate(BASE.replace(",yes,", f",{flag},"))
 
     assert drafts[0].publishable is True
@@ -79,13 +79,14 @@ def test_publishable_true_forms(flag: str) -> None:
 
 @pytest.mark.parametrize("flag", ["no", "нет", "0", "false", "-"])
 def test_publishable_false_forms(flag: str) -> None:
+    """B14: обратная сторона — пять форм отрицания."""
     drafts, _ = _validate(BASE.replace(",yes,", f",{flag},"))
 
     assert drafts[0].publishable is False
 
 
 def test_empty_work_volume_is_allowed() -> None:
-    """Единственное поле из десяти, значение которого может быть пустым.
+    """B1: единственное поле из десяти, значение которого может быть пустым.
 
     ТЗ требует спрашивать объём работ, модель Ф1 разрешает его не знать: тогда
     блок «что сделали» в кейсе скрывается, а не выдумывается.
@@ -97,7 +98,7 @@ def test_empty_work_volume_is_allowed() -> None:
 
 
 def test_default_target_mode_is_subdomains() -> None:
-    """Пустой `target_mode` — не брак: по умолчанию считаем поддомены."""
+    """B1: пустой `target_mode` — не брак, по умолчанию считаем поддомены."""
     drafts, rejections = _validate(BASE.replace(",subdomains,", ",,"))
 
     assert not rejections
@@ -105,7 +106,7 @@ def test_default_target_mode_is_subdomains() -> None:
 
 
 def test_row_collects_all_its_reasons() -> None:
-    """Три ошибки в строке — три причины сразу, а не три загрузки файла подряд."""
+    """B1: три ошибки в строке — три причины сразу, а не три загрузки файла подряд."""
     row = (
         BASE.replace(",2025-01-01,", ",вчера,")
         .replace(",US,", ",Германия,")
@@ -119,14 +120,14 @@ def test_row_collects_all_its_reasons() -> None:
 
 
 def test_geo_is_upper_cased() -> None:
-    """`us` и `US` — одна страна: гео уходит в базу в каноничном виде."""
+    """B1: `us` и `US` — одна страна, гео уходит в базу в каноничном виде."""
     drafts, _ = _validate(BASE.replace(",US,", ",us,"))
 
     assert drafts[0].geo == "US"
 
 
 def test_report_lines_name_row_and_reason() -> None:
-    """Текст отчёта для CLI называет строку и причину — по ней и ищут в Excel."""
+    """B1: текст отчёта называет строку и причину — по ней и ищут в Excel."""
     _drafts, rejections = _validate(BASE.replace(",yes,", ",ага,"))
     report = IntakeReport(origin="list.csv", accepted=0, rejections=tuple(rejections))
 
@@ -138,7 +139,7 @@ def test_report_lines_name_row_and_reason() -> None:
 
 
 def test_empty_file_is_one_rejection_not_ten() -> None:
-    """Пустой файл — один отказ «источник пуст», а не десять «нет колонки».
+    """B15: пустой файл — один отказ «источник пуст», а не десять «нет колонки».
 
     Десять одинаковых строк в отчёте выглядят как десять проблем; проблема одна,
     и человек должен увидеть её одной строкой.
