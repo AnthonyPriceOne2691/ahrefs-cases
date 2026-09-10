@@ -1,0 +1,25 @@
+# secrets — никогда в репозиторий
+.env
+.env.*
+!.env.example
+
+# сырые выгрузки Ahrefs и артефакты кейсов (могут содержать домены клиентов)
+data/raw/*
+!data/raw/.gitkeep
+data/out/
+*.pdf
+*.docx
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.json
+
+# os
+.DS_Store

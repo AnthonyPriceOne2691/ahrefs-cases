@@ -1,0 +1,4 @@
+domain,period_start,period_end,niche,geo,target_mode,notes
+example.com,2025-01-01,2026-06-30,fintech,US,subdomains,
+example.org,2024-09-01,,travel,DE,subdomains,сезонная ниша — смотреть YoY
+shop.example.net,2025-03-01,2026-03-01,ecommerce,GB,prefix,кейс только по разделу /shop
