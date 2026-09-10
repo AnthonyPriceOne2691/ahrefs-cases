@@ -110,7 +110,7 @@ def test_window_halves_the_outlier_but_does_not_erase_it() -> None:
     ("window", "expected_pct"), [(2, 50.0), (3, 100 / 3), (4, 25.0), (6, 100 / 6)]
 )
 def test_no_practical_window_saves_from_a_single_outlier(window: int, expected_pct: float) -> None:
-    """Расширение окна не спасает: порог «средних» слишком низок для этого.
+    """D1: расширение окна не спасает — порог «средних» слишком низок для этого.
 
     Один аномальный месяц из двенадцати на плоской серии даёт +50 % при окне
     в два месяца и всё ещё +16,7 % при окне в шесть — то есть выше порога
@@ -259,7 +259,7 @@ def test_sort_key_is_absolute_growth() -> None:
 
 
 def test_score_does_not_decide_the_group() -> None:
-    """`score` сортирует внутри группы, но не подменяет пороги.
+    """D16: `score` сортирует внутри группы, но не подменяет пороги.
 
     Иначе сумма весов начала бы решать за пороги, которые утверждает заказчик,
     и «почему тут good» перестало бы отвечаться порогами вовсе.
@@ -275,14 +275,14 @@ def test_score_does_not_decide_the_group() -> None:
 
 @pytest.mark.parametrize("growth", [0.68, 0.9, 1.05])
 def test_no_growth_is_poor(growth: float) -> None:
-    """Падение и рост меньше +10 % — «плохие»: кейс не формируется."""
+    """D4: падение и рост меньше +10 % — «плохие», кейс не формируется."""
     decision = _decide(_series(_ramp(1000, 1000 * growth, 12)))
 
     assert decision.group is Group.POOR
 
 
 def test_growth_from_zero_does_not_crash() -> None:
-    """Рост с нуля не даёт бесконечности и не роняет расчёт.
+    """D17: рост с нуля не даёт бесконечности и не роняет расчёт.
 
     Относительная дельта от нулевой базы не определена; правила обязаны
     решать такой случай явно, а не делить на ноль.

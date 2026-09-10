@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from sqlalchemy import select
 
 from ahrefs_cases import config
+from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds
+from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
 from ahrefs_cases.intake.accept import (
@@ -98,6 +100,49 @@ def config_source() -> MetricSource:
     return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
 
 
+async def _classify() -> int:
+    """Классификация по действующей версии порогов.
+
+    Ahrefs не трогается: считаем по тому, что уже куплено. Если активной
+    версии порогов нет — сеем её из `config/thresholds.example.yml`, потому
+    что первый запуск на пустой базе иначе упирается в ошибку там, где
+    достаточно дефолтов Приложения А.
+    """
+    async with get_sessionmaker()() as session:
+        await seed_thresholds(session)
+        report = await classify_all(session)
+        await session.commit()
+    print("\n".join(report.as_lines()))
+    return 0 if report.total else 1
+
+
+async def _explain(domain: str) -> int:
+    """Показать вердикт одного домена со всеми условиями.
+
+    Нужна не для отладки, а для калибровки: заказчик сверяет группу с
+    экспертной оценкой и должен видеть, какое условие её определило.
+    """
+    async with get_sessionmaker()() as session:
+        project = (
+            await session.execute(select(Project).where(Project.domain == domain))
+        ).scalars().first()
+        if project is None:
+            print(f"проект не найден: {domain}", file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+        ruleset = await active_ruleset(session)
+        decision = await classify_project(session, project, ruleset)
+        await session.commit()
+
+    print(f"{domain}: {decision.group.value} (пороги {ruleset.version}, score {decision.score:.0f})")
+    for reason in decision.reasons:
+        mark = "✓" if reason.passed else "✗"
+        weight = "решает" if reason.decisive else "справочно"
+        fact = "—" if reason.fact is None else f"{reason.fact:.1f}"
+        threshold = "—" if reason.threshold is None else f"{reason.threshold:.1f}"
+        print(f"  {mark} {reason.subject:34} факт {fact:>10}  порог {threshold:>10}  [{weight}] {reason.note}")
+    return 0
+
+
 async def _main(args: argparse.Namespace) -> int:
     """Разбор команды. Наружу не выходит ни одна необработанная ошибка.
 
@@ -114,6 +159,10 @@ async def _main(args: argparse.Namespace) -> int:
             return await _collect(refresh=args.refresh)
         if args.command == "stage2":
             return await _stage2(refresh=args.refresh)
+        if args.command == "classify":
+            return await _classify()
+        if args.command == "explain":
+            return await _explain(args.domain)
         code = await _intake(args.source)
         return code or await _collect(refresh=args.refresh)
     except KeyboardInterrupt:
@@ -145,6 +194,9 @@ def main() -> int:
     stage2_parser = sub.add_parser(
         "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
     )
+    sub.add_parser("classify", help="классифицировать проекты по действующим порогам")
+    explain_parser = sub.add_parser("explain", help="показать вердикт одного домена по условиям")
+    explain_parser.add_argument("domain", help="канонический домен проекта")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
