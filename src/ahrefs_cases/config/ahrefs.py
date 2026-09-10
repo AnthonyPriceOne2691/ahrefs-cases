@@ -29,6 +29,15 @@ class AhrefsSettings(Settings):
         (1.0, 5.0, 30.0), validation_alias="AHREFS_RETRY_BACKOFF_SEC"
     )
 
+    # --- fixture-режим (docs/IMPLEMENTATION_V3.md §1a) ---
+    fixtures_dir: str = Field("data/fixtures", validation_alias="AHREFS_FIXTURES_DIR")
+    """Где лежит таблица сценариев. Путь в конфиге, а не вычисление от `__file__`:
+    иначе он ломается при установке пакета и при запуске из другого каталога."""
+
+    fixture_seed: int = Field(42, validation_alias="AHREFS_FIXTURE_SEED")
+    """Зерно генератора. Поле конфига, потому что менять его придётся осознанно:
+    смена seed переписывает все синтетические серии, а на них стоят golden-тесты Ф3."""
+
     # --- экономия units (docs/UNITS_ECONOMY.md) ---
     units_min_left: int = Field(5000, ge=0, validation_alias="AHREFS_UNITS_MIN_LEFT")
     history_grouping: HistoryGrouping = Field("monthly", validation_alias="AHREFS_HISTORY_GROUPING")

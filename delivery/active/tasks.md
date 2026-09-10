@@ -23,18 +23,18 @@
 - [x] тест: повторная загрузка обновляет; один домен с разными периодами — два проекта (B5)
 
 ## Провайдер
-- [ ] `collect/endpoints.py`: `EndpointSpec` данными — шесть history-endpoint'ов
-- [ ] `collect/provider.py`: `AhrefsProvider(Protocol)`, `HistoryResult(rows, units)`
-- [ ] модель стоимости в `EndpointSpec` — одна функция на оба провайдера
-- [ ] `collect/ahrefs_transport.py` + `AhrefsLive`: httpx, `x-api-units-cost-*`, ретраи 1/5/30 с
-- [ ] тест: `AHREFS_PROVIDER=live` без ключа падает на старте (B12, регрессия A5)
+- [x] `collect/endpoints.py`: `EndpointSpec` данными — шесть history-endpoint'ов
+- [x] `collect/provider.py`: `AhrefsProvider(Protocol)`, `HistoryRequest/Point/Result`
+- [x] модель стоимости в `EndpointSpec` — одна функция на оба провайдера
+- [x] `collect/ahrefs_transport.py` + `collect/live.py`: ретраи только осмысленные, разбор заголовков цены
+- [x] тест: 401 не повторяется, 429 повторяется, `select` минимальный; live без ключа — A5/B12
 
 ## Фикстуры и генератор
-- [ ] `collect/fixtures/generator.py`: семь сценариев §1a, детерминизм по `(scenario, seed, domain)`
-- [ ] `data/fixtures/scenarios.yml`: явное сопоставление домен → сценарий
-- [ ] `collect/fixtures/provider.py`: `AhrefsFixture` поверх генератора
-- [ ] тест: два вызова с одним seed дают идентичные серии (B7)
-- [ ] тест: `data_hole` — месяцы отсутствуют, а не равны нулю (B8)
+- [x] `collect/fixtures/`: семь сценариев + `empty`, формы таблицей, детерминизм на sha256
+- [x] `data/fixtures/scenarios.yml`: 104 домена явно, опечатка в сценарии — ошибка, не дефолт
+- [x] `collect/fixtures/provider.py` + `collect/factory.py`: выбор провайдера по конфигу
+- [x] тест: детерминизм по seed и обратная сторона — seed влияет (B7)
+- [x] тест: `data_hole` — месяцы отсутствуют, а не равны нулю (B8); `empty` бесплатен (B11)
 
 ## Прогон
 - [ ] `collect/plan.py`: список задач шага 1 по проектам прогона

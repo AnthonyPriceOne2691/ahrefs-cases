@@ -1,0 +1,122 @@
+# Домен → сценарий синтетической истории.
+#
+# Таблица явная, а не хэш от домена: тест Ф3 «почему у d47 группа medium»
+# должен читаться глазами. Файл правится руками — значит и читается руками.
+#
+# Домена нет в таблице → `default`. Это нужно для показа сервиса на реальном
+# списке заказчика до Ф7: неизвестный домен получает форму, а не пустоту.
+#
+# Смена `seed` переписывает ВСЕ серии, а на них стоят golden-тесты Ф3.
+# Менять — отдельным решением, не заодно.
+
+default: steady_growth
+seed: 42
+
+domains:
+  # Сотня доменов прогона: семь форм по кругу.
+  d0.example.com: steady_growth
+  d1.example.com: weak_growth
+  d2.example.com: decline
+  d3.example.com: short_history
+  d4.example.com: data_hole
+  d5.example.com: late_drop
+  d6.example.com: backlink_spike
+  d7.example.com: steady_growth
+  d8.example.com: weak_growth
+  d9.example.com: decline
+  d10.example.com: short_history
+  d11.example.com: data_hole
+  d12.example.com: late_drop
+  d13.example.com: backlink_spike
+  d14.example.com: steady_growth
+  d15.example.com: weak_growth
+  d16.example.com: decline
+  d17.example.com: short_history
+  d18.example.com: data_hole
+  d19.example.com: late_drop
+  d20.example.com: backlink_spike
+  d21.example.com: steady_growth
+  d22.example.com: weak_growth
+  d23.example.com: decline
+  d24.example.com: short_history
+  d25.example.com: data_hole
+  d26.example.com: late_drop
+  d27.example.com: backlink_spike
+  d28.example.com: steady_growth
+  d29.example.com: weak_growth
+  d30.example.com: decline
+  d31.example.com: short_history
+  d32.example.com: data_hole
+  d33.example.com: late_drop
+  d34.example.com: backlink_spike
+  d35.example.com: steady_growth
+  d36.example.com: weak_growth
+  d37.example.com: decline
+  d38.example.com: short_history
+  d39.example.com: data_hole
+  d40.example.com: late_drop
+  d41.example.com: backlink_spike
+  d42.example.com: steady_growth
+  d43.example.com: weak_growth
+  d44.example.com: decline
+  d45.example.com: short_history
+  d46.example.com: data_hole
+  d47.example.com: late_drop
+  d48.example.com: backlink_spike
+  d49.example.com: steady_growth
+  d50.example.com: weak_growth
+  d51.example.com: decline
+  d52.example.com: short_history
+  d53.example.com: data_hole
+  d54.example.com: late_drop
+  d55.example.com: backlink_spike
+  d56.example.com: steady_growth
+  d57.example.com: weak_growth
+  d58.example.com: decline
+  d59.example.com: short_history
+  d60.example.com: data_hole
+  d61.example.com: late_drop
+  d62.example.com: backlink_spike
+  d63.example.com: steady_growth
+  d64.example.com: weak_growth
+  d65.example.com: decline
+  d66.example.com: short_history
+  d67.example.com: data_hole
+  d68.example.com: late_drop
+  d69.example.com: backlink_spike
+  d70.example.com: steady_growth
+  d71.example.com: weak_growth
+  d72.example.com: decline
+  d73.example.com: short_history
+  d74.example.com: data_hole
+  d75.example.com: late_drop
+  d76.example.com: backlink_spike
+  d77.example.com: steady_growth
+  d78.example.com: weak_growth
+  d79.example.com: decline
+  d80.example.com: short_history
+  d81.example.com: data_hole
+  d82.example.com: late_drop
+  d83.example.com: backlink_spike
+  d84.example.com: steady_growth
+  d85.example.com: weak_growth
+  d86.example.com: decline
+  d87.example.com: short_history
+  d88.example.com: data_hole
+  d89.example.com: late_drop
+  d90.example.com: backlink_spike
+  d91.example.com: steady_growth
+  d92.example.com: weak_growth
+  d93.example.com: decline
+  d94.example.com: short_history
+  d95.example.com: data_hole
+  d96.example.com: late_drop
+  d97.example.com: backlink_spike
+  d98.example.com: steady_growth
+  d99.example.com: weak_growth
+
+  # Особые случаи, на которые ссылаются примеры приёмки.
+  empty.example.com: empty            # B11: истории нет — пропуск с пометкой, прогон продолжается
+  young.example.com: empty            # молодой домен: Ahrefs его ещё не знает
+  hole.example.com: data_hole         # B8: месяцев нет, а не нули
+  short.example.com: short_history    # B9: четыре месяца при периоде работ в полтора года
