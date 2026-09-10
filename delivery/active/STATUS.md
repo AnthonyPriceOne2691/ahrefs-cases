@@ -6,10 +6,10 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека с примерами B1–B12 и границей Ф2а/Ф2б подписана
+- **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — B1–B12 подписаны до кода; B13–B21 дописаны по ходу implement и подписаны отдельно на verify
 - **human_ok_plan:** n/a reason=класс M
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D: текстов канонов в репозитории нет по построению, самопроверка гоняется там, где они лежат
   <!-- Поле, а не фраза в прозе. В Ф1 это объявление стояло абзацем в разделе
@@ -38,8 +38,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** `scripts/run_collect.py all config/projects.example.csv` на чистой базе даёт `создано 3` → повторно `обновлено 3`, `точек записано: 100`, `units потрачено: 150`; расхождение в числе точек означает, что генератор или запись серий поехали
+- **observe_until:** 2026-09-24
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Граница с Ф2б
