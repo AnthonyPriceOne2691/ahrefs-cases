@@ -11,6 +11,11 @@
 - **verifier:** human:anthony
 - **human_ok_spec:** yes (by=human:anthony, at=2026-09-10) — спека с примерами B1–B12 и границей Ф2а/Ф2б подписана
 - **human_ok_plan:** n/a reason=класс M
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D: текстов канонов в репозитории нет по построению, самопроверка гоняется там, где они лежат
+  <!-- Поле, а не фраза в прозе. В Ф1 это объявление стояло абзацем в разделе
+       «Волна В1 пройдена», при открытии Ф2а не переехало — и CI упал на шаге
+       «Canon payload selftest» (run 34504107578). Объявление, живущее прозой,
+       теряется при первом же переносе поставки. -->
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** n/a reason=поставка не производит файловых артефактов; PDF и ZIP появятся в Ф4
