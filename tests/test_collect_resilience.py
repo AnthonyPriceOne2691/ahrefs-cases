@@ -211,21 +211,31 @@ async def test_interrupted_run_keeps_what_it_collected(
     assert len(provider.calls) == len(domains) - 2, "докупили не только недостающее"
 
 
-async def test_empty_domain_is_not_bought_twice(db_session: AsyncSession) -> None:
-    """C17: домен без истории не перезапрашивается следующим прогоном.
+async def test_empty_domain_is_bought_once_more_then_remembered(
+    db_session: AsyncSession,
+) -> None:
+    """C17, уточнённый хотфиксом H5: пустоте верят со второго раза.
 
-    Он не оставляет точек, поэтому обычный кэш о нём не знает: без памяти о
-    пустом ответе десять молодых доменов в списке покупают одну и ту же
-    пустоту каждый месяц. Дыра найдена сверкой с CRM агентства.
+    Домен без истории не оставляет точек, поэтому обычный кэш о нём не знает,
+    и без памяти десять молодых доменов покупали бы одну и ту же пустоту
+    каждый месяц. Но верить **первому** пустому ответу нельзя: так же
+    выглядят опечатка в домене и расхождение формы ответа со спекой Ahrefs.
+
+    Поэтому: первый прогон спрашивает, второй переспрашивает (подтверждение),
+    третий уже нет. Цена одного лишнего запроса на домен — против месяца
+    молчания о собственной ошибке.
     """
     await _load(db_session, ["empty.example.com", "d1.example.com"])
     await collect_all(db_session, AhrefsFixture(), now=NOW)
 
-    provider = CountingFixture()
-    second = await collect_all(db_session, provider, now=NOW)
+    confirming = CountingFixture()
+    await collect_all(db_session, confirming, now=NOW)
+    after_confirmation = CountingFixture()
+    third = await collect_all(db_session, after_confirmation, now=NOW)
 
-    assert provider.calls == []
-    assert second.requests_saved == 2
+    assert confirming.calls == ["empty.example.com"], "второй прогон обязан переспросить"
+    assert after_confirmation.calls == [], "после подтверждения — молчим"
+    assert third.requests_saved == 2
 
 
 async def test_empty_memory_expires(
@@ -234,6 +244,7 @@ async def test_empty_memory_expires(
     """Обратная сторона C17: молодой домен когда-нибудь перестаёт быть молодым."""
     await _load(db_session, ["empty.example.com"])
     await collect_all(db_session, AhrefsFixture(), now=NOW)
+    await collect_all(db_session, AhrefsFixture(), now=NOW)  # подтверждение пустоты
     monkeypatch.setattr(config.ahrefs, "empty_retry_days", 0)
 
     provider = CountingFixture()

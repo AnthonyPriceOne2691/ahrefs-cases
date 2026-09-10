@@ -24,6 +24,7 @@ from ahrefs_cases.collect.ahrefs_transport import (
     AhrefsTransport,
     AhrefsUnavailableError,
 )
+from ahrefs_cases.collect.response_guard import AhrefsResponseError, require_int
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +73,12 @@ class LiveQuota:
 
     async def units_left(self) -> int:
         response = await self._transport.get(_LIMITS_PATH, {})
-        limit = int(response.payload.get(_UNITS_LIMIT_KEY, 0))
-        used = int(response.payload.get(_UNITS_USED_KEY, 0))
+        # Строго: отсутствие ключа — это «мы не знаем остаток», а не «остаток
+        # ноль». Разница решающая: fail-closed превратил бы ноль в вечный
+        # запрет прогонов, и выглядело бы это как исчерпанная квота клиента,
+        # хотя причина — наши угаданные имена полей (Z2 в docs/FINDINGS.md).
+        limit = require_int(response.payload, _UNITS_LIMIT_KEY, "subscription-info")
+        used = require_int(response.payload, _UNITS_USED_KEY, "subscription-info")
         return max(0, limit - used)
 
 
@@ -99,14 +104,15 @@ async def preflight(source: QuotaSource, *, needed: int, reserved: int = 0) -> Q
     """
     try:
         left = await source.units_left()
-    except (AhrefsUnavailableError, AhrefsHTTPError) as exc:
+    except (AhrefsUnavailableError, AhrefsHTTPError, AhrefsResponseError) as exc:
         logger.warning("quota_unknown", extra={"reason": str(exc)})
         return QuotaState(
             left=None,
             verdict=QuotaVerdict.UNKNOWN,
             reason=(
                 f"остаток квоты Ahrefs неизвестен ({exc}). Прогон не начат: "
-                "«не знаем» значит «не тратим». Проверьте доступность API и ключ."
+                "«не знаем» значит «не тратим». Проверьте доступность API, ключ "
+                "и — если ответ пришёл, но не той формы — имена полей в спеке."
             ),
         )
 

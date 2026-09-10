@@ -85,20 +85,26 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
     обычный кэш о нём не знает ничего. Без этой памяти десять молодых доменов
     в списке покупают одну и ту же пустоту каждый месяц.
 
-    Берётся **последний** `RunItem` проекта: если после пустого ответа домен
-    успели собрать, память о пустоте больше не действует.
+    Берутся **последние** `RunItem` проекта: память включается только после
+    `AHREFS_EMPTY_CONFIRMATIONS` пустых ответов подряд. Одного мало — так же
+    выглядят опечатка в домене и расхождение формы ответа с нашей спекой, и
+    поверить с первого раза значит замолчать проблему на месяц. Если после
+    пустых ответов домен успели собрать, память не действует вовсе.
     """
+    needed = config.ahrefs.empty_confirmations
     stmt = (
         select(RunItem.outcome, Run.finished_at)
         .join(Run, Run.id == RunItem.run_id)
         .where(RunItem.project_id == project_id)
         .order_by(RunItem.id.desc())
-        .limit(1)
+        .limit(needed)
     )
-    row = (await session.execute(stmt)).first()
-    if row is None or row.outcome is not RunItemOutcome.SKIPPED_NO_DATA:
+    rows = (await session.execute(stmt)).all()
+    if len(rows) < needed:
         return None
-    finished_at: datetime | None = row.finished_at
+    if any(row.outcome is not RunItemOutcome.SKIPPED_NO_DATA for row in rows):
+        return None
+    finished_at: datetime | None = rows[0].finished_at
     return finished_at
 
 
