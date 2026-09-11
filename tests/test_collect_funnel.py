@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.collect.endpoints import DOMAIN_RATING_HISTORY, EndpointSpec
+from ahrefs_cases.collect.endpoints import DOMAIN_RATING_HISTORY, PAGES_HISTORY, EndpointSpec
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.plan import stage2_specs
@@ -137,14 +137,22 @@ async def test_project_without_data_is_not_a_candidate(db_session: AsyncSession)
     assert candidates == []
 
 
-def test_dr_history_is_behind_the_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """C9: DR стоит как полноценный запрос, а группу не определяет.
+def test_dr_moved_from_the_flag_to_the_case_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    """C9 переписан 11.09.2026: DR больше не под флагом — он must-have по ТЗ.
 
-    Флаг выключен по умолчанию: включать надо осознанно, потому что это чистая
-    надбавка к цене прогона.
+    Выключать требование ТЗ флагом значит забыть о нём молча (урок L33). DR
+    переехал в ступень кейса: там он покупается двумя точками десяти проектам
+    (1000 units) вместо тридцати кандидатов историей (3000).
+
+    Флаги остались у тех, у кого читателя действительно нет: `pages` и
+    `search_volume` не участвуют ни в правилах, ни в блоках кейса, ни в
+    must-have списке.
     """
-    monkeypatch.setattr(config.ahrefs, "collect_dr_history", False)
-    assert DOMAIN_RATING_HISTORY not in stage2_specs()
+    assert DOMAIN_RATING_HISTORY not in stage2_specs(), "DR не платится кандидатам"
+    assert DOMAIN_RATING_HISTORY.stage == 3
 
-    monkeypatch.setattr(config.ahrefs, "collect_dr_history", True)
-    assert DOMAIN_RATING_HISTORY in stage2_specs()
+    monkeypatch.setattr(config.ahrefs, "collect_pages_history", False)
+    assert PAGES_HISTORY not in stage2_specs()
+
+    monkeypatch.setattr(config.ahrefs, "collect_pages_history", True)
+    assert PAGES_HISTORY in stage2_specs()

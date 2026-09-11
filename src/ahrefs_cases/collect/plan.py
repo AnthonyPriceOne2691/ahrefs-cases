@@ -22,10 +22,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ahrefs_cases import config
 from ahrefs_cases.collect import cache
 from ahrefs_cases.collect.endpoints import (
-    DOMAIN_RATING_HISTORY,
     PAGES_HISTORY,
     STAGE1_SPECS,
     STAGE2_SPECS,
+    STAGE3_SPECS,
     TOTAL_SEARCH_VOLUME_HISTORY,
     EndpointSpec,
 )
@@ -151,7 +151,6 @@ def stage2_specs() -> tuple[EndpointSpec, ...]:
     здесь трети бюджета.
     """
     enabled: dict[str, bool] = {
-        DOMAIN_RATING_HISTORY.name: config.ahrefs.collect_dr_history,
         PAGES_HISTORY.name: config.ahrefs.collect_pages_history,
         TOTAL_SEARCH_VOLUME_HISTORY.name: config.ahrefs.collect_search_volume,
     }
@@ -188,6 +187,39 @@ async def build_stage2_plan(
         session,
         projects,
         stage2_specs(),
+        source=source,
+        now=now,
+        refresh=refresh,
+        windows=windows,
+        mode="auto",
+    )
+
+
+async def build_case_plan(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    *,
+    source: MetricSource,
+    now: date,
+    refresh: bool = False,
+    windows: PointWindows | None = None,
+) -> CollectPlan:
+    """Ступень кейса: докупить то, что показывают, и только тем, у кого кейс будет.
+
+    Отличие от шагов 1 и 2 — в том, кто решает схему. Там решала цена; здесь
+    назначение данных: кривая позиций покупается серией, потому что кейс
+    показывает кривую, хотя две точки дешевле (100 units против 399). Цена
+    выбирает только там, где назначение допускает оба варианта — например у
+    `traffic value`, который в кейсе живёт числом.
+
+    Кто попал в список, решает вызывающий: проекты с вердиктом `good` или
+    `medium` по действующей версии порогов. Планировщик не читает вердикты сам —
+    контракт `layers` запрещает `collect` знать про `classify`.
+    """
+    return await build_plan(
+        session,
+        projects,
+        STAGE3_SPECS,
         source=source,
         now=now,
         refresh=refresh,
@@ -261,7 +293,9 @@ def _choice_for(
             baseline_months=asked.baseline_months + config.ahrefs.history_lead_months,
         ),
         max_history_months=config.ahrefs.max_history_months,
-        mode=mode,
+        # `needs_series` бьёт цену: данные, которые существуют ради кривой,
+        # нельзя купить двумя точками, как бы дёшево это ни было.
+        mode="history" if spec.needs_series else mode,
     )
 
 
@@ -287,7 +321,23 @@ async def _tasks_for_spec(
     metrics = tuple(spec.metrics.values())
     for window in choice.windows:
         asked_window = window
-        if choice.scheme is CollectScheme.FULL_HISTORY:
+        if spec.needs_series and not refresh:
+            # Серия с дырой в середине «собрана» с точки зрения watermark: у
+            # позиций после шага 2 есть первый и последний месяцы. Спрашиваем
+            # по окну, иначе кривая молча останется из двух точек (урок L27).
+            span = await cache.missing_span(
+                session,
+                project.id,
+                metrics,
+                source,
+                window_from=window.date_from,
+                window_to=window.date_to,
+            )
+            if span is None:
+                cached.append(_cached(project, spec, "серия уже куплена целиком"))
+                continue
+            asked_window = Window(date_from=span[0], date_to=span[1])
+        elif choice.scheme is CollectScheme.FULL_HISTORY:
             date_from = await _incremental_from(
                 session, project, metrics, window, source=source, now=now, refresh=refresh
             )

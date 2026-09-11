@@ -25,7 +25,7 @@
 - **model_surface:** n/a reason=модель не вызывается; ось ⑤ придёт волной В3
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
-- **baseline_growth_waiver:** no
+- **baseline_growth_waiver:** yes reason=snapshot дублей поднят с 0 до 1: `collect_stage2` и `collect_case_data` — две публичные точки входа с одинаковой сигнатурой по построению (split-facade, случай назван самим гейтом). Тело у них общее (`_run_by_ids`), совпадает только список параметров; схлопывать их в одну функцию со ступенью-числом значило бы вынести магическое число в публичный API. Настоящий дубль из этой же поставки (фильтр окна в `cache.py`) вынесен в `_in_window`, а не переснят by=human:anthony
 - **observability:** 1
 - **observe_signal:** <заполняется на handoff>
 - **observe_until:** <заполняется на handoff>

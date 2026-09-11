@@ -22,7 +22,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.collect.ahrefs_transport import AhrefsHTTPError, AhrefsUnavailableError
 from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
 from ahrefs_cases.collect.budget import (
     record_cached,
@@ -33,8 +32,14 @@ from ahrefs_cases.collect.budget import (
     run_spend,
 )
 from ahrefs_cases.collect.factory import build_provider
-from ahrefs_cases.collect.plan import CollectTask, build_stage1_plan, build_stage2_plan
-from ahrefs_cases.collect.provider import AhrefsProvider, HistoryResult
+from ahrefs_cases.collect.fetch import TaskOutcome, fetch_one
+from ahrefs_cases.collect.plan import (
+    CollectTask,
+    build_case_plan,
+    build_stage1_plan,
+    build_stage2_plan,
+)
+from ahrefs_cases.collect.provider import AhrefsProvider
 from ahrefs_cases.collect.quota import FixtureQuota, QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
     add_item,
@@ -54,14 +59,6 @@ from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 
 logger = logging.getLogger(__name__)
-
-SHORT_HISTORY_POINTS = 6
-"""Ниже этого числа месяцев история считается короткой и помечается в `RunItem`.
-
-Пометка, а не пропуск: годится ли такая история для кейса, решает классификация
-(Ф3) по порогам Приложения А — у сбора нет ни порогов, ни права их применять.
-Сбор обязан только не молчать об этом.
-"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,14 +83,11 @@ class RunOptions:
     stage: int = 1
 
 
-@dataclass(slots=True)
-class _TaskOutcome:
-    """Что вышло по одной задаче. Складывается в журнал одним местом ниже."""
+_PLAN_BUILDERS = {1: build_stage1_plan, 2: build_stage2_plan, 3: build_case_plan}
+"""Ступень прогона → построитель плана.
 
-    task: CollectTask
-    outcome: RunItemOutcome
-    reason: str = ""
-    result: HistoryResult | None = None
+Таблицей, а не лестницей `if`: ступеней стало три, и четвёртая (если появится)
+не должна требовать правки тела прогона."""
 
 
 async def collect_projects(
@@ -154,7 +148,7 @@ async def _execute_run(
     options: RunOptions,
 ) -> RunReport:
     """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
-    build = build_stage1_plan if options.stage == 1 else build_stage2_plan
+    build = _PLAN_BUILDERS[options.stage]
     plan = await build(
         session,
         projects,
@@ -257,7 +251,7 @@ async def _execute_tasks(
     лимит держит сам прогон (Z1 в docs/FINDINGS.md).
     """
 
-    async def one(task: CollectTask) -> _TaskOutcome:
+    async def one(task: CollectTask) -> TaskOutcome:
         """Одна задача под семафором.
 
         Предохранитель проверяется и обновляется **внутри** семафора, а не в
@@ -271,11 +265,11 @@ async def _execute_tasks(
         """
         async with semaphore:
             if breaker.tripped:
-                return _TaskOutcome(
+                return TaskOutcome(
                     task=task, outcome=RunItemOutcome.SKIPPED_ABORTED, reason=breaker.reason()
                 )
             if asyncio.get_running_loop().time() >= deadline:
-                return _TaskOutcome(
+                return TaskOutcome(
                     task=task,
                     outcome=RunItemOutcome.SKIPPED_ABORTED,
                     reason=(
@@ -284,7 +278,7 @@ async def _execute_tasks(
                         "повторный запуск догрузит остаток."
                     ),
                 )
-            outcome = await _fetch_one(engine, task)
+            outcome = await fetch_one(engine, task)
             breaker.record(ok=outcome.outcome is not RunItemOutcome.FAILED)
             return outcome
 
@@ -301,7 +295,7 @@ async def _execute_tasks(
     return points
 
 
-async def _store_outcome(session: AsyncSession, run: Run, item: _TaskOutcome) -> int:
+async def _store_outcome(session: AsyncSession, run: Run, item: TaskOutcome) -> int:
     """Записать исход одной задачи: точки, расход, строку журнала, статус проекта."""
     points = 0
     if item.result is not None:
@@ -336,6 +330,50 @@ async def collect_stage2(
     а с Ф3 от классификации. Здесь механизм, а не критерий: правило отбора,
     оказавшись и тут, и там, разошлось бы при первой же правке порогов.
     """
+    return await _run_by_ids(
+        session,
+        project_ids,
+        provider,
+        RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=2),
+    )
+
+
+async def collect_case_data(
+    session: AsyncSession,
+    project_ids: Sequence[int],
+    provider: AhrefsProvider | None = None,
+    *,
+    now: date | None = None,
+    refresh: bool = False,
+    quota: QuotaSource | None = None,
+    windows: PointWindows | None = None,
+) -> RunReport:
+    """Ступень кейса: докупить кривую позиций, стоимость трафика и DR.
+
+    Только тем, у кого кейс будет: список приходит снаружи — проекты с вердиктом
+    `good` или `medium`. Сбор не читает вердикты сам, потому что контракт слоёв
+    запрещает `collect` знать про `classify`.
+    """
+    return await _run_by_ids(
+        session,
+        project_ids,
+        provider,
+        RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=3),
+    )
+
+
+async def _run_by_ids(
+    session: AsyncSession,
+    project_ids: Sequence[int],
+    provider: AhrefsProvider | None,
+    options: RunOptions,
+) -> RunReport:
+    """Прогон по списку id: открыть, выполнить, не потерять статус при ошибке.
+
+    Общее тело шага 2 и ступени кейса. Порознь они отличались только номером
+    ступени, и гейт копипаста поймал это на второй же ступени — справедливо:
+    две копии открытия прогона разошлись бы при первой правке реапера.
+    """
     engine = provider or build_provider()
     await reap_stale_runs(session)
     user = await system_user(session)
@@ -348,15 +386,9 @@ async def collect_stage2(
     await session.commit()
 
     try:
-        return await _execute_run(
-            session,
-            engine,
-            run,
-            projects,
-            RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=2),
-        )
+        return await _execute_run(session, engine, run, projects, options)
     except Exception as exc:
-        logger.exception("collect_stage2_crashed", extra={"run_id": run.id})
+        logger.exception("collect_run_crashed", extra={"run_id": run.id, "stage": options.stage})
         await _fail_run(session, run, exc)
         raise
 
@@ -377,45 +409,6 @@ async def collect_all(
     )
 
 
-async def _fetch_one(provider: AhrefsProvider, task: CollectTask) -> _TaskOutcome:
-    """Один запрос. Исключение здесь — исход задачи, а не конец прогона."""
-    try:
-        result = await provider.fetch_history(task.spec, task.request)
-    except (AhrefsUnavailableError, AhrefsHTTPError) as exc:
-        logger.warning(
-            "collect_task_failed",
-            extra={"domain": task.domain, "endpoint": task.spec.name, "reason": str(exc)},
-        )
-        return _TaskOutcome(task=task, outcome=RunItemOutcome.FAILED, reason=str(exc))
-    except Exception as exc:
-        # Неизвестная ошибка (разбор ответа, кодировка, чужая библиотека) не
-        # имеет права уронить прогон на сотню доменов. Логируется целиком со
-        # стеком: свернуть незнакомое в строку — значит потерять единственный
-        # шанс понять, что это было. `BaseException` сюда не попадает, поэтому
-        # отмена прогона остаётся отменой, а не «падением по своей вине».
-        logger.exception(
-            "collect_task_crashed",
-            extra={"domain": task.domain, "endpoint": task.spec.name},
-        )
-        return _TaskOutcome(
-            task=task,
-            outcome=RunItemOutcome.FAILED,
-            reason=f"неожиданная ошибка {type(exc).__name__}: {exc}",
-        )
-
-    if result.is_empty:
-        return _TaskOutcome(
-            task=task,
-            outcome=RunItemOutcome.SKIPPED_NO_DATA,
-            reason="Ahrefs не отдал историю по домену",
-            result=result,
-        )
-
-    months = len(result.points)
-    reason = f"short_history: {months} мес." if months < SHORT_HISTORY_POINTS else ""
-    return _TaskOutcome(task=task, outcome=RunItemOutcome.OK, reason=reason, result=result)
-
-
 _PROJECT_STATUS_BY_OUTCOME = {
     RunItemOutcome.OK: ProjectStatus.COLLECTED,
     RunItemOutcome.SKIPPED_NO_DATA: ProjectStatus.SKIPPED,
@@ -425,7 +418,7 @@ _PROJECT_STATUS_BY_OUTCOME = {
 спрашивали, и менять его статус значило бы записать незнание как результат."""
 
 
-async def _apply_project_status(session: AsyncSession, item: _TaskOutcome) -> None:
+async def _apply_project_status(session: AsyncSession, item: TaskOutcome) -> None:
     """Статус проекта по исходу сбора.
 
     Статус двигает прогон, а не приём списка (см. `intake/upsert.py`): иначе

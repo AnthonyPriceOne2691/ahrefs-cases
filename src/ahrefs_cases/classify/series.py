@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
 from itertools import pairwise
 
@@ -39,6 +39,40 @@ async def load_series(session: AsyncSession, project_id: int, source: MetricSour
 def months_covered(series: MetricSeries, metric: Metric) -> list[date]:
     """Отсортированные месяцы, по которым есть значения метрики."""
     return sorted(series.get(metric, {}))
+
+
+def aggregate(
+    by_month: Mapping[date, float],
+    months: Sequence[date],
+    *,
+    flow: bool,
+) -> float | None:
+    """Свернуть месяцы в одно значение — для квартального и годового вида.
+
+    **Правило зависит от природы метрики, и одно на обе группы врёт.**
+
+    - *Поток* — органический трафик: визиты за месяц. Квартал это сумма трёх
+      месяцев; взять последний значило бы показать треть.
+    - *Запас* — ссылающиеся домены, ключи в топе: состояние на момент, а не за
+      период. Квартал это значение на конец; сложить три месяца значило бы
+      показать втрое больше доменов, чем есть, — и в PDF это заметят не сразу.
+
+    Месяцев, которых нет, здесь нет и в ответе: отсутствующий месяц не равен
+    нулю (то же правило, что в `points._average`). Пустой набор даёт `None`, а
+    не ноль: «данных нет» и «ноль визитов» — разные утверждения.
+    """
+    present = [by_month[month] for month in months if month in by_month]
+    if not present:
+        return None
+    return sum(present) if flow else present[-1]
+
+
+FLOW_METRICS = frozenset({Metric.ORG_TRAFFIC, Metric.ORG_COST})
+"""Метрики-потоки: значение накоплено **за** месяц.
+
+Остальные — запасы: число ссылающихся доменов и ключей в топе измеряется на
+момент. Список здесь, а не в месте отрисовки, потому что свойство принадлежит
+метрике, а не графику: экран Ф6 и PDF Ф4 обязаны сворачивать одинаково."""
 
 
 def max_gap_months(months: list[date]) -> int:

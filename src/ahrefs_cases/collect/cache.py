@@ -18,6 +18,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from ahrefs_cases import config
 from ahrefs_cases.storage._enums import Metric, MetricSource, RunItemOutcome
@@ -152,13 +153,7 @@ async def window_is_covered(
             func.count(func.distinct(MetricPoint.point_date)).label("months"),
             func.max(MetricPoint.fetched_at).label("fetched_at"),
         )
-        .where(
-            MetricPoint.project_id == project_id,
-            MetricPoint.metric.in_(list(metrics)),
-            MetricPoint.source == source,
-            MetricPoint.point_date >= window_from,
-            MetricPoint.point_date <= window_to,
-        )
+        .where(*_in_window(project_id, metrics, source, window_from, window_to))
         .group_by(MetricPoint.metric)
     )
     rows = (await session.execute(stmt)).all()
@@ -177,6 +172,79 @@ def _months_between(window_from: date, window_to: date) -> int:
     """Сколько месячных строк ожидается в окне. Обе границы включительно."""
     months = (window_to.year - window_from.year) * 12 + (window_to.month - window_from.month)
     return max(1, months + 1)
+
+
+def _in_window(
+    project_id: int,
+    metrics: Sequence[Metric],
+    source: MetricSource,
+    window_from: date,
+    window_to: date,
+) -> list[ColumnElement[bool]]:
+    """Условие «точки этого проекта по этим метрикам внутри окна».
+
+    Вынесено, потому что два вопроса к окну — «куплено ли целиком» и «чего не
+    хватает» — задаются одним и тем же фильтром. Гейт копипаста поймал их на
+    второй же функции; две копии условия разошлись бы при добавлении любого
+    нового измерения (скажем, страны).
+    """
+    return [
+        MetricPoint.project_id == project_id,
+        MetricPoint.metric.in_(list(metrics)),
+        MetricPoint.source == source,
+        MetricPoint.point_date >= window_from,
+        MetricPoint.point_date <= window_to,
+    ]
+
+
+async def missing_span(
+    session: AsyncSession,
+    project_id: int,
+    metrics: Sequence[Metric],
+    source: MetricSource,
+    *,
+    window_from: date,
+    window_to: date,
+) -> tuple[date, date] | None:
+    """Какой отрезок окна не куплен. `None` — куплено всё.
+
+    Существует из-за L27 и ступени кейса. После шага 2 у позиций есть первые и
+    последние месяцы периода, а середины нет. `coverage` вернёт watermark по
+    **последнему** месяцу, `next_date_from` скажет «докупать нечего», и кривая
+    так и останется из двух точек — молча, потому что формально серия
+    «собрана по декабрь».
+
+    Возвращается **непрерывный** отрезок от первого недостающего месяца до
+    последнего, даже если внутри что-то есть. Это сознательно дороже точного
+    набора дыр: при построчном биллинге лишний месяц стоит одну строку, а
+    дробление на отдельные запросы упирается в минимум 50 units за каждый — то
+    есть выходит дороже на любом реалистичном числе дыр.
+    """
+    if not metrics:
+        return None
+
+    stmt = (
+        select(MetricPoint.point_date)
+        .where(*_in_window(project_id, metrics, source, window_from, window_to))
+        .group_by(MetricPoint.point_date)
+        .having(func.count(func.distinct(MetricPoint.metric)) >= len(set(metrics)))
+    )
+    present = {row.point_date for row in (await session.execute(stmt)).all()}
+    missing = [month for month in _months_range(window_from, window_to) if month not in present]
+    if not missing:
+        return None
+    return missing[0], missing[-1]
+
+
+def _months_range(window_from: date, window_to: date) -> list[date]:
+    """Месяцы окна, по первым числам."""
+    months: list[date] = []
+    cursor = _month_start(window_from)
+    last = _month_start(window_to)
+    while cursor <= last:
+        months.append(cursor)
+        cursor = _next_month(cursor)
+    return months
 
 
 def closed_through(now: date) -> date:

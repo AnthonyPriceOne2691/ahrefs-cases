@@ -49,6 +49,15 @@ class EndpointSpec:
     stage: int
     """Ступень воронки: 1 — всем проектам, 2 — только кандидатам в кейсы."""
 
+    needs_series: bool = False
+    """Данные нужны **серией**, а не двумя точками, и цена этого не решает.
+
+    Ступень кейса покупает кривую позиций именно ради кривой: две точки дешевле
+    (100 units против 399), но показать по ним нечего. Там, где назначение
+    данных известно заранее, выбирать схему по цене — значит купить дешёвое и
+    ненужное. Вердикту, наоборот, серия не нужна, и там решает цена.
+    """
+
     flat_cost: int | None = None
     """Цена строки, если документация называет её отдельно
     (`refdomains-history` — 5). Замером **не подтверждена**: разведка Ф7
@@ -147,10 +156,18 @@ DOMAIN_RATING_HISTORY = EndpointSpec(
     select=("date", "domain_rating"),
     list_key="domain_rating",
     metrics=MappingProxyType({"domain_rating": Metric.DR}),
-    stage=2,
+    stage=3,
 )
-"""Под флагом `AHREFS_COLLECT_DR_HISTORY`: DR приятно показать в кейсе, но группу
-он не определяет, а стоит как полноценный запрос."""
+"""DR — must-have из списка ТЗ, и в кейсе это **число**, а не кривая.
+
+Стоял под флагом на шаге 2 и был выключен: группу он не определяет, а тридцати
+кандидатам обошёлся бы в 3000 units. Переехал в ступень кейса 11.09.2026 — там
+он покупается двумя точками десяти проектам и стоит 1000. Так требование ТЗ
+выполняется, а не откладывается: «DR вырос с 12 до 34» — одна из самых
+узнаваемых строк SEO-кейса.
+
+Флага у него больше нет: настройка, которая выключает требование ТЗ, — это
+способ забыть о нём молча (урок L33)."""
 
 PAGES_HISTORY = EndpointSpec(
     name="pages-history",
@@ -170,6 +187,40 @@ TOTAL_SEARCH_VOLUME_HISTORY = EndpointSpec(
     stage=2,
 )
 
+KEYWORDS_GRAPH = EndpointSpec(
+    name="keywords-graph",
+    path="/v3/site-explorer/keywords-history",
+    select=("date", "top3", "top4_10"),
+    list_key="keywords",
+    metrics=MappingProxyType({"top3": Metric.KW_TOP3, "top4_10": Metric.KW_TOP4_10}),
+    stage=3,
+    needs_series=True,
+)
+"""Кривая позиций для кейса: **две корзины вместо пяти**.
+
+Тот же endpoint, что у шага 2, и отличается только `select` — но этого хватает,
+чтобы цена строки упала с 51 до 21. Графику нужны топ-3 и топ-10: это то, что
+читается как «вывели в топ». Остальные три корзины живут в кейсе числами на
+границах периода, а границы куплены шагом 2 — платить за их середину значит
+платить за числа, которых в кейсе нет.
+
+Разрешение месячное: ТЗ называет гранулярность прямо, и после сужения полей
+квартальная экономила бы 105 units на кейс — дешевле информативности."""
+
+METRICS_VALUE = EndpointSpec(
+    name="metrics-value",
+    path="/v3/site-explorer/metrics-history",
+    select=("date", "org_cost"),
+    list_key="metrics",
+    metrics=MappingProxyType({"org_cost": Metric.ORG_COST}),
+    stage=3,
+)
+"""`traffic value` для кейса — число, а не кривая.
+
+Из must-have списка ТЗ. С шага 1 убран потому, что второе поле удваивало цену
+строки **всем ста доменам**; здесь покупается двум точкам десяти кейсов и стоит
+100 units против 209 за серию, которую никто не показывает."""
+
 ALL_SPECS: tuple[EndpointSpec, ...] = (
     METRICS_HISTORY,
     KEYWORDS_HISTORY,
@@ -177,7 +228,11 @@ ALL_SPECS: tuple[EndpointSpec, ...] = (
     DOMAIN_RATING_HISTORY,
     PAGES_HISTORY,
     TOTAL_SEARCH_VOLUME_HISTORY,
+    KEYWORDS_GRAPH,
+    METRICS_VALUE,
 )
 
 STAGE1_SPECS: tuple[EndpointSpec, ...] = tuple(spec for spec in ALL_SPECS if spec.stage == 1)
 STAGE2_SPECS: tuple[EndpointSpec, ...] = tuple(spec for spec in ALL_SPECS if spec.stage == 2)
+STAGE3_SPECS: tuple[EndpointSpec, ...] = tuple(spec for spec in ALL_SPECS if spec.stage == 3)
+"""Ступень кейса: докупается только тем, у кого кейс будет."""

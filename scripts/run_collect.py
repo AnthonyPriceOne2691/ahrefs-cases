@@ -32,7 +32,7 @@ from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thre
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.collect.funnel import preliminary_candidates
-from ahrefs_cases.collect.runner import collect_all, collect_stage2
+from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.collect.scheme import PointWindows
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
@@ -42,7 +42,10 @@ from ahrefs_cases.intake.accept import (
 )
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError
 from ahrefs_cases.storage._enums import MetricSource
+from ahrefs_cases.storage._enums import Group
 from ahrefs_cases.storage.models.project import Project
+from ahrefs_cases.storage.models.ruleset import Ruleset
+from ahrefs_cases.storage.models.verdict import Verdict
 from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 
 _SOURCE_ERRORS = (SourceNotFoundError, UnknownSourceError, SheetLinkError, SheetAccessError)
@@ -127,6 +130,32 @@ async def _stage2(*, refresh: bool = False) -> int:
 def config_source() -> MetricSource:
     """Каким источником помечены точки текущего режима."""
     return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
+
+
+async def _case_data(*, refresh: bool = False) -> int:
+    """Ступень кейса: докупить кривую позиций и стоимость трафика.
+
+    Только тем, у кого кейс будет, — проектам с вердиктом `good` или `medium`
+    по действующей версии порогов. «Плохие» и «данных не хватает» не стоят
+    ничего: в этом и смысл ступени.
+    """
+    async with get_sessionmaker()() as session:
+        stmt = (
+            select(Verdict.project_id)
+            .join(Ruleset, Ruleset.id == Verdict.ruleset_id)
+            .where(Ruleset.is_active.is_(True), Verdict.group.in_([Group.GOOD, Group.MEDIUM]))
+        )
+        ids = list((await session.execute(stmt)).scalars().all())
+        if not ids:
+            print("кейсов нет: «хороших» и «средних» по действующим порогам не найдено")
+            return 0
+        print(f"проектов с кейсом: {len(ids)}")
+        report = await collect_case_data(
+            session, ids, refresh=refresh, windows=await _point_windows(session)
+        )
+        await session.commit()
+    print("\n".join(report.as_lines()))
+    return 0 if report.projects_ok else 1
 
 
 async def _classify() -> int:
@@ -255,6 +284,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _stage2(refresh=args.refresh)
         if args.command == "classify":
             return await _classify()
+        if args.command == "case-data":
+            return await _case_data(refresh=args.refresh)
         if args.command == "recalc":
             return await _recalc(args.version, make_active=args.activate)
         if args.command == "preview":
@@ -295,6 +326,9 @@ def main() -> int:
         "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
     )
     sub.add_parser("classify", help="классифицировать проекты по действующим порогам")
+    case_parser = sub.add_parser(
+        "case-data", help="докупить данные под кейсы: кривая позиций и стоимость трафика"
+    )
     recalc_parser = sub.add_parser(
         "recalc", help="пересчитать вердикты по версии порогов (без обращения к Ahrefs)"
     )
@@ -319,7 +353,7 @@ def main() -> int:
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
-    for parser_with_refresh in (collect_parser, stage2_parser, all_parser):
+    for parser_with_refresh in (collect_parser, stage2_parser, case_parser, all_parser):
         parser_with_refresh.add_argument(
             "--refresh",
             action="store_true",
