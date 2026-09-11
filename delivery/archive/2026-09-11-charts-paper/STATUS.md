@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cases_charts.py::test_chart_carries_its_own_paper
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («давай оптимальный вариант с подложкой»)
