@@ -70,8 +70,8 @@ API (файл доезжает с именем из `Content-Disposition`), бр
 | time_to_accepted_spec | 0.0h |
 | rework_after_done | 0 commit(s) after first phase: handoff |
 | harness_hardened | yes — web/src/pages/__tests__/cases.test.tsx (новый оракул) |
-| implement_retries | MANUAL — fills from session log |
-| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
-| est_token_or_cost | MANUAL / n/a |
+| implement_retries | 3 — гейт длины функции на `CasesPage` (разрезан на секции), скобки при снятии тумблера, prettier на двух файлах |
+| verify_fails_before_green | 1 — прогон живого экрана вскрыл библиотеку всех версий |
+| est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
