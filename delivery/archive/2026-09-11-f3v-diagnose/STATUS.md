@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («давай полностью добьём Ф3» — состав фазы объявлен в docs/PHASES_V3.md: диагностика «плохих» и выключаемый блок нормализации)
@@ -27,8 +27,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** `diagnose` печатает по каждому «плохому» пик, глубину падения и месяц начала либо один из двух других диагнозов; отсутствие данных шага 2 названо словами с ценой вопроса; версия порогов с ненулевым `normalize_after_months` отвергается на разборе — и классификацией, и пересчётом, и предпросмотром
+- **observe_until:** 2026-09-25
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Чем закрывается Ф3

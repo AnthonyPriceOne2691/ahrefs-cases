@@ -1,0 +1,122 @@
+# Verify report
+
+**Date:** 2026-09-11
+**Verifier:** human:anthony
+**asserts_reviewed_by:** human:anthony at=2026-09-11 — два утверждения (пример E9, границы серии) придуманы при реализации и внесены в спеку явной строкой; подпись опирается на инструкцию «полностью добьём Ф3» и состав фазы из `docs/PHASES_V3.md`, а не на отдельное чтение этих двух строк. Если граница «считаем от старта работ» спорна — это место для возражения
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/34579542154
+**Commit:** 77a2ec8
+
+## Shape oracles
+- [x] PASS — pre-commit, 27 хуков, упавших 0
+- [x] PASS — предохранители: net_loc 583 при пороге 800, файлов 4; waiver не потребовался
+
+## Behavior oracles
+- [x] PASS — pytest 267 passed, 1 skipped
+- [x] PASS — десять тестов диагностики по примерам E1–E8
+
+## Product oracles
+- [x] PASS — `diagnose` печатает список «плохих» с причиной и разбирает один домен
+- [x] PASS — версия порогов с ненулевой нормализацией отвергается всеми тремя путями
+- [x] PASS — golden-таблица классификации не изменилась
+
+## Ревью рисковых мест
+
+**Деньги.** Расхода нет: диагностика считает по собранным сериям, проверяется
+падающим `httpx`. Косвенно деньги затронуты в другую сторону, и это главное
+место поставки: отсутствие данных шага 2 по «плохим» **названо** вместе с ценой
+(≈95 units на домен, около 6 650 на семьдесят). Промолчать значило бы оставить
+решение о покупке нам, а оно заказчика.
+
+**Транзакция БД.** `diagnose_poor` и `diagnose_domain` только читают: ни
+`store`, ни `flush`. Проверено счётом строк `verdicts` и статусом проекта до и
+после — свойство поведения, а не отсутствие вызова в коде.
+
+**Производительность.** Серия читается отдельным запросом на проект, как в
+пересчёте. «Плохих» в реальном списке большинство — до семидесяти запросов на
+разбор, но диагностику запускают руками и не в цикле прогона. Место для правки
+одно, `series.load_series`.
+
+**Интеграция.** Отказ нормализации живёт в разборе порогов
+(`Duration.normalization_is_not_implemented`), то есть задевает все пути сразу —
+классификацию, пересчёт, предпросмотр и сид. Проверено тестом по трём путям.
+Риск обратный: сид и умолчания держат ноль, поэтому существующие 267 тестов
+зелёные без правок. Если заказчик пришлёт формулу, снимать отказ надо вместе с
+реализацией — в одном месте.
+
+**Новый модуль.** `classify/diagnose.py` — чистые функции плюс сорок строк
+доставки данных. Его риск не в арифметике, а в **правдоподобии**: диагноз
+читают как причину, и ложный «пик» отправил бы человека искать поломку в
+месяце, где ничего не ломалось. Поэтому пик в последнем месяце даёт другой
+диагноз, ширина шума названа константой с объяснением, а месяцы до старта работ
+в расчёт не входят — на каждое из трёх стоит тест.
+
+## Assertion digest (ревью ожиданий, не кода)
+
+База: `68b8e0e` · сгенерировано `assert_digest.sh`
+
+Новых/изменённых утверждений: **28**, из них без ссылки на пример спеки:
+**2**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+значение — из спеки или придумано под реализацию?**
+
+```
+E1	assert found.verdict is TrafficVerdict.DROPPED
+E1	assert found.peak_at == date(2025, 4, 1)
+E1	assert found.peak_value == 2000
+E1	assert found.last_value == 1200
+E1	assert found.drop_pct == pytest.approx(40.0)
+E1	assert found.decline_months == 8
+E1	assert "падение с 2025-05" in described, "начало снижения — месяц ПОСЛЕ пика"
+E1	assert "минус 40 %" in described
+E2	assert found.verdict is TrafficVerdict.NO_GROWTH
+E2	assert "падения не было" in found.describe()
+E3	assert found.verdict is TrafficVerdict.FLAT
+E3	assert "не менялся" in found.describe()
+-	assert whole.verdict is TrafficVerdict.DROPPED
+-	assert after_start.verdict is TrafficVerdict.NO_GROWTH
+L30	assert found is not None
+L30	assert found.refdomains.bought is False
+L30	assert "не покупались" in found.refdomains.describe()
+L30	assert "units" in found.refdomains.describe(), "цена вопроса названа"
+E5	assert found is not None
+E5	assert found.refdomains.bought is True
+E5	assert "потеряно доменов: 120 → 80" in found.refdomains.describe()
+E6	assert after_rows == before_rows
+E6	assert project.status is before_status
+E7	assert domains == sorted(domains), "порядок по домену, а не как вернула база"
+E7	assert [item.domain for item in second] == domains
+E7	assert "mmm-growing.example.com" not in domains
+E8	assert "не реализована" in str(excinfo.value)
+E8	assert "формулы от заказчика нет" in str(excinfo.value)
+```
+
+Привязаны к примерам: **E1 E2 E3 E5 E6 E7 E8 L30**. Остальные 2 — нет.
+
+Читать нужно **только строки с `-` в первой колонке**: их ожидание
+ничем не подписано. Подпись: `asserts_reviewed_by: human:… at=…`.
+
+asserts_without_example: 2
+
+## Spec coverage gaps
+- Позиции (`kw_top10`) в диагнозе не участвуют: их история покупается тем же
+  шагом 2, что и ссылки, и по «плохим» её нет. Появится вместе с решением
+  заказчика о покупке.
+
+## Verdict
+- [x] READY FOR HANDOFF
+
+## Harness metrics (this shipment)
+
+<!-- generated by scripts/delivery_metrics.py --base 68b8e0e -->
+
+| Metric | Value |
+|---|---|
+| files_touched / loc_diff | 4 code (+0 process docs) / +587/-4 (net +583) |
+| commits | 1 |
+| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
+| rework_after_done | 0 (handoff not declared yet) |
+| harness_hardened | yes — tests/test_classify_diagnose.py (новый оракул) |
+| implement_retries | MANUAL — fills from session log |
+| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
+| est_token_or_cost | MANUAL / n/a |
+
+MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
