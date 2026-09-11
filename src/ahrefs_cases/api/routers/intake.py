@@ -16,6 +16,7 @@ intake`. Загружают его PR-отдел и руководители —
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +25,7 @@ from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import IntakeLink, IntakeReportView, RejectionRow
 from ahrefs_cases.intake.accept import UnknownSourceError, accept, read_upload
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError, read_gsheet
+from ahrefs_cases.intake.rejections import Notice, Rejection
 from ahrefs_cases.intake.report import IntakeReport
 from ahrefs_cases.intake.rows import RawTable
 
@@ -110,6 +112,20 @@ async def _accept(session: AsyncSession, table: RawTable) -> IntakeReportView:
     return _view(report)
 
 
+def _rows(items: Iterable[Rejection | Notice]) -> list[RejectionRow]:
+    """Отказы и замечания показываются одинаково: разные у них последствия, а
+    не форма. Номер строки — тот, который человек ищет глазами в Excel."""
+    return [
+        RejectionRow(
+            row_no=item.row_no,
+            field=item.field,
+            reason=item.reason.value,
+            detail=item.detail,
+        )
+        for item in sorted(items, key=lambda item: (item.row_no, item.field))
+    ]
+
+
 def _view(report: IntakeReport) -> IntakeReportView:
     return IntakeReportView(
         origin=report.origin,
@@ -118,13 +134,6 @@ def _view(report: IntakeReport) -> IntakeReportView:
         updated=report.updated,
         rejected_rows=report.rejected_rows,
         by_reason={reason.value: count for reason, count in report.by_reason().items()},
-        rejections=[
-            RejectionRow(
-                row_no=item.row_no,
-                field=item.field,
-                reason=item.reason.value,
-                detail=item.detail,
-            )
-            for item in sorted(report.rejections, key=lambda item: (item.row_no, item.field))
-        ],
+        rejections=_rows(report.rejections),
+        notices=_rows(report.notices),
     )

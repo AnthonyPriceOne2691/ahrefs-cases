@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
-from ahrefs_cases.intake.rejections import Rejection, RejectReason
+from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +27,10 @@ class IntakeReport:
     created: int = 0
     updated: int = 0
     rejections: tuple[Rejection, ...] = field(default_factory=tuple)
+    notices: tuple[Notice, ...] = field(default_factory=tuple)
+    """Ячейки, которые не разобрали у **принятых** строк. Отдельным списком,
+    потому что последствие другое: чинить их можно не торопясь, и на число
+    отклонённых строк они не влияют."""
 
     @property
     def rejected_rows(self) -> int:
@@ -53,4 +57,13 @@ class IntakeReport:
             + (f" ({rejection.detail})" if rejection.detail else "")
             for rejection in sorted(self.rejections, key=lambda item: (item.row_no, item.field))
         )
+        if self.notices:
+            # Свой раздел, а не общий список: смешать их значило бы показать
+            # принятые строки в одном ряду с потерянными.
+            lines.append(f"принято с замечаниями: {len({item.row_no for item in self.notices})}")
+            lines.extend(
+                f"  строка {notice.row_no}: {notice.field} — {notice.reason.value}"
+                + (f" ({notice.detail})" if notice.detail else "")
+                for notice in sorted(self.notices, key=lambda item: (item.row_no, item.field))
+            )
         return lines

@@ -70,6 +70,50 @@ def jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config.auth, "jwt_secret", "тестовый-секрет-подписи")
 
 
+def _park_foreign_admins(write: Callable[[Callable[..., object]], None]) -> list[int]:
+    """Выключить **чужих** действующих администраторов и вернуть их идентификаторы.
+
+    Защита «нельзя разжаловать последнего администратора» — свойство **всей
+    базы**, а не строки: любой посторонний админ делает подопытного не
+    последним, и тест начинает проверять не то, что написано в его имени.
+    Через `db_session` этого не обойти: приложение ходит своими соединениями,
+    и откат тестовой транзакции его записей не видит.
+
+    Дев-база при этом живёт между прогонами: у неё заводят настоящие учётки
+    руками. Поэтому чужие админы не удаляются, а на время теста выключаются и
+    возвращаются обратно — третий случай зависимости «зелёный по причине
+    окружения» (уроки L8, L58).
+    """
+    parked: list[int] = []
+
+    async def _park(session: object) -> None:
+        from sqlalchemy import select as _select
+
+        stmt = _select(User).where(
+            User.group == UserGroup.ADMIN,
+            User.is_active.is_(True),
+            User.email.notin_((ADMIN, CLERK, MADE)),
+        )
+        for user in (await session.execute(stmt)).scalars().all():  # type: ignore[attr-defined]
+            user.is_active = False
+            parked.append(user.id)
+
+    write(_park)
+    return parked
+
+
+def _restore_admins(write: Callable[[Callable[..., object]], None], ids: list[int]) -> None:
+    async def _restore(session: object) -> None:
+        from sqlalchemy import update as _update
+
+        if ids:
+            await session.execute(  # type: ignore[attr-defined]
+                _update(User).where(User.id.in_(ids)).values(is_active=True)
+            )
+
+    write(_restore)
+
+
 @pytest.fixture
 def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -> Iterator[None]:
     _cleanup(writer)
@@ -95,8 +139,12 @@ def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -
         )
 
     writer(_seed)
-    yield
-    _cleanup(writer)
+    parked = _park_foreign_admins(writer)
+    try:
+        yield
+    finally:
+        _restore_admins(writer, parked)
+        _cleanup(writer)
 
 
 @pytest.fixture

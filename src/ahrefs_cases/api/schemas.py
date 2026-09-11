@@ -200,6 +200,10 @@ class IntakeReportView(BaseModel):
     rejected_rows: int
     by_reason: dict[str, int]
     rejections: list[RejectionRow]
+    notices: list[RejectionRow] = []
+    """Непонятые ячейки **принятых** строк. Отдельным полем, потому что
+    последствие другое: проект в сервисе есть, а цифру можно уточнить позже.
+    Считать их отказами значило бы показать принятые строки потерянными."""
 
 
 class IntakeLink(BaseModel):

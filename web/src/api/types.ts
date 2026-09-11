@@ -30,6 +30,9 @@ export interface IntakeReport {
   rejected_rows: number;
   by_reason: Record<string, number>;
   rejections: RejectionRow[];
+  /** Непонятые ячейки **принятых** строк: проект в сервисе есть, цифру можно
+   *  уточнить позже. В число отклонённых строк они не входят. */
+  notices: RejectionRow[];
 }
 
 export interface RunEstimate {

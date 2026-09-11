@@ -84,7 +84,7 @@ async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:
     не должен оставлять базу наполовину заполненной, если сороковая строка
     окажется битой.
     """
-    drafts, rejections = validate_table(table)
+    drafts, rejections, notices = validate_table(table)
     result = await upsert_projects(session, drafts)
     return IntakeReport(
         origin=table.origin,
@@ -92,4 +92,5 @@ async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:
         created=result.created,
         updated=result.updated,
         rejections=tuple(rejections),
+        notices=tuple(notices),
     )

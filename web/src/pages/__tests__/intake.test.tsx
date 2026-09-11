@@ -39,6 +39,7 @@ const REPORT = {
   rejected_rows: 0,
   by_reason: {},
   rejections: [],
+  notices: [],
 };
 
 /** Ответы по пути запроса. Очередь на путь — чтобы второй запрос той же сметы
@@ -104,6 +105,7 @@ describe('экран загрузки', () => {
           rejected_rows: 1,
           by_reason: { bad_date: 1 },
           rejections: [{ row_no: 12, field: 'period_start', reason: 'bad_date', detail: '31.02' }],
+          notices: [],
         },
       },
     });
@@ -116,6 +118,34 @@ describe('экран загрузки', () => {
     expect(screen.getByText('дата не разобрана')).toBeInTheDocument();
   });
 
+  it('E9: принятые с замечаниями показаны отдельно от отклонённых', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': {
+        status: 200,
+        body: {
+          ...REPORT,
+          notices: [
+            { row_no: 2, field: 'work_volume', reason: 'bad_number', detail: '214 ссылок' },
+          ],
+        },
+      },
+    });
+
+    renderApp(<IntakePage />);
+    await upload();
+
+    // Проект принят: отклонённых строк нет, а непонятая ячейка названа.
+    expect(await screen.findByText('принято 10')).toBeInTheDocument();
+    expect(screen.queryByText(/отклонено строк/)).not.toBeInTheDocument();
+    expect(screen.getByText('Принято с замечаниями')).toBeInTheDocument();
+    expect(screen.getByText('214 ссылок')).toBeInTheDocument();
+    expect(screen.getByText('с замечаниями 1')).toBeInTheDocument();
+  });
+});
+
+describe('экран загрузки: отказы источника', () => {
   it('E5: отказ по формату показывается текстом сервера', async () => {
     rememberToken('токен');
     server({

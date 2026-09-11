@@ -9,7 +9,7 @@
  */
 import { Alert, Badge, Group, Stack, Table, Text, Title } from '@mantine/core';
 
-import type { IntakeReport } from '../../api/types';
+import type { IntakeReport, RejectionRow } from '../../api/types';
 
 const REASONS: Record<string, string> = {
   empty_domain: 'пустой домен',
@@ -52,6 +52,11 @@ export function IntakeOutcome({ report }: { report: IntakeReport }) {
             отклонено строк {report.rejected_rows}
           </Badge>
         )}
+        {report.notices.length > 0 && (
+          <Badge size="lg" variant="light" color="yellow">
+            с замечаниями {new Set(report.notices.map((item) => item.row_no)).size}
+          </Badge>
+        )}
       </Group>
 
       {report.accepted === 0 && report.rejected_rows === 0 && (
@@ -64,28 +69,49 @@ export function IntakeOutcome({ report }: { report: IntakeReport }) {
       )}
 
       {report.rejections.length > 0 && (
-        <Table striped withTableBorder>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Строка</Table.Th>
-              <Table.Th>Поле</Table.Th>
-              <Table.Th>Причина</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {report.rejections.map((item) => (
-              <Table.Tr key={`${item.row_no}-${item.field}-${item.reason}`}>
-                <Table.Td>{item.row_no}</Table.Td>
-                <Table.Td>{item.field}</Table.Td>
-                <Table.Td>
-                  {reasonText(item.reason)}
-                  {item.detail && <Text size="xs">{item.detail}</Text>}
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+        <Rows title="Строки, которые не приняты" rows={report.rejections} />
+      )}
+
+      {report.notices.length > 0 && (
+        <>
+          <Text size="sm" data-testid="notices-note">
+            Эти проекты{' '}
+            <Text span fw={600}>
+              приняты
+            </Text>
+            , но одну ячейку разобрать не удалось. Объём работ остался неизвестным — в кейсе блок
+            «что сделали» просто не появится, а число не выдумывается.
+          </Text>
+          <Rows title="Принято с замечаниями" rows={report.notices} />
+        </>
       )}
     </Stack>
+  );
+}
+
+function Rows({ title, rows }: { title: string; rows: RejectionRow[] }) {
+  return (
+    <Table striped withTableBorder captionSide="top">
+      <Table.Caption>{title}</Table.Caption>
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Строка</Table.Th>
+          <Table.Th>Поле</Table.Th>
+          <Table.Th>Причина</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {rows.map((item) => (
+          <Table.Tr key={`${item.row_no}-${item.field}-${item.reason}`}>
+            <Table.Td>{item.row_no}</Table.Td>
+            <Table.Td>{item.field}</Table.Td>
+            <Table.Td>
+              {reasonText(item.reason)}
+              {item.detail && <Text size="xs">{item.detail}</Text>}
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
   );
 }

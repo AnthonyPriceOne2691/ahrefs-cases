@@ -16,7 +16,7 @@ from datetime import date, datetime
 
 from ahrefs_cases.intake.drafts import ProjectDraft
 from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
-from ahrefs_cases.intake.rejections import Rejection, RejectReason
+from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason
 from ahrefs_cases.intake.rows import RawRow, RawTable
 from ahrefs_cases.storage._enums import TargetMode
 
@@ -45,32 +45,48 @@ _TRUE = frozenset({"yes", "y", "true", "1", "да", "+"})
 _FALSE = frozenset({"no", "n", "false", "0", "нет", "-", ""})
 
 
-def validate_table(table: RawTable) -> tuple[list[ProjectDraft], list[Rejection]]:
-    """Таблица → черновики и отказы. Дубль домена в файле отмечается, не глотается."""
+def validate_table(table: RawTable) -> tuple[list[ProjectDraft], list[Rejection], list[Notice]]:
+    """Таблица → черновики, отказы и замечания.
+
+    Новости три, а не две: строка принята, строка принята с непонятой ячейкой,
+    строка отклонена. Дубль домена в файле отмечается, не глотается.
+    """
     if not table.columns:
-        return [], [
-            Rejection(
-                row_no=1,
-                field="*",
-                reason=RejectReason.EMPTY_SOURCE,
-                detail=table.origin,
-            )
-        ]
+        return (
+            [],
+            [
+                Rejection(
+                    row_no=1,
+                    field="*",
+                    reason=RejectReason.EMPTY_SOURCE,
+                    detail=table.origin,
+                )
+            ],
+            [],
+        )
 
     missing = missing_columns(table)
     if missing:
-        return [], [
-            Rejection(row_no=1, field=column, reason=RejectReason.MISSING_COLUMN)
-            for column in missing
-        ]
+        return (
+            [],
+            [
+                Rejection(row_no=1, field=column, reason=RejectReason.MISSING_COLUMN)
+                for column in missing
+            ],
+            [],
+        )
 
     drafts: dict[tuple[str, TargetMode, date], ProjectDraft] = {}
     rejections: list[Rejection] = []
+    notices: list[Notice] = []
     for row in table.data_rows():
-        draft, row_rejections = validate_row(row)
+        draft, row_rejections, row_notices = validate_row(row)
         rejections.extend(row_rejections)
         if draft is None:
+            # Замечания отклонённой строки не показываем: строки нет, и
+            # говорить о её ячейке значит предлагать чинить то, что не спасёт.
             continue
+        notices.extend(row_notices)
         if draft.key in drafts:
             rejections.append(
                 Rejection(
@@ -81,7 +97,7 @@ def validate_table(table: RawTable) -> tuple[list[ProjectDraft], list[Rejection]
                 )
             )
         drafts[draft.key] = draft
-    return list(drafts.values()), rejections
+    return list(drafts.values()), rejections, notices
 
 
 def missing_columns(table: RawTable) -> tuple[str, ...]:
@@ -90,23 +106,24 @@ def missing_columns(table: RawTable) -> tuple[str, ...]:
     return tuple(column for column in REQUIRED_COLUMNS if column not in present)
 
 
-def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection]]:
-    """Строка → черновик или её отказы (все сразу)."""
+def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection], list[Notice]]:
+    """Строка → черновик, её отказы (все сразу) и замечания к принятой строке."""
     rejections = [
         Rejection(row_no=row.row_no, field=column, reason=RejectReason.MISSING_FIELD)
         for column in REQUIRED_COLUMNS
         if column not in _MAY_BE_EMPTY and not row.get(column)
     ]
+    notices: list[Notice] = []
 
     domain = _parse_domain(row, rejections)
     period = _parse_period(row, rejections)
     target_mode = _parse_target_mode(row, rejections)
     publishable = _parse_flag(row, rejections)
-    work_volume = _parse_volume(row, rejections)
+    work_volume = _parse_volume(row, notices)
     geo = _parse_geo(row, rejections)
 
     if rejections or domain is None or period is None or target_mode is None:
-        return None, rejections
+        return None, rejections, notices
 
     return (
         ProjectDraft(
@@ -125,6 +142,7 @@ def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection]]:
             notes=row.get("notes"),
         ),
         [],
+        notices,
     )
 
 
@@ -207,12 +225,20 @@ def _parse_flag(row: RawRow, rejections: list[Rejection]) -> bool | None:
     return None
 
 
-def _parse_volume(row: RawRow, rejections: list[Rejection]) -> int | None:
+def _parse_volume(row: RawRow, notices: list[Notice]) -> int | None:
+    """Объём работ числом. Не разобрали — **замечание, а не отказ строки**.
+
+    Колонку заполняют руками и словами: «214 ссылок», «за 18 месяцев 132
+    ссылки». Пустая ячейка здесь законна, значит непонятая обязана стоить не
+    дороже пустой — иначе строка с меньшей информацией принимается, а с
+    большей отклоняется. Число при этом не выдумывается: «12 статей и 214
+    ссылок» дало бы 12, и оно молча уехало бы в кейс клиенту.
+    """
     raw = row.get("work_volume")
     if not raw:
         return None
     try:
         return int(float(raw))
     except ValueError:
-        rejections.append(Rejection(row.row_no, "work_volume", RejectReason.BAD_NUMBER, raw))
+        notices.append(Notice(row.row_no, "work_volume", RejectReason.BAD_NUMBER, raw))
         return None

@@ -62,6 +62,13 @@ def _row(index: int, domain: str | None = None) -> list[str]:
     ]
 
 
+def _text_volume_row(index: int) -> list[str]:
+    """Строка, заполненная по-человечески: объём работ словами, а не числом."""
+    row = _row(index)
+    row[6] = f"за 18 месяцев {index + 100} ссылок"
+    return row
+
+
 def _xlsx(rows: list[list[str]]) -> bytes:
     workbook = Workbook()
     sheet = workbook.active
@@ -204,6 +211,23 @@ def test_broken_row_is_rejected_with_a_reason(client: TestClient) -> None:
     assert rejection["field"] == "domain"
     assert rejection["reason"] == "missing_field"
     assert body["by_reason"]["missing_field"] == 1
+
+
+def test_text_volume_is_a_notice_not_a_refusal(client: TestClient) -> None:
+    """E4 и E8: десять строк с текстовым объёмом принимаются, а ячейки видны.
+
+    Ровно тот файл, который отклонялся целиком до этой поставки: объём работ
+    написан словами, всё остальное в порядке.
+    """
+    body = _upload(client, _xlsx([_text_volume_row(i) for i in range(GOOD_ROWS)])).json()
+
+    assert body["accepted"] == GOOD_ROWS
+    assert body["rejected_rows"] == 0
+    assert len(body["notices"]) == GOOD_ROWS
+    assert body["notices"][0]["field"] == "work_volume"
+    assert "ссылок" in body["notices"][0]["detail"]
+    # Замечания не подмешиваются к отказам: иначе число отклонённых строк врёт.
+    assert body["rejections"] == []
 
 
 def test_second_upload_updates_instead_of_doubling(client: TestClient) -> None:
