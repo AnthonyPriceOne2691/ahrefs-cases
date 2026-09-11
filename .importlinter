@@ -17,7 +17,7 @@ root_packages =
 # tests/test_core_isolation.py (импорты внешних библиотек).
 # --------------------------------------------------------------------
 [importlinter:contract:core-does-not-know-web]
-name = ядро не импортирует api и workers
+name = ядро не импортирует api, workers и cli
 type = forbidden
 source_modules =
     ahrefs_cases.intake
@@ -30,6 +30,7 @@ source_modules =
 forbidden_modules =
     ahrefs_cases.api
     ahrefs_cases.workers
+    ahrefs_cases.cli
 
 # --------------------------------------------------------------------
 # Контракт 2: порядок слоёв. Верхние знают про нижние, не наоборот.
@@ -43,7 +44,7 @@ forbidden_modules =
 name = слои: обвязка → рендер → кейсы → классификация → сбор → хранилище → конфиг
 type = layers
 layers =
-    ahrefs_cases.api : ahrefs_cases.workers
+    ahrefs_cases.api : ahrefs_cases.workers : ahrefs_cases.cli
     ahrefs_cases.export
     ahrefs_cases.cases
     ahrefs_cases.classify

@@ -25,20 +25,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.cases.builder import build_cases
-from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, Change
-from ahrefs_cases.cases.stoplist import ContentBlockedError
-from ahrefs_cases.cases.store import store_artifact, store_case
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
 from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thresholds_of
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
+from ahrefs_cases.cli.case_commands import pack_cases, render_case, show_cases
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.collect.scheme import PointWindows
-from ahrefs_cases.export.pdf_renderer import render_pdf
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
     UnknownSourceError,
@@ -277,101 +273,6 @@ async def _explain(domain: str) -> int:
     return 0
 
 
-async def _cases(domain: str | None, version: str | None) -> int:
-    """Показать, что соберётся в кейсы. Ничего не пишет, Ahrefs не трогает.
-
-    Печатает **все четыре исхода**, включая нулевые: отсутствие строки человек
-    читает как «таких не было», не отличив от «не проверяли» (L32, L34).
-    """
-    async with get_sessionmaker()() as session:
-        await seed_thresholds(session)
-        try:
-            report = await build_cases(
-                session, domain=domain, version=version, source=config_source()
-            )
-        except ThresholdsError as exc:
-            print(f"кейсы не собраны: {exc}", file=sys.stderr)
-            return _EXIT_BAD_SOURCE
-        await session.commit()
-
-    if not report.attempts:
-        print("проектов нет: сначала `intake`, потом `collect` и `classify`")
-        return 0
-    print("\n".join(report.as_lines()))
-    for attempt in report.by_outcome(CaseOutcome.BUILT):
-        if attempt.case is not None:
-            print("")
-            print("\n".join(_case_lines(attempt.domain, attempt.case)))
-            if attempt.stale_subjects:
-                missing = ", ".join(SUBJECT_LABELS[subject] for subject in attempt.stale_subjects)
-                print(f"  куплено, но не в вердикте: {missing} — перезапустите `classify`")
-    return 0
-
-
-def _case_lines(domain: str, case: CaseData) -> list[str]:
-    """Кейс одной карточкой. Анонимность защищает артефакт, а не консоль:
-    оператору нужен и домен, и то, каким кейс уйдёт наружу."""
-    head = f"{domain} — {case.group.value}, {case.period.months} мес., {case.geo} / {case.niche}"
-    if case.anonymized:
-        head += f" [анонимно: «{case.title}»]"
-    lines = [head]
-    if case.work_volume is not None:
-        lines.append(f"  что сделали: {case.work_volume}")
-    lines.extend(f"  {_change_line(change)}" for change in case.changes)
-    return lines
-
-
-def _change_line(change: Change) -> str:
-    growth = "с нуля" if change.pct is None else f"{change.pct:+.0f} %"
-    return f"{change.label:32} {change.before:>10.0f} → {change.after:>10.0f}  ({growth})"
-
-
-async def _render(domain: str) -> int:
-    """Собрать кейс одного проекта и положить PDF на диск.
-
-    Отдельный код возврата у контент-запрета (4), потому что действие по нему
-    другое: не «смотреть логи», а править входной файл или не публиковать этот
-    проект вовсе. Слить его с «прогон упал» значило бы отправить человека искать
-    поломку там, где сработало правило.
-    """
-    async with get_sessionmaker()() as session:
-        await seed_thresholds(session)
-        report = await build_cases(session, domain=domain, source=config_source())
-
-        if not report.attempts:
-            print(f"проект не найден: {domain}", file=sys.stderr)
-            return _EXIT_BAD_SOURCE
-        built = report.by_outcome(CaseOutcome.BUILT)
-        if not built:
-            print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
-            print("\n".join(report.as_lines()), file=sys.stderr)
-            return _EXIT_BAD_SOURCE
-
-        for attempt in built:
-            if attempt.case is None or attempt.project_id is None or attempt.verdict_id is None:
-                continue
-            try:
-                rendered = render_pdf(attempt.case)
-            except ContentBlockedError as exc:
-                print(f"{attempt.domain}: {exc}", file=sys.stderr)
-                return _EXIT_CONTENT_BLOCKED
-            # Запись идёт после файла: кейса без артефакта в базе не бывает,
-            # а артефакт без записи — просто файл, который можно пересобрать.
-            case_row = await store_case(
-                session,
-                project_id=attempt.project_id,
-                verdict_id=attempt.verdict_id,
-                case=attempt.case,
-            )
-            artifact = await store_artifact(session, case_id=case_row.id, path=rendered.path)
-            print(
-                f"{attempt.domain} → {rendered.path} ({rendered.pages} стр.), "
-                f"версия кейса {case_row.version}, sha256 {artifact.checksum[:12]}"
-            )
-        await session.commit()
-    return 0
-
-
 async def _main(args: argparse.Namespace) -> int:
     """Разбор команды. Наружу не выходит ни одна необработанная ошибка.
 
@@ -398,9 +299,11 @@ async def _main(args: argparse.Namespace) -> int:
         if args.command == "preview":
             return await _preview(args.version)
         if args.command == "cases":
-            return await _cases(args.domain, args.version)
+            return await show_cases(args.domain, args.version)
         if args.command == "render":
-            return await _render(args.domain)
+            return await render_case(args.domain)
+        if args.command == "pack":
+            return await pack_cases()
         if args.command == "diagnose":
             return await _diagnose(args.domain)
         if args.command == "explain":
@@ -464,6 +367,7 @@ def main() -> int:
         default=None,
         help="версия порогов; без неё — действующая. Кейс собирается по вердикту этой версии",
     )
+    sub.add_parser("pack", help="собрать кейсы «хороших» и «средних» в ZIP-архив")
     render_parser = sub.add_parser("render", help="собрать кейс проекта и положить PDF на диск")
     render_parser.add_argument("domain", help="канонический домен проекта")
     diagnose_parser = sub.add_parser(

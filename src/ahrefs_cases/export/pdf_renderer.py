@@ -24,7 +24,8 @@ from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ensure_publishable
 from ahrefs_cases.export.html_renderer import render_html
 
-_UNSAFE_IN_NAME = re.compile(r"[^\w.-]+", re.UNICODE)
+_UNSAFE_IN_NAME = re.compile(r"[^\w.\- ]+", re.UNICODE)
+"""Пробел разрешён: «сайт в нише travel — Кейс.pdf» — имя из ТЗ, а не slug."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +85,11 @@ def render_pdf(
 
 
 def filename(case: CaseData) -> str:
-    """Имя файла кейса — техническое; нейминг по ТЗ приходит вместе с ZIP.
+    """Имя файла по ТЗ: «название сайта + Кейс», у непубличных — «сайт в нише X».
 
-    Единственное, что здесь уже обязательно: у анонимного кейса домена в имени
-    нет. Оно строится из заголовка, а заголовок анонимность уже учёл.
+    Название берётся из заголовка кейса, а он анонимность уже решил (Q12):
+    второе решение о публикуемости здесь завело бы третье место, где она может
+    разойтись. Кириллица не транслитерируется — `zipfile` пишет имена в UTF-8.
     """
-    stem = _UNSAFE_IN_NAME.sub("-", case.title.strip()).strip("-").lower()
-    return f"{stem or 'case'}.pdf"
+    stem = _UNSAFE_IN_NAME.sub(" ", case.title.strip()).strip()
+    return f"{stem or 'Сайт'} — Кейс.pdf"

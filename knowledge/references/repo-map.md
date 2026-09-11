@@ -19,7 +19,7 @@ implementation:
 
 | Что | Как запускается |
 |---|---|
-| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `diagnose`, `explain`, `all` |
+| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `pack`, `diagnose`, `explain`, `all` |
 | Тесты | `.venv/bin/python -m pytest -q` — нужна дев-база Postgres |
 | Гейты формы | `.venv/bin/python -m pre_commit run --all-files` (27 хуков) |
 | Контур поставки | `python scripts/delivery_check.py [--diff-base REF]` |
@@ -29,7 +29,7 @@ implementation:
 # Где что лежит
 
 Слои идут сверху вниз, и направление зависимостей проверяется import-linter:
-`api`/`workers` → `export` → `cases` → `classify` → `collect`/`intake` →
+`api`/`workers`/`cli` → `export` → `cases` → `classify` → `collect`/`intake` →
 `storage` → `config`.
 
 | Каталог | Что в нём | Граница |
@@ -38,7 +38,8 @@ implementation:
 | `src/ahrefs_cases/collect/` | план, провайдеры, кэш, журнал, смета units | **не знает про `classify`** — классификация обязана быть переигрываемой |
 | `src/ahrefs_cases/classify/` | точки, дельты, правила, вердикты, пересчёт, предпросмотр, диагностика | не ходит в сеть |
 | `src/ahrefs_cases/cases/` | структура кейса, стоп-лист | не знает про форматы |
-| `src/ahrefs_cases/export/` | HTML-шаблон и PDF | **выше** `cases`: рендер знает структуру, кейс о рендере — нет |
+| `src/ahrefs_cases/cli/` | команды командной строки: печать и коды возврата | обвязка, как `api` и `workers` |
+| `src/ahrefs_cases/export/` | HTML-шаблон, графики, PDF и ZIP | **выше** `cases`: рендер знает структуру, кейс о рендере — нет |
 | `templates/` | `case.html.j2` — печатный лист и веб-карточка одновременно | коммитится: тест на него стоять обязан (L21) |
 | `src/ahrefs_cases/storage/` | модели и сессия | ничего не решает |
 | `src/ahrefs_cases/config/` | типизированные настройки | **единственное место `os.getenv`** |
