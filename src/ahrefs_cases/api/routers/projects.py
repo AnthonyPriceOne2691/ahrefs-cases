@@ -33,6 +33,7 @@ from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import load_series
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.export.charts import curve_blocks
+from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.storage import Group, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -137,6 +138,7 @@ async def project_charts(
     project_id: int,
     session: SessionDep,
     source: Annotated[MetricSource | None, Query()] = None,
+    grouping: Annotated[Grouping, Query()] = Grouping.MONTH,
 ) -> list[ChartBlock]:
     """Графики проекта — **тот же рисунок**, что уходит в PDF.
 
@@ -144,6 +146,12 @@ async def project_charts(
     кейс показывают одни кривые. Собирать их на фронте по рядам было бы вторым
     рисунком: он разошёлся бы с первым на шкале, сглаживании или подписях, и
     сотрудник с клиентом увидели бы разные графики одного проекта.
+
+    `grouping` сворачивает кривую в кварталы или годы. Свёртка бесплатна
+    (месяцы уже собраны) и делается здесь, а не на фронте: правило зависит от
+    природы метрики — поток складывается, запас берётся на конец периода.
+    Точки А и Б при этом не пересчитываются: они принадлежат вердикту и его
+    окнам, а не виду экрана.
 
     Полосы окон А и Б берутся из **записанного** вердикта (L41): карточка
     обязана объяснять то число, которое стоит в таблице и в кейсе. Вердикта
@@ -163,6 +171,9 @@ async def project_charts(
         period_start=project.period_start,
         window_a=_window(verdict.point_a if verdict else None, forward=True),
         window_b=_window(verdict.point_b if verdict else None, forward=False),
+        # Шаг кривой — перечисление: опечатка в параметре отвечает `422`, а не
+        # молча показывает месяцы человеку, выбравшему кварталы.
+        grouping=grouping,
     )
     return [ChartBlock(**block) for block in blocks]
 

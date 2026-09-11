@@ -261,6 +261,42 @@ def test_charts_without_verdict_keep_curves(client: TestClient) -> None:
     assert ">Б</text>" not in blocks[0]["svg"]
 
 
+def test_grouping_changes_the_picture(client: TestClient) -> None:
+    """E2 и E8 по HTTP: квартальный рисунок отличается от помесячного.
+
+    Сравниваются сами рисунки: свёртка, не доехавшая до рисовальщика, дала бы
+    тот же SVG, и тест на «200 ОК» этого бы не заметил.
+    """
+    project_id = _project_id(client, WITH_VERDICT)
+    headers = _headers(client)
+
+    monthly = client.get(f"/api/projects/{project_id}/charts", headers=headers).json()
+    quarterly = client.get(
+        f"/api/projects/{project_id}/charts", params={"grouping": "quarter"}, headers=headers
+    ).json()
+
+    assert monthly[0]["svg"] != quarterly[0]["svg"]
+    # Полосы окон переехали вместе с точками, а не исчезли (E7).
+    assert ">А</text>" in quarterly[0]["svg"]
+    assert ">Б</text>" in quarterly[0]["svg"]
+
+
+def test_unknown_grouping_is_refused(client: TestClient) -> None:
+    """E6: опечатка в параметре — отказ, а не молчаливый месяц.
+
+    Иначе человек смотрит на помесячную кривую, думая, что видит кварталы.
+    """
+    project_id = _project_id(client, WITH_VERDICT)
+
+    response = client.get(
+        f"/api/projects/{project_id}/charts",
+        params={"grouping": "неделя"},
+        headers=_headers(client),
+    )
+
+    assert response.status_code == 422
+
+
 def test_missing_project_is_404(client: TestClient) -> None:
     """E6: несуществующий проект — 404 с номером, а не пустой список."""
     response = client.get("/api/projects/999999/charts", headers=_headers(client))

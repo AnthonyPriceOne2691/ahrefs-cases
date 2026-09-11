@@ -214,13 +214,21 @@ def test_projects_list_shows_groups(client: TestClient) -> None:
 
 
 def test_filters_narrow_the_list(client: TestClient, seeded: dict[str, int]) -> None:
-    """E3: фильтр по группе и поиск по домену."""
+    """E3: фильтр по группе и поиск по домену.
+
+    Проверяется **свойство фильтра**, а не содержимое базы: в дев-базе живут
+    чужие проекты, в том числе «хорошие», и требовать «в ответе ровно мой»
+    значило бы проверять машину (уроки L68, L79).
+    """
     headers = _token(client)
 
     only_good = client.get("/api/projects", params={"group": "good"}, headers=headers).json()
     by_query = client.get("/api/projects", params={"query": "beta"}, headers=headers).json()
 
-    assert [row["domain"] for row in only_good] == ["alpha.example"]
+    domains = [row["domain"] for row in only_good]
+    assert "alpha.example" in domains
+    assert "beta.example" not in domains, "фильтр обязан отсеять проект другой группы"
+    assert {row["group"] for row in only_good} == {"good"}
     assert [row["domain"] for row in by_query] == ["beta.example"]
 
 

@@ -21,6 +21,13 @@ export function fetchProjectCard(projectId: number): Promise<ProjectCard> {
   return request<ProjectCard>(`/api/projects/${projectId}`);
 }
 
-export function fetchProjectCharts(projectId: number): Promise<ChartBlock[]> {
-  return request<ChartBlock[]>(`/api/projects/${projectId}/charts`);
+/** Шаг кривой. Свёртка бесплатна и делается на сервере: правило зависит от
+ *  природы метрики (поток складывается, запас берётся на конец периода). */
+export type Grouping = 'month' | 'quarter' | 'year';
+
+export function fetchProjectCharts(
+  projectId: number,
+  grouping: Grouping = 'month',
+): Promise<ChartBlock[]> {
+  return request<ChartBlock[]>(`/api/projects/${projectId}/charts?grouping=${grouping}`);
 }

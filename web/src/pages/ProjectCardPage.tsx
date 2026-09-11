@@ -7,10 +7,12 @@
  */
 import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { ApiError } from '../api/client';
 import { fetchProjectCard, fetchProjectCharts } from '../api/projects';
+import type { Grouping } from '../api/projects';
 
 import { CardHeader } from './card/CardHeader';
 import { Charts } from './card/Charts';
@@ -25,6 +27,9 @@ const FOOTNOTE =
 export function ProjectCardPage() {
   const { projectId } = useParams();
   const id = Number(projectId);
+  // Шаг кривой — состояние экрана, а не вердикта: таблицу А → Б и условия он
+  // не трогает, они принадлежат записанному решению.
+  const [grouping, setGrouping] = useState<Grouping>('month');
 
   const card = useQuery({
     queryKey: ['project', id],
@@ -32,8 +37,8 @@ export function ProjectCardPage() {
     enabled: Number.isFinite(id),
   });
   const charts = useQuery({
-    queryKey: ['project', id, 'charts'],
-    queryFn: () => fetchProjectCharts(id),
+    queryKey: ['project', id, 'charts', grouping],
+    queryFn: () => fetchProjectCharts(id, grouping),
     enabled: Number.isFinite(id),
   });
 
@@ -96,7 +101,9 @@ export function ProjectCardPage() {
           <Stack gap="sm">
             <Title order={3}>Динамика</Title>
             {charts.isPending && <Text size="sm">Рисуем кривые…</Text>}
-            {charts.data && <Charts blocks={charts.data} />}
+            {charts.data && (
+              <Charts blocks={charts.data} grouping={grouping} onGrouping={setGrouping} />
+            )}
           </Stack>
         </Paper>
 

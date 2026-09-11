@@ -5,7 +5,7 @@
  * быть видно, **почему** группа именно такая, и числа обязаны совпадать с
  * вердиктом, а не считаться заново.
  */
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,7 +105,10 @@ function server(routes: Record<string, { status: number; body: unknown }>) {
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      const found = Object.entries(routes).find(([path]) => url.endsWith(path));
+      // Сравниваем путь без параметров: у графиков появился `?grouping=…`, и
+      // сопоставление целого адреса перестало находить маршрут.
+      const path = url.split('?')[0];
+      const found = Object.entries(routes).find(([route]) => path.endsWith(route));
       const reply = found?.[1] ?? { status: 404, body: { detail: 'проекта 7 нет' } };
       return new Response(JSON.stringify(reply.body), { status: reply.status });
     }),
@@ -182,6 +185,35 @@ describe('карточка проекта: основание вердикта',
     expect(document.querySelector('[data-test="traffic"]')).not.toBeNull();
     expect(document.querySelector('[data-test="positions"]')).not.toBeNull();
   });
+});
+
+it('E8 и E9: тумблер перерисовывает кривые и не трогает вердикт', async () => {
+  const urls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      urls.push(url);
+      const body = url.includes('/charts')
+        ? [
+            {
+              title: 'Динамика органического трафика',
+              svg: `<svg data-step="${url.split('grouping=')[1]}"></svg>`,
+            },
+          ]
+        : { project: PROJECT, verdict: VERDICT, series: [] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }),
+  );
+
+  renderCard();
+  await screen.findByText('Динамика органического трафика');
+  await userEvent.click(screen.getByText('квартал'));
+
+  await waitFor(() => expect(document.querySelector('[data-step="quarter"]')).not.toBeNull());
+  // Вердикт принадлежит записи, а не виду экрана: таблица и условия те же.
+  expect(screen.getByText('органический трафик')).toBeInTheDocument();
+  expect(urls.filter((url) => url.includes('/api/projects/7?')).length).toBe(0);
 });
 
 describe('карточка проекта: состояния', () => {

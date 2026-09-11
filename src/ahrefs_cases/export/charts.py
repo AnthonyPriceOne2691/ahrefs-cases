@@ -28,6 +28,7 @@ from datetime import date
 
 from ahrefs_cases.cases.model import KW_TOTAL, CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10
+from ahrefs_cases.export.grouping import Grouping, regroup, regroup_window
 from ahrefs_cases.storage._enums import Metric
 
 SUBJECT_COLORS: Mapping[str, str] = {
@@ -299,6 +300,7 @@ def curve_blocks(
     period_start: date,
     window_a: Sequence[date] = (),
     window_b: Sequence[date] = (),
+    grouping: Grouping = Grouping.MONTH,
 ) -> list[dict[str, str]]:
     """Готовые блоки «заголовок + рисунок» — и для PDF, и для веб-карточки.
 
@@ -309,12 +311,19 @@ def curve_blocks(
 
     Ряда нет — графика нет: пустые оси сказали бы «роста не было», хотя мы
     просто не покупали эту метрику.
+
+    `grouping` сворачивает месяцы в кварталы или годы **до** рисования и
+    переносит полосы окон А и Б в те же координаты: окно, оставшееся в месяцах,
+    просто исчезло бы с оси периодов.
     """
-    by_subject = {item.subject: item for item in series}
+    # Свёртка идёт до рисования: рисовальщик знает только точки, а правило
+    # «поток складывается, запас берётся на конец» принадлежит метрике.
+    folded = {item.subject: item for item in regroup(series, grouping)}
+    bands = (regroup_window(window_a, grouping), regroup_window(window_b, grouping))
     blocks: list[dict[str, str]] = []
     for title, subjects in CHART_BLOCKS:
-        rows = [by_subject[name] for name in subjects if name in by_subject]
-        svg = curves_svg(rows, period_start=period_start, window_a=window_a, window_b=window_b)
+        rows = [folded[name] for name in subjects if name in folded]
+        svg = curves_svg(rows, period_start=period_start, window_a=bands[0], window_b=bands[1])
         if svg:
             blocks.append({"title": title, "svg": svg})
     return blocks
