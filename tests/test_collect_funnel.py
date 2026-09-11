@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 
 import pytest
@@ -93,7 +94,15 @@ async def test_stage2_asks_only_candidates(db_session: AsyncSession) -> None:
 
     asked = {domain for _endpoint, domain in provider.calls}
     assert asked == set(GROWING)
-    assert report.requests_made == len(GROWING) * len(stage2_specs())
+    # Запросов больше, чем endpoint'ов: с 11.09.2026 схема выбирается на каждый
+    # endpoint, и у `keywords-history` (строка 51) две точки дешевле истории —
+    # это два запроса, — а у `refdomains-history` (строка 5) дешевле история,
+    # один запрос. Считать «проекты × endpoint'ы» больше нельзя.
+    by_endpoint = Counter(endpoint for endpoint, _domain in provider.calls)
+    assert by_endpoint["keywords-history"] == len(GROWING) * 2, "две точки — два запроса"
+    assert by_endpoint["refdomains-history"] == len(GROWING), "история — один запрос"
+    assert report.requests_made == sum(by_endpoint.values())
+    assert report.projects_total == len(GROWING), "проектов столько же, сколько кандидатов (L13)"
 
 
 async def test_declining_projects_have_no_expensive_metrics(db_session: AsyncSession) -> None:

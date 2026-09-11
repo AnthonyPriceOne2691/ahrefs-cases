@@ -218,74 +218,96 @@ def choose_scheme(
 
 
 @dataclass(frozen=True, slots=True)
+class EndpointShare:
+    """Сколько проектов собирается этим способом по этому endpoint'у и почём."""
+
+    endpoint: str
+    scheme: CollectScheme
+    projects: int
+    units: int
+
+
+@dataclass(frozen=True, slots=True)
 class SchemeBreakdown:
     """Смета в разрезе способа сбора — требование заказчика к экрану Ф6.
 
-    Без разбивки смета выглядит произвольной: два похожих проекта стоят
-    по-разному, и объяснения нет. Числа те же, что у планировщика, потому что
-    берутся из тех же решений, а не считаются во второй раз.
+    Разрез идёт по **endpoint'у**, а не по проекту, потому что схема выбирается
+    на endpoint: у одного и того же проекта `keywords-history` выгодно брать
+    точками (204 против 918), а `refdomains-history` — историей (90 против 100).
+    Один ярлык на проект был бы неправдой в половине случаев.
+
+    Внутри каждого endpoint'а считаются **проекты**, а не задачи: у проекта в
+    схеме «две точки» два запроса, и счёт по задачам дал бы «проектов 30,
+    собрано 90» — число, которое человеку показать нельзя (урок L13).
     """
 
-    projects: Mapping[CollectScheme, int]
-    units: Mapping[CollectScheme, int]
+    shares: tuple[EndpointShare, ...]
     units_if_auto: int
-    """Сколько стоил бы прогон, если бы схему выбирали по цене."""
+    """Сколько стоил бы прогон, если бы схему всюду выбирали по цене."""
 
     units_if_history: int
     """Сколько стоил бы прогон одной историей — число, с которым сравнивают."""
 
+    def projects(self, scheme: CollectScheme) -> int:
+        """Сколько пар «проект + endpoint» собирается этим способом."""
+        return sum(share.projects for share in self.shares if share.scheme is scheme)
+
+    def units(self) -> int:
+        return sum(share.units for share in self.shares)
+
     def as_lines(self) -> list[str]:
-        """Строки отчёта. Способ, цена группы и то, чего стоит альтернатива."""
+        """Строки отчёта: способ, endpoint, число проектов и цена группы."""
         parts = [
-            f"{scheme.value}: {count} проект(ов), {self.units.get(scheme, 0)} units"
-            for scheme, count in self.projects.items()
-            if count
+            f"{share.endpoint} {share.scheme.value}: {share.projects} проект(ов), "
+            f"{share.units} units"
+            for share in self.shares
+            if share.projects
         ]
         lines = [f"схема сбора — {'; '.join(parts) if parts else 'нечего собирать'}"]
         if self.units_if_auto != self.units_if_history:
             lines.append(
-                f"при AHREFS_COLLECT_SCHEME=auto прогон стоил бы {self.units_if_auto} "
-                f"units против {self.units_if_history} историей "
-                f"(экономия {self.units_if_history - self.units_if_auto})"
+                f"при выборе по цене прогон стоил бы {self.units_if_auto} units против "
+                f"{self.units_if_history} историей (экономия "
+                f"{self.units_if_history - self.units_if_auto})"
             )
         return lines
 
     def per_100_urls(self, projects: int) -> int:
         """«Стоимость запуска на 100 URL» — метрика приёмки, названная заказчиком.
 
-        Считается от числа проектов в прогоне, а не только для ровно ста:
-        сравнивать прогоны между собой иначе нельзя, а именно за этим число и
-        нужно. Ноль проектов даёт ноль, а не деление на ноль.
+        Считается от числа **проектов** в прогоне, а не от числа задач: иначе
+        прогон шага 2, где у проекта два endpoint'а, выглядел бы вдвое дороже
+        прогона шага 1 при той же цене за домен.
         """
         if projects <= 0:
             return 0
-        total = sum(self.units.values())
-        return round(total / projects * 100)
+        return round(self.units() / projects * 100)
 
 
 def breakdown(
-    choices: Mapping[int, SchemeChoice],
-    units_by_project: Mapping[int, int],
+    choices: Mapping[tuple[int, str], SchemeChoice],
+    units_by_choice: Mapping[tuple[int, str], int],
 ) -> SchemeBreakdown:
-    """Свернуть решения по проектам в смету по способам.
+    """Свернуть решения в смету по парам «endpoint + способ».
 
-    Считает **проекты**, а не задачи: в схеме «две точки» у проекта два запроса
-    одним endpoint'ом, и «проектов 3, собрано 6» — то самое число, которое
-    нельзя показать человеку (урок L13).
-
-    Units берутся из реальных задач плана (`units_by_project`), а не из цены
-    решения: между решением и задачей стоит кэш, и проект с уже купленным окном
-    обязан входить в смету нулём. Считать цену второй раз по решению значило бы
-    показать оператору смету, которой прогон не соответствует.
+    Units берутся из реальных задач плана, а не из цены решения: между решением
+    и задачей стоит кэш, и проект с уже купленным окном обязан входить в смету
+    нулём. Считать цену второй раз по решению значило бы показать оператору
+    смету, которой прогон не соответствует.
     """
-    projects: dict[CollectScheme, int] = dict.fromkeys(CollectScheme, 0)
-    units: dict[CollectScheme, int] = dict.fromkeys(CollectScheme, 0)
-    for project_id, choice in choices.items():
-        projects[choice.scheme] += 1
-        units[choice.scheme] += units_by_project.get(project_id, 0)
+    grouped: dict[tuple[str, CollectScheme], EndpointShare] = {}
+    for key, choice in choices.items():
+        _, endpoint = key
+        bucket = (endpoint, choice.scheme)
+        current = grouped.get(bucket)
+        grouped[bucket] = EndpointShare(
+            endpoint=endpoint,
+            scheme=choice.scheme,
+            projects=(current.projects if current else 0) + 1,
+            units=(current.units if current else 0) + units_by_choice.get(key, 0),
+        )
     return SchemeBreakdown(
-        projects=projects,
-        units=units,
+        shares=tuple(grouped[key] for key in sorted(grouped, key=lambda k: (k[0], k[1].value))),
         units_if_auto=sum(choice.units_cheapest for choice in choices.values()),
         units_if_history=sum(choice.units_full_history for choice in choices.values()),
     )

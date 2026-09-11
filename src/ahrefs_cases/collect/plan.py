@@ -86,15 +86,16 @@ class CachedTask:
 class CollectPlan:
     """Что будет запрошено, что сэкономлено и какой схемой.
 
-    `choices` — по одному решению на **проект**, а не на задачу: в схеме «две
-    точки» у проекта два запроса одним endpoint'ом, и разбивка по задачам дала
-    бы «проектов 3, собрано 6» — то самое число, которое нельзя показывать
-    человеку (урок L13).
+    `choices` — по одному решению на пару **«проект + endpoint»**: схема
+    выбирается на endpoint, потому что у одного проекта `keywords-history`
+    выгодно брать точками, а `refdomains-history` историей. Задача при этом не
+    единица счёта: в схеме «две точки» их две на пару, и разбивка по задачам
+    дала бы «проектов 30, собрано 90» (урок L13).
     """
 
     tasks: list[CollectTask]
     cached: list[CachedTask]
-    choices: Mapping[int, SchemeChoice]
+    choices: Mapping[tuple[int, str], SchemeChoice]
 
     def estimated_units(self) -> int:
         """Смета: только по задачам, которые действительно уйдут в Ahrefs.
@@ -105,13 +106,12 @@ class CollectPlan:
         return sum(task.estimated_units() for task in self.tasks)
 
     def scheme_breakdown(self) -> SchemeBreakdown:
-        """Смета в разрезе способа сбора — для отчёта и экрана Ф6."""
-        units_by_project: dict[int, int] = {}
+        """Смета в разрезе «endpoint + способ» — для отчёта и экрана Ф6."""
+        units: dict[tuple[int, str], int] = {}
         for task in self.tasks:
-            units_by_project[task.project_id] = (
-                units_by_project.get(task.project_id, 0) + task.estimated_units()
-            )
-        return breakdown(self.choices, units_by_project)
+            key = (task.project_id, task.spec.name)
+            units[key] = units.get(key, 0) + task.estimated_units()
+        return breakdown(self.choices, units)
 
 
 async def build_stage1_plan(
@@ -173,10 +173,16 @@ async def build_stage2_plan(
     с Ф3 — классификация). Планировщик не выбирает кандидатов сам: иначе
     правило отбора оказалось бы в двух местах и разошлось бы.
 
-    Схема здесь всегда `history`, независимо от флага: у подтверждающих метрик
-    своя цена строки (`refdomains-history` — 5, то есть под минимум влезает
-    одна строка) и свой набор endpoint'ов под флагами. Перевод шага 2 на окна —
-    отдельная поставка, а не побочный эффект этой.
+    Схема выбирается по цене **на каждый endpoint**, и флага здесь нет:
+    флаг шага 1 существует из-за Z6 — дыры в серии трафика, — а правило
+    достоверности серии считает `max_gap_months` только по `org_traffic`.
+    Разреженность подтверждающих метрик вердикту не мешает, запрещать нечего.
+
+    Решения получаются противоположными на одном и том же периоде, и это
+    следствие цены строки, а не свойство endpoint'ов: у `keywords-history`
+    пять биллингуемых полей (строка 51) — 204 точками против 918 историей; у
+    `refdomains-history` строка стоит 5, и минимум за запрос делает историю
+    дешевле — 90 против 100.
     """
     return await build_plan(
         session,
@@ -186,7 +192,7 @@ async def build_stage2_plan(
         now=now,
         refresh=refresh,
         windows=windows,
-        mode="history",
+        mode="auto",
     )
 
 
@@ -210,12 +216,12 @@ async def build_plan(
     asked = windows or PointWindows()
     tasks: list[CollectTask] = []
     cached: list[CachedTask] = []
-    choices: dict[int, SchemeChoice] = {}
+    choices: dict[tuple[int, str], SchemeChoice] = {}
     for project in projects:
-        choice = _choice_for(project, specs[0], asked, mode=mode)
-        choices[project.id] = choice
         skip_reason = await _skip_reason(session, project, refresh=refresh)
         for spec in specs:
+            choice = _choice_for(project, spec, asked, mode=mode)
+            choices[(project.id, spec.name)] = choice
             if skip_reason is not None:
                 cached.append(_cached(project, spec, skip_reason))
                 continue
@@ -234,13 +240,12 @@ def _choice_for(
     *,
     mode: CollectSchemeMode,
 ) -> SchemeChoice:
-    """Решение по проекту. Цена считается по первому endpoint'у набора.
+    """Решение по паре «проект + endpoint».
 
-    Для шага 1 набор из одного endpoint'а, и вопрос не возникает. Для шага 2
-    схема принудительно `history`, поэтому от выбора спеки зависят только числа
-    в объяснении, а не сам способ — и это честнее, чем считать одно решение по
-    сумме цен разных endpoint'ов, потому что схема применяется к каждому
-    запросу по отдельности.
+    Схема применяется к каждому запросу отдельно, поэтому и считается отдельно:
+    одно решение по сумме цен разных endpoint'ов было бы неправдой для каждого
+    из них. На шаге 1 набор из одного endpoint'а, и разницы не видно; на шаге 2
+    решения противоположны.
 
     Запас до старта работ складывается из двух слагаемых: сколько просят пороги
     (`pre_start_baseline_months` — расчёт baseline'а Ф3б) и сколько добавлено

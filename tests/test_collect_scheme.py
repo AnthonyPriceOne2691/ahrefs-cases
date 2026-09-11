@@ -326,11 +326,13 @@ async def test_breakdown_counts_projects_not_tasks(
     )
     breakdown = plan.scheme_breakdown()
 
-    assert breakdown.projects[CollectScheme.TWO_POINTS] == 1
-    assert breakdown.projects[CollectScheme.FULL_HISTORY] == 1
+    assert breakdown.projects(CollectScheme.TWO_POINTS) == 1
+    assert breakdown.projects(CollectScheme.FULL_HISTORY) == 1
     assert len(plan.tasks) == 3, "две задачи у длинного проекта, одна у короткого"
-    assert breakdown.units[CollectScheme.TWO_POINTS] == 100
-    assert breakdown.units[CollectScheme.FULL_HISTORY] == 55
+    assert breakdown.units() == 155
     assert breakdown.units_if_history == 198 + 55
     assert breakdown.units_if_auto == 100 + 55
     assert "экономия 98" in "\n".join(breakdown.as_lines())
+    assert all(
+        share.endpoint == "metrics-history" for share in breakdown.shares
+    ), "на шаге 1 endpoint один, и разрез по нему вырождается в прежний"
