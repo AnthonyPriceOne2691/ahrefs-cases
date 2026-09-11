@@ -5,7 +5,7 @@
  * бы «хороших нет», когда они на второй странице.
  */
 import { request } from './client';
-import type { ProjectRow, ProjectsQuery } from './types';
+import type { ChartBlock, ProjectCard, ProjectRow, ProjectsQuery } from './types';
 
 export function fetchProjects(params: ProjectsQuery): Promise<ProjectRow[]> {
   const search = new URLSearchParams({
@@ -15,4 +15,12 @@ export function fetchProjects(params: ProjectsQuery): Promise<ProjectRow[]> {
   if (params.group) search.set('group', params.group);
   if (params.query?.trim()) search.set('query', params.query.trim());
   return request<ProjectRow[]>(`/api/projects?${search.toString()}`);
+}
+
+export function fetchProjectCard(projectId: number): Promise<ProjectCard> {
+  return request<ProjectCard>(`/api/projects/${projectId}`);
+}
+
+export function fetchProjectCharts(projectId: number): Promise<ChartBlock[]> {
+  return request<ChartBlock[]>(`/api/projects/${projectId}/charts`);
 }

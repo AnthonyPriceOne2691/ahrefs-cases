@@ -9,6 +9,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { IntakePage } from '../pages/IntakePage';
+import { ProjectCardPage } from '../pages/ProjectCardPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 
 import { NAV_SECTIONS } from './nav';
@@ -43,6 +44,9 @@ export function AppRoutes() {
 
   return (
     <Routes>
+      {/* Карточка живёт под разделом проектов и тем же правом: отдельного
+          пункта меню у неё нет, приходят в неё из таблицы. */}
+      {can('read') && <Route path="/projects/:projectId" element={<ProjectCardPage />} />}
       {allowed.map((section) => {
         const Screen = SCREENS[section.path];
         return (

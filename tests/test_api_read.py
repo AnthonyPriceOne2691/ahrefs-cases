@@ -247,6 +247,40 @@ def test_card_shows_verdict_points_and_series(client: TestClient, seeded: dict[s
     assert card["series"][0]["metric"] == "org_traffic"
 
 
+def test_card_compares_points_with_labels(client: TestClient, seeded: dict[str, int]) -> None:
+    """E2 и E10 (`web-project-card`): сравнение А → Б приходит готовыми строками.
+
+    Подпись и рост считает сервер: словарь подписей и арифметика роста живут в
+    кейсе и классификации, и вторая копия на фронте разошлась бы с первой —
+    экран и PDF начали бы называть метрики по-разному (урок L75).
+    """
+    card = client.get(f"/api/projects/{seeded['project']}", headers=_token(client)).json()
+
+    rows = {row["subject"]: row for row in card["verdict"]["comparison"]}
+    traffic = rows["org_traffic"]
+
+    assert traffic["label"] == "органический трафик"
+    assert traffic["before"] == 1000.0
+    assert traffic["after"] == 2400.0
+    assert traffic["absolute"] == 1400.0
+    assert traffic["pct"] == pytest.approx(140.0)
+    # Производная «топ-10» сравнивается наравне с покупными метриками.
+    assert rows["kw_top10"]["label"] == "ключи в топ-10"
+
+
+def test_comparison_skips_half_measured_metrics(
+    client: TestClient, seeded: dict[str, int]
+) -> None:
+    """Метрика, купленная только к одной точке, в сравнение не попадает.
+
+    Показать половину строки значило бы предложить сравнить число с пустотой.
+    """
+    card = client.get(f"/api/projects/{seeded['project']}", headers=_token(client)).json()
+
+    subjects = {row["subject"] for row in card["verdict"]["comparison"]}
+    assert "refdomains" not in subjects
+
+
 def test_missing_project_is_404(client: TestClient) -> None:
     """E6: пустая карточка выглядела бы как «проект без данных»."""
     assert client.get("/api/projects/999999", headers=_token(client)).status_code == 404

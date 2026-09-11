@@ -87,3 +87,49 @@ export interface ProjectsQuery {
   limit: number;
   offset: number;
 }
+
+export interface ComparisonRow {
+  subject: string;
+  label: string;
+  before: number;
+  after: number;
+  absolute: number;
+  /** `null` — рост от нулевой базы: процента у него нет. */
+  pct: number | null;
+}
+
+export interface ReasonRow {
+  subject: string;
+  fact: number | null;
+  threshold: number | null;
+  passed: boolean;
+  decisive: boolean;
+  note: string;
+}
+
+export interface VerdictView {
+  group: string;
+  score: number;
+  ruleset_version: string;
+  decided_at: string;
+  reasons: ReasonRow[];
+  point_a: Record<string, number>;
+  point_b: Record<string, number>;
+  comparison: ComparisonRow[];
+}
+
+export interface SeriesRow {
+  metric: string;
+  points: [string, number][];
+}
+
+export interface ProjectCard {
+  project: ProjectRow;
+  verdict: VerdictView | null;
+  series: SeriesRow[];
+}
+
+export interface ChartBlock {
+  title: string;
+  svg: string;
+}

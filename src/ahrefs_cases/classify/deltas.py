@@ -29,8 +29,12 @@ class Delta:
         return self.absolute > 0
 
 
-def _delta(before: float, after: float) -> Delta:
-    """Относительная дельта от нулевой базы не определена.
+def delta_of(before: float, after: float) -> Delta:
+    """Изменение метрики от А к Б. Относительная дельта от нулевой базы не определена.
+
+    Публичная, потому что зовут её трое: классификация, кейс и карточка проекта.
+    Повторить формулу на экране значило бы потерять именно этот случай — рост с
+    нуля показался бы бесконечным или стопроцентным.
 
     `None`, а не бесконечность и не 100 %: рост с нуля до сорока визитов
     формально бесконечен, а по сути ничего не значит. Правила обязаны решать
@@ -63,12 +67,12 @@ def between(point_a: Point, point_b: Point) -> Deltas:
     не было измерений.
     """
     by_metric = {
-        metric: _delta(before, point_b.values[metric])
+        metric: delta_of(before, point_b.values[metric])
         for metric, before in point_a.values.items()
         if metric in point_b.values
     }
     derived = {
-        name: _delta(before, point_b.derived[name])
+        name: delta_of(before, point_b.derived[name])
         for name, before in point_a.derived.items()
         if name in point_b.derived
     }

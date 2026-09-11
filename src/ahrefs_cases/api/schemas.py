@@ -46,6 +46,24 @@ class ReasonRow(BaseModel):
     note: str = ""
 
 
+class ComparisonRow(BaseModel):
+    """Строка «метрика: было → стало». Та же, что в таблице кейса.
+
+    Подпись и рост считаются **на сервере**: словарь подписей и арифметика
+    роста уже существуют для кейса, и вторая копия на фронте разошлась бы с
+    первой — экран и PDF начали бы называть метрики по-разному, а рост от
+    нулевой базы превратился бы из «не определён» в сто процентов.
+    """
+
+    subject: str
+    label: str
+    before: float
+    after: float
+    absolute: float
+    pct: float | None
+    """`None` — рост от нулевой базы: процента у него нет."""
+
+
 class VerdictView(BaseModel):
     group: str
     score: float
@@ -54,6 +72,7 @@ class VerdictView(BaseModel):
     reasons: list[ReasonRow]
     point_a: dict[str, float]
     point_b: dict[str, float]
+    comparison: list[ComparisonRow] = []
 
 
 class SeriesRow(BaseModel):

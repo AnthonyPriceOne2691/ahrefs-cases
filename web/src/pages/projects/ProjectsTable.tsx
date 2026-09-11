@@ -10,15 +10,9 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
 import type { ProjectRow } from '../../api/types';
+import { months, num } from '../format';
 
 import { GroupBadge } from './GroupBadge';
-
-/** Период показывается месяцами: день старта работ в кейсе не участвует, а в
- *  таблице занимает место, которое нужнее домену. */
-function months(from: string, to: string): string {
-  const short = (iso: string) => iso.slice(0, 7).split('-').reverse().join('.');
-  return `${short(from)} — ${short(to)}`;
-}
 
 export function ProjectsTable({
   rows,
@@ -48,9 +42,7 @@ export function ProjectsTable({
         cell: ({ row }) =>
           // Округляем: счёт — ориентир для сравнения строк, и «4 189,936»
           // в таблице читается как точность, которой у него нет.
-          row.original.score === null
-            ? '—'
-            : row.original.score.toLocaleString('ru-RU', { maximumFractionDigits: 0 }),
+          row.original.score === null ? '—' : num(row.original.score),
       },
       {
         id: 'publishable',

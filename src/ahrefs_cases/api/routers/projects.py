@@ -18,6 +18,7 @@ from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
     ChartBlock,
+    ComparisonRow,
     ProjectCard,
     ProjectRow,
     ReasonRow,
@@ -25,6 +26,8 @@ from ahrefs_cases.api.schemas import (
     VerdictView,
 )
 from ahrefs_cases.cases.builder import chart_series
+from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS
+from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import load_series
@@ -209,7 +212,39 @@ def _verdict_view(verdict: Verdict, ruleset: Ruleset) -> VerdictView:
         reasons=[ReasonRow(**check) for check in checks],
         point_a=_point(verdict.point_a),
         point_b=_point(verdict.point_b),
+        comparison=_comparison(verdict),
     )
+
+
+def _comparison(verdict: Verdict) -> list[ComparisonRow]:
+    """Таблица «А → Б» — та же, что в кейсе, и собранная из того же.
+
+    Подписи берутся из словаря кейса, рост — из арифметики классификации. Ни то,
+    ни другое не повторяется на фронте: две копии разошлись бы, и экран с PDF
+    начали бы называть метрики по-разному (урок L75).
+
+    Порядок — `CASE_SUBJECTS`: он выбран для клиентского листа, и держать на
+    экране другой значило бы заставлять человека искать строку заново.
+    """
+    before, after = _point(verdict.point_a), _point(verdict.point_b)
+    rows: list[ComparisonRow] = []
+    for subject in CASE_SUBJECTS:
+        if subject not in before or subject not in after:
+            # Метрику не покупали или купили только к одной точке: показать
+            # половину сравнения значило бы предложить сравнить с пустотой.
+            continue
+        change = delta_of(before[subject], after[subject])
+        rows.append(
+            ComparisonRow(
+                subject=subject,
+                label=SUBJECT_LABELS[subject],
+                before=change.before,
+                after=change.after,
+                absolute=change.absolute,
+                pct=change.pct,
+            )
+        )
+    return rows
 
 
 def _point(payload: dict[str, Any]) -> dict[str, float]:
