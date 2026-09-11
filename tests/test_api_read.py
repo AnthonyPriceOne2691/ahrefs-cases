@@ -24,7 +24,6 @@ from ahrefs_cases.storage import Group, Metric, MetricSource, UserGroup
 from ahrefs_cases.storage.models.case import Case, CaseArtifact
 from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
-from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.user import User
 from ahrefs_cases.storage.models.verdict import Verdict
 
@@ -74,7 +73,7 @@ def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
             await session.execute(delete(model))  # type: ignore[attr-defined]
         await session.execute(delete(Project).where(Project.domain.in_(DOMAINS)))  # type: ignore[attr-defined]
         await session.execute(delete(User).where(User.email == EMAIL))  # type: ignore[attr-defined]
-        await session.execute(delete(Ruleset).where(Ruleset.version == "тест-чтение"))  # type: ignore[attr-defined]
+
 
     write(_delete)
 
@@ -99,10 +98,13 @@ def seeded(
     artifact_path.write_bytes("%PDF-1.7 тест".encode())
 
     async def _seed(session: object) -> None:
-        from sqlalchemy import update
+        from ahrefs_cases.classify.rulesets import seed_thresholds
 
-        await session.execute(update(Ruleset).values(is_active=False))  # type: ignore[attr-defined]
-        ruleset = Ruleset(version="тест-чтение", payload={}, is_active=True)
+        # Берём засеянную версию, а не свою: выключать чужую активность значит
+        # оставить дев-базу без активных порогов следующему модулю (урок L8).
+        ruleset = await seed_thresholds(session)  # type: ignore[arg-type]
+        # Дев-база живёт между прогонами: активность могли выключить раньше.
+        ruleset.is_active = True
         user = User(
             email=EMAIL,
             full_name="Читатель",
@@ -124,7 +126,7 @@ def seeded(
             )
             for domain in DOMAINS
         ]
-        session.add_all([ruleset, user, *projects])  # type: ignore[attr-defined]
+        session.add_all([user, *projects])  # type: ignore[attr-defined]
         await session.flush()  # type: ignore[attr-defined]
 
         verdict = Verdict(

@@ -25,7 +25,7 @@ from ahrefs_cases.classify.thresholds import load_seed
 from ahrefs_cases.classify.verdicts import classify_all
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import parse_csv_text
-from ahrefs_cases.storage._enums import Group, Metric, MetricSource, ProjectStatus
+from ahrefs_cases.storage._enums import Metric, MetricSource, ProjectStatus
 from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset

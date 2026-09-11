@@ -28,7 +28,6 @@ from ahrefs_cases.collect.scheme import (
     CollectScheme,
     PointWindows,
     SchemeChoice,
-    Window,
     choose_scheme,
 )
 from ahrefs_cases.config.ahrefs import CollectSchemeMode

@@ -10,6 +10,7 @@ from ahrefs_cases.api.routers.auth import router as auth_router
 from ahrefs_cases.api.routers.cases import router as cases_router
 from ahrefs_cases.api.routers.health import router as health_router
 from ahrefs_cases.api.routers.projects import router as projects_router
+from ahrefs_cases.api.routers.runs import router as runs_router
 from ahrefs_cases.api.routers.usage import router as usage_router
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "cases_router",
     "health_router",
     "projects_router",
+    "runs_router",
     "usage_router",
 ]

@@ -99,8 +99,13 @@ async def collect_projects(
     refresh: bool = False,
     quota: QuotaSource | None = None,
     windows: PointWindows | None = None,
+    run: Run | None = None,
 ) -> RunReport:
     """Собрать шаг 1 по списку проектов. Провайдер — из конфига, если не задан.
+
+    `run` передаётся, когда прогон уже открыт снаружи — так делает API: строку
+    создаёт обработчик запроса, потому что только он знает, **кто** нажал
+    кнопку. Без этого все прогоны записывались бы на системного пользователя.
 
     `now` параметром: от него зависит граница закрытого месяца, и тест не должен
     подкручивать системные часы, чтобы её проверить.
@@ -116,8 +121,9 @@ async def collect_projects(
     # временное — с появлением сметы в этой же поставке вызов переедет в
     # preflight, туда, где результат нужен.
     await reap_stale_runs(session)
-    user = await system_user(session)
-    run = await open_run(session, started_by=user.id, projects_total=len(projects))
+    if run is None:
+        user = await system_user(session)
+        run = await open_run(session, started_by=user.id, projects_total=len(projects))
     # Коммит сразу: до него строки прогона не существует ни для другого
     # процесса (а его резерв обязан быть виден чужой смете), ни для реапера.
     await session.commit()
@@ -402,7 +408,13 @@ async def collect_all(
     quota: QuotaSource | None = None,
     windows: PointWindows | None = None,
 ) -> RunReport:
-    """Прогон по всем проектам в базе — то, что делает CLI."""
+    """Прогон по всем проектам в базе — то, что делает CLI.
+
+    Фоновая задача сюда не ходит: ей нужно продолжить **уже открытый** прогон,
+    и она зовёт `collect_projects` напрямую. Повторять здесь весь список
+    параметров ради одного `run` значило бы развести две одинаковые сигнатуры —
+    гейт копипаста поймал это в первой же попытке (урок L29).
+    """
     projects = (await session.execute(select(Project))).scalars().all()
     return await collect_projects(
         session, list(projects), provider, now=now, refresh=refresh, quota=quota, windows=windows

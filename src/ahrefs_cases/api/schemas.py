@@ -94,3 +94,32 @@ class UsageView(BaseModel):
     )
     per_hundred_domains: int | None = None
     """Метрика успеха из ТЗ: стоимость запуска на 100 URL."""
+
+
+class RunRow(BaseModel):
+    """Прогон в журнале: статус, сколько проектов и сколько units."""
+
+    id: int
+    status: str
+    started_by: int
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    projects_total: int
+    projects_ok: int
+    projects_failed: int
+    units_estimated: int
+    units_actual: int
+    error: str = ""
+
+
+class RunStarted(BaseModel):
+    """Ответ на запуск: номер прогона и как он поставлен.
+
+    Номер возвращается сразу, потому что строка прогона создаётся обработчиком,
+    а не задачей: иначе на вопрос «что я запустил» ответа бы не было до первого
+    обращения к Ahrefs.
+    """
+
+    run_id: int
+    queued_as: str

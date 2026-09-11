@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from ahrefs_cases.config._base import Settings
@@ -19,5 +21,13 @@ class StorageSettings(Settings):
     """Прогонов одновременно. Верхняя граница 2 — не осторожность, а арифметика:
     параллельные прогоны делят одну квоту Ahrefs и ломают смету (см.
     docs/IMPLEMENTATION_V3.md §3)."""
+
+    queue_backend: Literal["inline", "redis"] = Field("inline", validation_alias="QUEUE_BACKEND")
+    """Где выполняются задачи. `inline` — прямо в вызывающем процессе (машина
+    разработчика без Redis), `redis` — очередь RQ и отдельный воркер.
+
+    Дефолт `inline`, а не `redis`, по той же причине, что `fixture` у провайдера
+    Ahrefs: разработка должна работать из коробки, а серверное поведение
+    включается осознанно, переменной окружения."""
 
     echo_sql: bool = Field(False, validation_alias="DB_ECHO_SQL")
