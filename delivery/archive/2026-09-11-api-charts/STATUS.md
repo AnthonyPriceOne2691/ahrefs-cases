@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_api_charts.py::test_card_reads_series_of_the_configured_source
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («а потом Дальше по Ф6» — план Ф6 ①: карточка проекта с графиками, SVG рисует бэкенд)
