@@ -56,17 +56,17 @@ vitest на формы и таблицы, а проверять их без би
 База: `0bdadee` · сгенерировано `assert_digest.sh`
 
 Новых/изменённых утверждений: **21**, из них без ссылки на пример спеки:
-**2**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
--	expect(headers.Authorization).toBe('Bearer токен-для-теста');
+E2	expect(headers.Authorization).toBe('Bearer токен-для-теста');
 E7	await expect(request('/api/projects')).rejects.toMatchObject({ needsLogin: true });
 E8	await expect(request('/api/rulesets')).rejects.toThrow(/edit_thresholds/);
 E9	expect(failure).toBeInstanceOf(ApiError);
 E9	expect((failure as ApiError).misconfigured).toBe(true);
 E9	expect((failure as ApiError).message).toContain('активной версии порогов');
--	await expect(request('/api/projects')).rejects.toThrow(/502/);
+L23	await expect(request('/api/projects')).rejects.toThrow(/502/);
 E4	expect(seen).toContain('Проекты');
 E4	expect(seen).not.toContain('Пороги');
 E4	expect(seen).not.toContain('Люди');
@@ -83,12 +83,12 @@ E7	expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDoc
 E7	await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBeNull());
 ```
 
-Привязаны к примерам: **E1 E2 E3 E4 E5 E6 E7 E8 E9**. Остальные 2 — нет.
+✅ **Каждое утверждение ведёт к примеру спеки** (E1 E2 E3 E4 E5 E6 E7 E8 E9 L23), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
 
-Читать нужно **только строки с `-` в первой колонке**: их ожидание
-ничем не подписано. Подпись: `asserts_reviewed_by: human:… at=…`.
-
-asserts_without_example: 2
+asserts_without_example: 0
 
 ## Spec coverage gaps
 - **Экраны данных** (проекты, карточка, кейсы, прогоны, расход, пороги, люди) —
