@@ -10,7 +10,7 @@
 - **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** pending — спека E1, E4–E7, E9, E10 коммитится до кода
+- **human_ok_spec:** yes at=2026-09-11 by=human:anthony (спека E1, E4–E7, E9, E10 подписана до кода)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present

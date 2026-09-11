@@ -77,6 +77,35 @@ def _average(series: MetricSeries, months: list[date], *, at: date) -> Point:
     return Point(at=at, values=values, derived=derived, months_used=used)
 
 
+def window_a(period_start: date, windows: Windows) -> list[date]:
+    """Месяцы, по которым считается точка А.
+
+    Публичные, потому что их надо не только считать, но и спрашивать: куплены
+    ли эти месяцы под ту версию порогов, по которой пересчитывают (Ф3б).
+    Арифметика границ остаётся в одном месте — второй её экземпляр разошёлся бы
+    с первым при первой же правке окон.
+    """
+    return _window_forward(period_start, windows.point_a_months)
+
+
+def window_b(period_end: date, windows: Windows) -> list[date]:
+    """Месяцы, по которым считается точка Б."""
+    return sorted(_window_backward(period_end, windows.point_b_months))
+
+
+def baseline_window(period_start: date, windows: Windows) -> list[date]:
+    """Месяцы ДО старта работ, которые просит версия порогов.
+
+    Пусто при `pre_start_baseline_months: 0` — опция ТЗ «показать, что рост
+    начался после старта работ» по умолчанию выключена. Если её включат на
+    калибровке, эти месяцы придётся покупать: с 11.09.2026 сбор берёт запас до
+    старта ровно по этому полю, а не безусловно.
+    """
+    return sorted(
+        _shift(period_start, -offset) for offset in range(1, windows.pre_start_baseline_months + 1)
+    )
+
+
 def _window_forward(anchor: date, months: int) -> list[date]:
     return [_shift(anchor, offset) for offset in range(months)]
 

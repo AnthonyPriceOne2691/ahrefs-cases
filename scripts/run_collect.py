@@ -25,7 +25,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.classify.recalc import activate, recalc
 from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thresholds_of
+from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
@@ -141,6 +143,27 @@ async def _classify() -> int:
     return 0 if report.total else 1
 
 
+async def _recalc(version: str, *, make_active: bool) -> int:
+    """Пересчёт по указанной версии порогов. Ahrefs не трогается.
+
+    Нужен калибровке: заказчик правит пороги по десяти доменам с экспертной
+    оценкой и смотрит, что изменилось. Прошлые вердикты остаются на месте —
+    вопрос «почему тогда было good» обязан иметь ответ.
+    """
+    async with get_sessionmaker()() as session:
+        await seed_thresholds(session)
+        try:
+            if make_active:
+                await activate(session, version)
+            report = await recalc(session, version, source=config_source())
+        except ThresholdsError as exc:
+            print(f"пересчёт не выполнен: {exc}", file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+        await session.commit()
+    print("\n".join(report.as_lines()))
+    return 0 if report.recalculated else 1
+
+
 async def _explain(domain: str) -> int:
     """Показать вердикт одного домена со всеми условиями.
 
@@ -186,6 +209,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _stage2(refresh=args.refresh)
         if args.command == "classify":
             return await _classify()
+        if args.command == "recalc":
+            return await _recalc(args.version, make_active=args.activate)
         if args.command == "explain":
             return await _explain(args.domain)
         code = await _intake(args.source)
@@ -220,6 +245,15 @@ def main() -> int:
         "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
     )
     sub.add_parser("classify", help="классифицировать проекты по действующим порогам")
+    recalc_parser = sub.add_parser(
+        "recalc", help="пересчитать вердикты по версии порогов (без обращения к Ahrefs)"
+    )
+    recalc_parser.add_argument("version", help="версия порогов, например 2026-09-A")
+    recalc_parser.add_argument(
+        "--activate",
+        action="store_true",
+        help="сделать версию действующей: следующая классификация пойдёт по ней",
+    )
     explain_parser = sub.add_parser("explain", help="показать вердикт одного домена по условиям")
     explain_parser.add_argument("domain", help="канонический домен проекта")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -42,14 +43,37 @@ class ClassifyReport:
         ]
 
 
-async def classify_project(
+@dataclass(frozen=True, slots=True)
+class Computed:
+    """Посчитанный вердикт до записи: решение, точки и месяцы, по которым считали.
+
+    Существует, чтобы расчёт можно было выполнить, **ничего не записав**:
+    пересчёт по версии порогов (Ф3б) и предпросмотр «кто сменит группу» обязаны
+    быть одним кодом. Два похожих расчёта разойдутся ровно тогда, когда
+    заказчик доверится предпросмотру на калибровке.
+
+    `months` отдаётся наружу, потому что по нему проверяют покрытие: хватило ли
+    купленных месяцев под окна этой версии порогов (`classify/coverage.py`).
+    """
+
+    decision: Decision
+    point_a: points_module.Point
+    point_b: points_module.Point
+    months: tuple[date, ...]
+
+
+async def compute_verdict(
     session: AsyncSession,
     project: Project,
     ruleset: Ruleset,
     *,
     source: MetricSource = MetricSource.FIXTURE,
-) -> Decision:
-    """Вердикт одного проекта. Ahrefs не трогается: считаем по тому, что есть."""
+) -> Computed:
+    """Посчитать вердикт и **не** записывать. Ahrefs не трогается.
+
+    Чтение серии здесь есть, записи нет: это единственная асимметрия, которую
+    предпросмотр себе позволяет — прочитать, чтобы показать.
+    """
     thresholds = thresholds_of(ruleset)
     series = await series_module.load_series(session, project.id, source)
 
@@ -67,8 +91,20 @@ async def classify_project(
         history_starts_at=months[0] if months else None,
         period_start=project.period_start,
     )
-    await _store(session, project, ruleset, decision, point_a, point_b)
-    return decision
+    return Computed(decision=decision, point_a=point_a, point_b=point_b, months=tuple(months))
+
+
+async def classify_project(
+    session: AsyncSession,
+    project: Project,
+    ruleset: Ruleset,
+    *,
+    source: MetricSource = MetricSource.FIXTURE,
+) -> Decision:
+    """Вердикт одного проекта — посчитать и записать."""
+    computed = await compute_verdict(session, project, ruleset, source=source)
+    await store(session, project, ruleset, computed)
+    return computed.decision
 
 
 async def classify_projects(
@@ -94,28 +130,27 @@ async def classify_all(
     return await classify_projects(session, projects, source=source)
 
 
-async def _store(
+async def store(
     session: AsyncSession,
     project: Project,
     ruleset: Ruleset,
-    decision: Decision,
-    point_a: points_module.Point,
-    point_b: points_module.Point,
+    computed: Computed,
 ) -> None:
-    """Записать вердикт. Повторная классификация по той же версии обновляет его.
+    """Записать посчитанный вердикт. Повтор по той же версии обновляет его.
 
     Ключ `(project_id, ruleset_id)` — из модели Ф1: один проект на одной версии
     порогов имеет ровно один вердикт. Пересчёт по новой версии создаёт **новый**
     вердикт, не затирая старый: прошлые решения обязаны оставаться объяснимыми.
     """
+    decision = computed.decision
     payload = {
         "project_id": project.id,
         "ruleset_id": ruleset.id,
         "group": decision.group,
         "score": decision.score,
         "reasons": {"checks": decision.reasons_json(), "sort_key": decision.sort_key},
-        "point_a": _point_json(point_a),
-        "point_b": _point_json(point_b),
+        "point_a": _point_json(computed.point_a),
+        "point_b": _point_json(computed.point_b),
     }
     stmt = insert(Verdict).values(payload)
     stmt = stmt.on_conflict_do_update(
