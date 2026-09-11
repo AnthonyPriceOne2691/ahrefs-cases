@@ -182,6 +182,7 @@ def seeded(
         ids["project"] = projects[0].id
         ids["no_verdict"] = projects[1].id
         ids["case"] = case.id
+        ids["verdict"] = verdict.id
 
     writer(_seed)
     yield ids
@@ -297,6 +298,47 @@ def test_case_library_and_download(client: TestClient, seeded: dict[str, int]) -
     downloaded = client.get(f"/api/cases/{seeded['case']}/download", headers=headers)
     assert downloaded.status_code == 200
     assert downloaded.content.startswith(b"%PDF-")
+
+
+def test_library_shows_one_case_per_project(
+    client: TestClient,
+    seeded: dict[str, int],
+    writer: Callable[[Callable[..., object]], None],
+) -> None:
+    """Библиотека отвечает «что отправить», а не «что когда собиралось».
+
+    Пересборка добавляет версию, не затирая прежнюю: за несколько сборок один
+    проект занимает десяток строк, и на сотне доменов первая страница достаётся
+    двум-трём из них. Найдено прогоном живого экрана — шесть проектов дали
+    пятьдесят строк.
+    """
+
+    async def _second_version(session: object) -> None:
+        verdict_id = seeded["verdict"]
+        session.add(  # type: ignore[attr-defined]
+            Case(
+                project_id=seeded["project"],
+                verdict_id=verdict_id,
+                version=2,
+                anonymized=False,
+                highlights={"picked": []},
+                narrative="Текст кейса версии 2.",
+            )
+        )
+
+    writer(_second_version)
+    headers = _token(client)
+
+    # Смотрим только свои строки: дев-база общая, и в ней живут кейсы,
+    # собранные руками (урок L79).
+    def ours(rows: list[dict[str, object]]) -> list[int]:
+        return sorted(int(row["version"]) for row in rows if row["domain"] == DOMAINS[0])
+
+    default = client.get("/api/cases?limit=100", headers=headers).json()
+    assert ours(default) == [2]
+
+    history = client.get("/api/cases?limit=100&all_versions=true", headers=headers).json()
+    assert ours(history) == [1, 2]
 
 
 def test_download_without_file_is_404(

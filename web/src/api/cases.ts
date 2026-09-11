@@ -10,8 +10,10 @@
 import { download, request } from './client';
 import type { CaseRow, PackView, RunStarted } from './types';
 
-export function fetchCases(limit = 50): Promise<CaseRow[]> {
-  return request<CaseRow[]>(`/api/cases?limit=${limit}`);
+/** Библиотека. По умолчанию — свежий кейс каждого проекта: пересборка добавляет
+ *  версию, и без этого один проект занимает десяток строк. */
+export function fetchCases(limit = 50, allVersions = false): Promise<CaseRow[]> {
+  return request<CaseRow[]>(`/api/cases?limit=${limit}&all_versions=${allVersions}`);
 }
 
 export function fetchPack(): Promise<PackView> {

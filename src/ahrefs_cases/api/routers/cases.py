@@ -20,7 +20,7 @@ from typing import Annotated
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
@@ -40,8 +40,18 @@ async def list_cases(
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    all_versions: bool = False,
 ) -> list[CaseRow]:
-    """Библиотека: свежие версии сверху — их и показывают первыми."""
+    """Библиотека: по одному свежему кейсу на проект, если не просили иначе.
+
+    Пересборка не затирает прежний кейс, а добавляет следующую версию, и за
+    несколько сборок их накапливаются десятки. Отдавая всё подряд, библиотека
+    отвечала на вопрос «что когда собиралось», тогда как спрашивают у неё
+    другое — **какой файл отправить клиенту**; на сотне доменов первая страница
+    вдобавок оказывалась занята версиями двух-трёх проектов.
+
+    История никуда не делась: `all_versions=true` отдаёт её целиком.
+    """
     stmt = (
         select(Case, Project, CaseArtifact)
         .join(Project, Project.id == Case.project_id)
@@ -50,6 +60,12 @@ async def list_cases(
         .limit(limit)
         .offset(offset)
     )
+    if not all_versions:
+        # Свежий кейс проекта — с наибольшим номером строки: версии пишутся
+        # по возрастанию, и брать максимум времени было бы хуже — две сборки
+        # одной секунды дали бы два «свежих» кейса одного проекта.
+        newest = select(func.max(Case.id)).group_by(Case.project_id).scalar_subquery()
+        stmt = stmt.where(Case.id.in_(newest))
     return [
         CaseRow(
             id=case.id,

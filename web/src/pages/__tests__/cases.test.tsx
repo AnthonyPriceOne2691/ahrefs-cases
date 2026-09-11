@@ -189,6 +189,23 @@ describe('библиотека кейсов', () => {
 
     expect(await screen.findByText('нужно право read')).toBeInTheDocument();
   });
+
+  it('E9: тумблер просит у сервера все версии, а не фильтрует страницу', async () => {
+    const { calls } = server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: [caseRow(1)] },
+      '/api/cases/pack': { status: 200, body: PACK },
+    });
+
+    show();
+    await userEvent.click(await screen.findByLabelText('показать все версии'));
+
+    // Именно запросом: страница отдаёт 50 строк, и фильтрация уже полученного
+    // показала бы историю двух проектов вместо истории всех.
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.includes('all_versions=true'))).toBe(true),
+    );
+  });
 });
 
 describe('пачка', () => {
