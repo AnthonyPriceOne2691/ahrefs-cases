@@ -15,6 +15,10 @@ x-backend-env: &backend-env
   REDIS_URL: redis://redis:6379/0
   AHREFS_PROVIDER: fixture
   JWT_SECRET: dev-only-not-a-secret
+  # Сервер обязан ставить задачи в очередь, а не выполнять их у себя: задача
+  # поднимает свой цикл событий, а движок базы привязан к циклу uvicorn —
+  # `inline` в серверном процессе рвёт соединения. Воркер для этого и есть.
+  QUEUE_BACKEND: redis
 
 services:
   postgres:

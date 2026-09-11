@@ -57,6 +57,10 @@ export interface RunStarted {
 export interface RunRow {
   id: number;
   status: string;
+  started_by: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
   projects_total: number;
   projects_ok: number;
   projects_failed: number;
@@ -132,4 +136,19 @@ export interface ProjectCard {
 export interface ChartBlock {
   title: string;
   svg: string;
+}
+
+export interface UsageView {
+  spent: number;
+  reserved: number;
+  /** `null` — остаток не узнали. Это не ноль: ноль означал бы «квота кончилась». */
+  remaining: number | null;
+  per_hundred_domains: number | null;
+}
+
+export interface AlertView {
+  kind: string;
+  /** `critical` | `serious` | `warning` | `good` — четыре, а не две. */
+  severity: string;
+  message: string;
 }

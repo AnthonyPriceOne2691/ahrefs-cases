@@ -23,6 +23,9 @@ x-backend-env: &backend-env
   AHREFS_API_KEY: ${AHREFS_API_KEY:-}
   AHREFS_UNITS_MIN_LEFT: ${AHREFS_UNITS_MIN_LEFT:-1000}
   WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+  # Только очередь: `inline` выполняет задачу в процессе сервера, а её цикл
+  # событий не тот, к которому привязаны соединения движка.
+  QUEUE_BACKEND: redis
 
 services:
   postgres:

@@ -171,6 +171,29 @@ def test_journal_shows_status_and_units(client: TestClient) -> None:
     assert one["projects_total"] >= 1
     assert one["status"] in {"done", "partial", "failed", "queued", "running"}
     assert "units_actual" in one
+    # Смета записана в строку прогона, а не только в резерв: журнал показывает
+    # «смета → факт», и нулевая колонка врала бы у каждого прогона.
+    assert one["units_estimated"] > 0
+
+
+def test_refresh_run_actually_starts(client: TestClient) -> None:
+    """Запуск с догрузкой доходит до задачи, а не виснет в очереди.
+
+    Очередь пересылает аргументы **позиционно**; пока `refresh` был объявлен
+    только-ключевым, вызов падал `TypeError` ещё до тела задачи. Ответ при этом
+    приходил `202`, задача не начиналась, и строка оставалась `queued` навсегда —
+    замок «один активный прогон» блокировал все следующие запуски.
+
+    Поэтому проверяется не код ответа, а **состояние прогона после**: 202 здесь
+    ничего не доказывает.
+    """
+    headers = _headers(client)
+
+    started = client.post("/api/runs", params={"refresh": True}, headers=headers).json()
+
+    row = client.get(f"/api/runs/{started['run_id']}", headers=headers).json()
+    assert row["status"] != "queued", "задача не начиналась: прогон завис в очереди"
+    assert row["units_estimated"] >= 0
 
 
 def test_missing_run_is_404(client: TestClient) -> None:

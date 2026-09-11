@@ -107,7 +107,7 @@ function server(routes: Record<string, { status: number; body: unknown }>) {
       const url = typeof input === 'string' ? input : input.toString();
       // Сравниваем путь без параметров: у графиков появился `?grouping=…`, и
       // сопоставление целого адреса перестало находить маршрут.
-      const path = url.split('?')[0];
+      const path = url.split('?')[0] ?? url;
       const found = Object.entries(routes).find(([route]) => path.endsWith(route));
       const reply = found?.[1] ?? { status: 404, body: { detail: 'проекта 7 нет' } };
       return new Response(JSON.stringify(reply.body), { status: reply.status });

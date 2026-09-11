@@ -11,6 +11,8 @@ import { useAuth } from '../auth/AuthProvider';
 import { IntakePage } from '../pages/IntakePage';
 import { ProjectCardPage } from '../pages/ProjectCardPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
+import { RunsPage } from '../pages/RunsPage';
+import { UsagePage } from '../pages/UsagePage';
 
 import { NAV_SECTIONS } from './nav';
 
@@ -19,6 +21,8 @@ import { NAV_SECTIONS } from './nav';
 const SCREENS: Record<string, () => React.ReactElement> = {
   '/intake': IntakePage,
   '/projects': ProjectsPage,
+  '/runs': RunsPage,
+  '/usage': UsagePage,
 };
 
 function Placeholder({ title }: { title: string }) {

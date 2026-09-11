@@ -28,8 +28,16 @@ from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 logger = logging.getLogger(__name__)
 
 
-def collect_job(run_id: int, *, refresh: bool = False) -> None:
-    """Прогон сбора. `run_id` — прогон, уже созданный при постановке в очередь."""
+def collect_job(run_id: int, refresh: bool = False) -> None:
+    """Прогон сбора. `run_id` — прогон, уже созданный при постановке в очередь.
+
+    `refresh` принимается **позиционно** нарочно: очередь пересылает аргументы
+    задачи позиционным списком (`enqueue(job, *args)`), и у RQ они такими же
+    уезжают через сериализацию. Объявленный только-ключевым, он давал
+    `TypeError: collect_job() takes 1 positional argument but 2 were given` —
+    задача не начиналась вовсе, а строка прогона оставалась `queued` навсегда и
+    замком «один активный» блокировала все следующие запуски до реапера.
+    """
     asyncio.run(_run_guarded(run_id, _collect(run_id, refresh=refresh)))
 
 

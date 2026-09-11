@@ -191,6 +191,11 @@ async def _execute_run(
             error=state.reason,
         )
 
+    # Смета пишется в саму строку прогона, а не только в резерв: журнал
+    # показывает «смета → факт», и без этого поля он печатал бы ноль у каждого
+    # прогона — то есть колонку, которая всегда врёт. Резерв живёт в журнале
+    # units и тает вместе с прогоном, а это число остаётся его характеристикой.
+    run.units_estimated = estimate
     await reserve(session, run.id, estimate)
     await start_run(session, run)
     await session.commit()
