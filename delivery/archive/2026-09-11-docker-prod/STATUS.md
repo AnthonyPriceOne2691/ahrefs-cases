@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («дев и прод, двумя поставками», фронт — «nginx отдельным контейнером»)
