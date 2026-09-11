@@ -109,7 +109,7 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
         ruleset_version=verdict.ruleset_version,
         changes=changes,
         highlights=highlights_module.pick(changes),
-        series=_chart_series(series),
+        series=chart_series(series),
         window_a=tuple(window_from(verdict.point_a.at, verdict.point_a.months_used, forward=True)),
         window_b=tuple(window_from(verdict.point_b.at, verdict.point_b.months_used, forward=False)),
     )
@@ -182,8 +182,12 @@ def stale_subjects(verdict: VerdictView, series: MetricSeries) -> tuple[str, ...
     )
 
 
-def _chart_series(series: MetricSeries) -> tuple[CaseSeries, ...]:
+def chart_series(series: MetricSeries) -> tuple[CaseSeries, ...]:
     """Месячные ряды под кривые — только те метрики, что покупали.
+
+    Публичная, потому что кривые нужны не только кейсу: веб-карточка рисует те
+    же ряды тем же рисунком, и второй способ их собрать разошёлся бы с первым
+    на первой же правке (например, на том, как считается «топ-10»).
 
     Отметка «старт работ» здесь не хранится: она одна на весь кейс и лежит в
     `case.period.start`. Дублировать её в каждом ряду значит завести второе

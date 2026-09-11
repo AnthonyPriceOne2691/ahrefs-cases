@@ -281,3 +281,40 @@ def _legend(series: Sequence[CaseSeries]) -> str:
         parts.append(_text(x + 10, _HEIGHT, item.label, size=8, fill=MUTED))
         x += 12 + len(item.label) * 4.6
     return "".join(parts)
+
+
+CHART_BLOCKS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Динамика органического трафика", (Metric.ORG_TRAFFIC.value,)),
+    ("Динамика позиций", (KW_TOP10, Metric.KW_TOP3.value)),
+)
+"""Два графика ТЗ и то, из чего каждый состоит.
+
+Позиции — одна картинка на два ряда: топ-10 и вложенный в него топ-3. Порознь
+они читались бы как независимые метрики, хотя второй входит в первый."""
+
+
+def curve_blocks(
+    series: Sequence[CaseSeries],
+    *,
+    period_start: date,
+    window_a: Sequence[date] = (),
+    window_b: Sequence[date] = (),
+) -> list[dict[str, str]]:
+    """Готовые блоки «заголовок + рисунок» — и для PDF, и для веб-карточки.
+
+    Живёт здесь, а не в рендерере HTML, потому что звать её стало двоим:
+    кейс и карточка проекта обязаны показывать **один и тот же** рисунок.
+    Второй экземпляр компоновки разошёлся бы с первым (шкала, подписи, набор
+    рядов), и тогда сотрудник и клиент увидели бы разные кривые одного проекта.
+
+    Ряда нет — графика нет: пустые оси сказали бы «роста не было», хотя мы
+    просто не покупали эту метрику.
+    """
+    by_subject = {item.subject: item for item in series}
+    blocks: list[dict[str, str]] = []
+    for title, subjects in CHART_BLOCKS:
+        rows = [by_subject[name] for name in subjects if name in by_subject]
+        svg = curves_svg(rows, period_start=period_start, window_a=window_a, window_b=window_b)
+        if svg:
+            blocks.append({"title": title, "svg": svg})
+    return blocks
