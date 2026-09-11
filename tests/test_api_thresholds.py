@@ -243,13 +243,24 @@ def test_alerts_report_low_units_and_failed_runs(
     monkeypatch.setattr(config.ahrefs, "units_min_left", 10_000_000)
 
     async def _fail_run(session: object) -> None:
+        from sqlalchemy import select
+
+        # Идентификатор берётся из базы, а не зашивается единицей: в дев-базе
+        # пользователь №1 есть, в чистой базе CI — нет, и тест был бы зелёным
+        # только на машине автора (тот же класс, что урок L21).
+        owner = (
+            (
+                await session.execute(select(User).where(User.email == "boss@test.local"))  # type: ignore[attr-defined]
+            )
+            .scalars()
+            .one()
+        )
         session.add(  # type: ignore[attr-defined]
-            Run(started_by=1, status=RunStatus.FAILED, error="нарочно", projects_total=1)
+            Run(started_by=owner.id, status=RunStatus.FAILED, error="нарочно", projects_total=1)
         )
 
     boss = _headers(client, "boss@test.local")
-    user_id = client.get("/api/auth/me", headers=boss).json()
-    assert user_id["group"] == "admin"
+    assert client.get("/api/auth/me", headers=boss).json()["group"] == "admin"
     writer(_fail_run)
 
     found = client.get("/api/alerts", headers=boss).json()
