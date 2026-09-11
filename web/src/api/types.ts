@@ -197,6 +197,12 @@ export interface PreviewView {
   missing_data: string[];
 }
 
+export interface RecalcView {
+  version: string;
+  /** Отчёт пересчёта строками — тот же, что печатает консольная команда. */
+  lines: string[];
+}
+
 export interface AlertView {
   kind: string;
   /** `critical` | `serious` | `warning` | `good` — четыре, а не две. */
