@@ -19,12 +19,12 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
+from tests.owned_rows import delete_owned
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
 from ahrefs_cases.storage import UserGroup
 from ahrefs_cases.storage.models.project import Project
-from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
 
 PASSWORD = "очень-длинный-пароль"
@@ -108,20 +108,20 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
-        from sqlalchemy import delete
+        from sqlalchemy import select
 
-        from ahrefs_cases.storage.models.metric_point import MetricPoint
-        from ahrefs_cases.storage.models.units_ledger import UnitsLedger
-
-        for model in (UnitsLedger, MetricPoint):
-            await session.execute(delete(model))  # type: ignore[attr-defined]
-        await session.execute(delete(Run))  # type: ignore[attr-defined]
-        await session.execute(  # type: ignore[attr-defined]
-            delete(Project).where(Project.domain.like(f"{DOMAIN_PREFIX}%"))
+        # Домены приёма создаются с префиксом, поэтому список собирается
+        # запросом, а не перечислением: их число меняется от теста к тесту.
+        mine = (
+            (
+                await session.execute(
+                    select(Project.domain).where(Project.domain.like(f"{DOMAIN_PREFIX}%"))
+                )
+            )  # type: ignore[attr-defined]
+            .scalars()
+            .all()
         )
-        await session.execute(  # type: ignore[attr-defined]
-            delete(User).where(User.email.in_([EMAIL, READER_EMAIL]))
-        )
+        await delete_owned(session, domains=list(mine), emails=(EMAIL, READER_EMAIL))  # type: ignore[arg-type]
 
     write(_delete)
 
@@ -394,10 +394,14 @@ def test_estimate_costs_nothing_and_opens_no_run(client: TestClient) -> None:
     строку прогона, которой не было.
     """
     _upload(client, _xlsx([_row(i) for i in range(GOOD_ROWS)]))
+    # Считаем прогоны до и после, а не требуем пустого журнала: в дев-базе
+    # живут чужие прогоны, и «журнал пуст» проверяло бы содержимое машины, а
+    # не свойство сметы (уроки L68, L79).
+    before = len(client.get("/api/runs", headers=_headers(client)).json())
 
     _estimate(client)
 
-    assert client.get("/api/runs", headers=_headers(client)).json() == []
+    assert len(client.get("/api/runs", headers=_headers(client)).json()) == before
 
 
 def test_estimate_refuses_when_quota_is_short(

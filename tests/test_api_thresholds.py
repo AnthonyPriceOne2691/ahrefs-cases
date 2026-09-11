@@ -17,6 +17,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.owned_rows import delete_owned
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -26,7 +27,6 @@ from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
-from ahrefs_cases.storage.models.verdict import Verdict
 
 PASSWORD = "очень-длинный-пароль"
 USERS = {"boss@test.local": UserGroup.ADMIN, "clerk@test.local": UserGroup.USER}
@@ -63,11 +63,8 @@ def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
         from sqlalchemy import delete
 
-        await session.execute(delete(Verdict))  # type: ignore[attr-defined]
-        await session.execute(delete(Run))  # type: ignore[attr-defined]
         await session.execute(delete(Ruleset).where(Ruleset.version == NEW_VERSION))  # type: ignore[attr-defined]
-        await session.execute(delete(Project).where(Project.domain == "thr.example"))  # type: ignore[attr-defined]
-        await session.execute(delete(User).where(User.email.in_(tuple(USERS))))  # type: ignore[attr-defined]
+        await delete_owned(session, domains=("thr.example",), emails=tuple(USERS))  # type: ignore[arg-type]
 
     write(_delete)
 

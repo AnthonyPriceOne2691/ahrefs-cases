@@ -16,6 +16,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.owned_rows import delete_owned
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -58,16 +59,7 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
-        from sqlalchemy import delete
-
-        from ahrefs_cases.storage.models.metric_point import MetricPoint
-        from ahrefs_cases.storage.models.units_ledger import UnitsLedger
-
-        for model in (UnitsLedger, MetricPoint):
-            await session.execute(delete(model))  # type: ignore[attr-defined]
-        await session.execute(delete(Run))  # type: ignore[attr-defined]
-        await session.execute(delete(Project).where(Project.domain == "runs.example"))  # type: ignore[attr-defined]
-        await session.execute(delete(User).where(User.email == EMAIL))  # type: ignore[attr-defined]
+        await delete_owned(session, domains=("runs.example",), emails=(EMAIL,))  # type: ignore[arg-type]
 
     write(_delete)
 
@@ -146,13 +138,19 @@ def test_second_run_is_refused_while_one_is_active(
 ) -> None:
     """E3: второй прогон стоит вторую цену — отказ с номером активного."""
 
+    headers = _headers(client)
+    first = client.post("/api/runs", headers=headers).json()
+
     async def _hang(session: object) -> None:
         from sqlalchemy import update
 
-        await session.execute(update(Run).values(status=RunStatus.RUNNING))  # type: ignore[attr-defined]
+        # Только **свой** прогон: `update(Run).values(...)` без условия
+        # помечало «идущим» каждый прогон в базе, включая чужие, и они
+        # оставались такими навсегда — следующий запуск упирался в чужой замок.
+        await session.execute(  # type: ignore[attr-defined]
+            update(Run).where(Run.id == first["run_id"]).values(status=RunStatus.RUNNING)
+        )
 
-    headers = _headers(client)
-    first = client.post("/api/runs", headers=headers).json()
     writer(_hang)
 
     second = client.post("/api/runs", headers=headers)

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.owned_rows import delete_owned
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -67,13 +68,7 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
-        from sqlalchemy import delete
-
-        for model in (CaseArtifact, Case, Verdict, MetricPoint):
-            await session.execute(delete(model))  # type: ignore[attr-defined]
-        await session.execute(delete(Project).where(Project.domain.in_(DOMAINS)))  # type: ignore[attr-defined]
-        await session.execute(delete(User).where(User.email == EMAIL))  # type: ignore[attr-defined]
-
+        await delete_owned(session, domains=DOMAINS, emails=(EMAIL,))  # type: ignore[arg-type]
 
     write(_delete)
 
@@ -268,9 +263,7 @@ def test_card_compares_points_with_labels(client: TestClient, seeded: dict[str, 
     assert rows["kw_top10"]["label"] == "ключи в топ-10"
 
 
-def test_comparison_skips_half_measured_metrics(
-    client: TestClient, seeded: dict[str, int]
-) -> None:
+def test_comparison_skips_half_measured_metrics(client: TestClient, seeded: dict[str, int]) -> None:
     """Метрика, купленная только к одной точке, в сравнение не попадает.
 
     Показать половину строки значило бы предложить сравнить число с пустотой.
@@ -308,8 +301,12 @@ def test_download_without_file_is_404(
     async def _break_path(session: object) -> None:
         from sqlalchemy import update
 
+        # Только свой артефакт: без условия ломался путь **каждому** файлу в
+        # базе, включая настоящие кейсы, собранные руками.
         await session.execute(  # type: ignore[attr-defined]
-            update(CaseArtifact).values(path="/нет/такого/файла.pdf")
+            update(CaseArtifact)
+            .where(CaseArtifact.case_id == seeded["case"])
+            .values(path="/нет/такого/файла.pdf")
         )
 
     writer(_break_path)
