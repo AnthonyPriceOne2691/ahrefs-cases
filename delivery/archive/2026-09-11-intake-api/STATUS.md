@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/api/test_intake_api.py::test_estimate_uses_threshold_windows reason=внутри поставки чинится дефект окон, и он закрыт своим тестом
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («Приём доменов + экран загрузки»)
