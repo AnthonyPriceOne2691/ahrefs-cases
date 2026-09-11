@@ -24,16 +24,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.cases.model import (
     CASE_SUBJECTS,
+    CHART_SUBJECTS,
     KW_TOTAL,
     CaseAttempt,
     CaseData,
     CaseOutcome,
     CaseReport,
+    CaseSeries,
     Change,
     Period,
 )
 from ahrefs_cases.classify.deltas import between
-from ahrefs_cases.classify.points import Point
+from ahrefs_cases.classify.points import KW_TOP10, Point, window_from
 from ahrefs_cases.classify.recalc import ruleset_by_version
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import MetricSeries, load_series
@@ -85,8 +87,12 @@ class VerdictView:
         )
 
 
-def build_case(project: Project, verdict: VerdictView) -> CaseData:
-    """Структура кейса по одному проекту. Чистая функция: база уже прочитана."""
+def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> CaseData:
+    """Структура кейса по одному проекту. Чистая функция: база уже прочитана.
+
+    Серия здесь нужна только кривым: числа А → Б по-прежнему приходят из
+    вердикта, и `_changes` серии не видит.
+    """
     changes = _changes(verdict)
     anonymized = not project.publishable
     return CaseData(
@@ -100,6 +106,9 @@ def build_case(project: Project, verdict: VerdictView) -> CaseData:
         group=verdict.group,
         ruleset_version=verdict.ruleset_version,
         changes=changes,
+        series=_chart_series(series),
+        window_a=tuple(window_from(verdict.point_a.at, verdict.point_a.months_used, forward=True)),
+        window_b=tuple(window_from(verdict.point_b.at, verdict.point_b.months_used, forward=False)),
     )
 
 
@@ -167,6 +176,37 @@ def stale_subjects(verdict: VerdictView, series: MetricSeries) -> tuple[str, ...
     )
 
 
+def _chart_series(series: MetricSeries) -> tuple[CaseSeries, ...]:
+    """Месячные ряды под кривые — только те метрики, что покупали.
+
+    Отметка «старт работ» здесь не хранится: она одна на весь кейс и лежит в
+    `case.period.start`. Дублировать её в каждом ряду значит завести второе
+    место, где она может оказаться другой.
+    """
+    by_subject: dict[str, dict[date, float]] = {
+        metric.value: dict(points) for metric, points in series.items()
+    }
+    top10 = _top10_by_month(series)
+    if top10:
+        by_subject[KW_TOP10] = top10
+    return tuple(
+        CaseSeries(subject=subject, points=tuple(sorted(by_subject[subject].items())))
+        for subject in CHART_SUBJECTS
+        if by_subject.get(subject)
+    )
+
+
+def _top10_by_month(series: MetricSeries) -> dict[date, float]:
+    """Помесячный «топ-10» — сумма двух корзин по месяцам, где есть обе.
+
+    Месяц с одной корзиной пропускается: сумма по половине данных была бы
+    провалом на кривой в месяце, когда ничего не падало.
+    """
+    top3 = series.get(Metric.KW_TOP3, {})
+    top4_10 = series.get(Metric.KW_TOP4_10, {})
+    return {month: value + top4_10[month] for month, value in top3.items() if month in top4_10}
+
+
 def _point_from_json(payload: Mapping[str, Any]) -> Point:
     """Точка вердикта из JSONB — строго по форме, которой её записали."""
     try:
@@ -228,7 +268,7 @@ async def _attempt(
     return CaseAttempt(
         domain=project.domain,
         outcome=CaseOutcome.BUILT,
-        case=build_case(project, view),
+        case=build_case(project, view, series),
         stale_subjects=stale_subjects(view, series),
     )
 

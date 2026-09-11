@@ -106,12 +106,24 @@ def baseline_window(period_start: date, windows: Windows) -> list[date]:
     )
 
 
+def window_from(anchor: date, months: int, *, forward: bool) -> list[date]:
+    """Месяцы окна от границы: вперёд для точки А, назад для точки Б.
+
+    Публичная, потому что окно спрашивают снаружи классификации: кейс рисует
+    его на кривой, чтобы было видно, откуда взялось число таблицы. Считать эту
+    арифметику второй раз в рисовальщике значило бы развести два экземпляра
+    одного правила (урок L29).
+    """
+    direction = 1 if forward else -1
+    return sorted(_shift(anchor, direction * offset) for offset in range(months))
+
+
 def _window_forward(anchor: date, months: int) -> list[date]:
-    return [_shift(anchor, offset) for offset in range(months)]
+    return window_from(anchor, months, forward=True)
 
 
 def _window_backward(anchor: date, months: int) -> list[date]:
-    return [_shift(anchor, -offset) for offset in range(months)]
+    return window_from(anchor, months, forward=False)
 
 
 def _shift(anchor: date, months: int) -> date:

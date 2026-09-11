@@ -52,7 +52,7 @@
     background: var(--accent);
     color: #ffffff;
     border-radius: 3mm;
-    padding: 6mm 7mm;
+    padding: 5mm 7mm;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
@@ -70,39 +70,39 @@
     display: flex;
     align-items: baseline;
     border-bottom: 0.4mm solid var(--hairline);
-    padding-bottom: 5mm;
+    padding-bottom: 4mm;
   }
   .hero__value { font-size: 44pt; font-weight: 700; color: var(--accent); line-height: 1; }
   .hero__body { margin-left: 6mm; }
   .hero__label { font-size: 11pt; font-weight: 600; }
   .hero__detail { color: var(--ink-2); font-size: 9pt; margin-top: 1mm; }
 
-  .tiles { display: flex; margin-top: 6mm; break-inside: avoid; }
+  .tiles { display: flex; margin-top: 5mm; break-inside: avoid; }
   .tile {
     flex: 1;
     background: var(--surface);
     border: 0.3mm solid var(--hairline);
     border-top: 1.2mm solid var(--slot, var(--accent));
     border-radius: 2mm;
-    padding: 4.5mm 5mm;
+    padding: 3.5mm 4.5mm;
     margin-right: 4mm;
   }
   .tile:last-child { margin-right: 0; }
   .tile__label { color: var(--ink-2); font-size: 8pt; }
-  .tile__value { font-size: 18pt; font-weight: 600; margin-top: 1mm; line-height: 1.1; }
+  .tile__value { font-size: 16.5pt; font-weight: 600; margin-top: 1mm; line-height: 1.1; }
   .tile__delta { font-size: 8.5pt; margin-top: 0.5mm; }
 
   .up { color: var(--up); font-weight: 600; }
   .down { color: var(--ink-2); }
 
-  .facts { display: flex; margin-top: 6mm; break-inside: avoid; }
+  .facts { display: flex; margin-top: 5mm; break-inside: avoid; }
   .fact { flex: 1; padding-right: 6mm; }
   .fact__label { color: var(--muted); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; }
   .fact__value { font-size: 9.5pt; margin-top: 1mm; }
 
   h2 {
     font-size: 10pt;
-    margin: 7mm 0 2.5mm;
+    margin: 4mm 0 1.5mm;
     padding-bottom: 1.5mm;
     border-bottom: 0.3mm solid var(--hairline);
   }
@@ -118,7 +118,7 @@
     padding-bottom: 1.5mm;
   }
   th:first-child { text-align: left; }
-  td { padding: 2.4mm 0; border-top: 0.2mm solid var(--hairline); text-align: right; }
+  td { padding: 1.1mm 0; line-height: 1.3; border-top: 0.2mm solid var(--hairline); text-align: right; }
   td:first-child { text-align: left; }
   .cell-num { font-variant-numeric: tabular-nums; }
   .swatch {
@@ -131,8 +131,8 @@
   }
 
   .note {
-    margin-top: 8mm;
-    padding-top: 3mm;
+    margin-top: 4mm;
+    padding-top: 2.5mm;
     border-top: 0.3mm solid var(--hairline);
     color: var(--ink-2);
     font-size: 8pt;
@@ -142,14 +142,15 @@
   .note strong { color: var(--ink); }
   .note__source { color: var(--muted); font-size: 7.5pt; }
 
-  /* Цвет закреплён за метрикой: та же метрика — тот же цвет на графиках. */
-  .m-org_traffic { --slot: #2a78d6; }
-  .m-kw_top10    { --slot: #eb6834; }
-  .m-kw_top3     { --slot: #1baf7a; }
-  .m-kw_total    { --slot: #eda100; }
-  .m-refdomains  { --slot: #e87ba4; }
-  .m-org_cost    { --slot: #008300; }
-  .m-dr          { --slot: #4a3aa7; }
+  /* Два графика ТЗ стоят рядом: в столбик они уводят лист на вторую страницу
+     (замерено — 356 мм полосы против 267 мм печатного поля). `display: block`
+     у рисунка обязателен: как строчный элемент он тянет за собой межстрочный
+     интервал и лист снова не сходится. */
+  .charts { display: flex; margin-top: 4mm; break-inside: avoid; }
+  .chart { flex: 1; margin-right: 5mm; }
+  .chart:last-child { margin-right: 0; }
+  .chart h2 { margin: 0 0 1.5mm; }
+  .chart svg { display: block; width: 100%; }
 </style>
 </head>
 <body>
@@ -183,7 +184,7 @@
 {% if tiles %}
 <section class="tiles">
   {% for tile in tiles %}
-  <div class="tile m-{{ tile.subject }}">
+  <div class="tile" style="--slot: {{ colors[tile.subject] }}">
     <div class="tile__label">{{ tile.label }}</div>
     <div class="tile__value">{{ tile.after | num }}</div>
     <div class="tile__delta {{ 'up' if tile.grew else 'down' }}">
@@ -216,8 +217,8 @@
   </thead>
   <tbody>
     {% for row in rows %}
-    <tr class="m-{{ row.subject }}">
-      <td><span class="swatch"></span>{{ row.label }}</td>
+    <tr>
+      <td><span class="swatch" style="background: {{ colors[row.subject] }}"></span>{{ row.label }}</td>
       <td class="cell-num">{{ row.before | num }}</td>
       <td class="cell-num">{{ row.after | num }}</td>
       <td class="cell-num {{ 'up' if row.grew else 'down' }}">{{ row | growth }}</td>
@@ -226,8 +227,18 @@
   </tbody>
 </table>
 
-{# Блок под графики поставки 4. Заглушку не рисуем: обещание в артефакте,
-   который уходит клиенту, хуже его отсутствия. #}
+{% if charts %}
+<section class="charts">
+  {% for chart in charts %}
+  <div class="chart">
+    <h2>{{ chart.title }}</h2>
+    {# SVG собран нами из чисел кейса, а не пришёл из файла заказчика: `safe`
+       здесь — осознанное исключение из автоэкранирования, и единственное. #}
+    {{ chart.svg | safe }}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
 
 <footer class="note">
   <p><strong>{{ attribution }}</strong>

@@ -19,7 +19,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from ahrefs_cases import config
-from ahrefs_cases.cases.model import CaseData, Change
+from ahrefs_cases.cases.model import CaseData, CaseSeries, Change
+from ahrefs_cases.classify.points import KW_TOP10
+from ahrefs_cases.export.charts import SUBJECT_COLORS, curves_svg
+from ahrefs_cases.storage._enums import Metric
 
 TEMPLATE_NAME = "case.html.j2"
 
@@ -51,9 +54,36 @@ def render_html(case: CaseData, *, templates_dir: Path | None = None) -> str:
         hero=hero,
         tiles=rest[:TILE_COUNT],
         rows=case.changes,
+        charts=charts(case),
+        colors=SUBJECT_COLORS,
         footnote=DATA_FOOTNOTE,
         attribution=ATTRIBUTION,
     )
+
+
+def charts(case: CaseData) -> list[dict[str, str]]:
+    """Два графика ТЗ: динамика трафика и динамика позиций.
+
+    Позиции — одна картинка на два ряда: топ-10 и вложенный в него топ-3.
+    Порознь они читались бы как независимые метрики, хотя второй входит в
+    первый. Ряда нет — графика нет: пустые оси сказали бы «роста не было».
+    """
+    by_subject = {item.subject: item for item in case.series}
+    blocks: list[dict[str, str]] = []
+    for title, subjects in (
+        ("Динамика органического трафика", (Metric.ORG_TRAFFIC.value,)),
+        ("Динамика позиций", (KW_TOP10, Metric.KW_TOP3.value)),
+    ):
+        rows: list[CaseSeries] = [by_subject[name] for name in subjects if name in by_subject]
+        svg = curves_svg(
+            rows,
+            period_start=case.period.start,
+            window_a=case.window_a,
+            window_b=case.window_b,
+        )
+        if svg:
+            blocks.append({"title": title, "svg": svg})
+    return blocks
 
 
 def _environment(templates_dir: Path | None) -> Environment:

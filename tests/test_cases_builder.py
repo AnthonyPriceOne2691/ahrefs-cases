@@ -103,7 +103,7 @@ def test_numbers_come_from_the_recorded_verdict() -> None:
     """
     verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2400.0})
 
-    case = build_case(_project(), verdict)
+    case = build_case(_project(), verdict, {})
 
     traffic = case.change(Metric.ORG_TRAFFIC.value)
     assert traffic is not None
@@ -115,27 +115,27 @@ def test_anonymous_case_never_names_the_domain() -> None:
     """E3: `publishable=false` — домена нет нигде в структуре."""
     verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0})
 
-    case = build_case(_project(publishable=False), verdict)
+    case = build_case(_project(publishable=False), verdict, {})
 
     assert case.anonymized is True
     assert case.title == "сайт в нише fintech"
     assert "example.com" not in repr(case)
-    assert build_case(_project(), verdict).title == "example.com"
+    assert build_case(_project(), verdict, {}).title == "example.com"
 
 
 def test_empty_work_volume_leaves_the_block_out() -> None:
     """E4: объём работ по ТЗ необязателен — «0 ссылок» было бы выдумкой."""
     verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0})
 
-    assert build_case(_project(work_volume=None), verdict).work_volume is None
-    assert build_case(_project(work_volume=120), verdict).work_volume == 120
+    assert build_case(_project(work_volume=None), verdict, {}).work_volume is None
+    assert build_case(_project(work_volume=120), verdict, {}).work_volume == 120
 
 
 def test_metric_present_only_at_the_end_is_not_a_change() -> None:
     """E5: сравнивать не с чем — метрики в кейсе нет, ноль не подставляется."""
     verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0, "refdomains": 40.0})
 
-    case = build_case(_project(), verdict)
+    case = build_case(_project(), verdict, {})
 
     assert case.change(Metric.REFDOMAINS.value) is None
     assert [change.subject for change in case.changes] == [Metric.ORG_TRAFFIC.value]
@@ -151,7 +151,7 @@ def test_keywords_total_needs_all_five_buckets() -> None:
         "kw_top51_plus": 50.0,
     }
     full = _verdict_view(buckets, {name: value * 2 for name, value in buckets.items()})
-    case = build_case(_project(), full)
+    case = build_case(_project(), full, {})
     total = case.change(KW_TOTAL)
     assert total is not None
     assert (total.before, total.after) == (150.0, 300.0)
@@ -159,13 +159,13 @@ def test_keywords_total_needs_all_five_buckets() -> None:
     partial = dict(buckets)
     partial.pop("kw_top51_plus")
     halved = {name: value * 2 for name, value in partial.items()}
-    case_without = build_case(_project(), _verdict_view(partial, halved))
+    case_without = build_case(_project(), _verdict_view(partial, halved), {})
     assert case_without.change(KW_TOTAL) is None
 
 
 def test_case_is_deterministic() -> None:
     """E9: один и тот же вердикт даёт один и тот же кейс."""
-    args = (_project(), _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0}))
+    args = (_project(), _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0}), {})
     assert build_case(*args) == build_case(*args)
 
 
