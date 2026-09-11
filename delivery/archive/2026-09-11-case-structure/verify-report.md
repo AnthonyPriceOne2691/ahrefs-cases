@@ -3,7 +3,7 @@
 **Date:** 2026-09-11
 **Verifier:** human:anthony
 **asserts_reviewed_by:** n/a (все утверждения ведут к одобренным примерам — см. дайджест ниже)
-**CI run:** pending — заполняется после пуша
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/34588649548
 **Commit:** b241edf
 
 ## Shape oracles
@@ -110,8 +110,8 @@ asserts_without_example: 0
 | time_to_accepted_spec | 0.0h |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — tests/test_cases_builder.py (новый оракул) |
-| implement_retries | MANUAL — fills from session log |
-| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
-| est_token_or_cost | MANUAL / n/a |
+| implement_retries | 0 |
+| verify_fails_before_green | 0 (первый прогон CI зелёный) |
+| est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
