@@ -171,3 +171,58 @@ class AlertView(BaseModel):
     kind: str
     severity: str
     message: str
+
+
+class RejectionRow(BaseModel):
+    """Отклонённая строка источника: где, что и почему.
+
+    `row_no` — номер строки **в файле**, вместе с заголовком: человек пойдёт
+    искать её глазами в Excel, и off-by-one стоит ему минуты на каждой строке.
+    """
+
+    row_no: int
+    field: str
+    reason: str
+    detail: str = ""
+
+
+class IntakeReportView(BaseModel):
+    """Итог приёма списка.
+
+    Три числа, а не одно: повторная загрузка того же файла законна и обязана
+    выглядеть как «обновлено 93», а не как «принято 93» во второй раз.
+    """
+
+    origin: str
+    accepted: int
+    created: int
+    updated: int
+    rejected_rows: int
+    by_reason: dict[str, int]
+    rejections: list[RejectionRow]
+
+
+class IntakeLink(BaseModel):
+    """Ссылка на опубликованную Google Sheet — второй способ загрузки по ТЗ."""
+
+    url: str = Field(min_length=1, max_length=2000)
+
+
+class RunEstimate(BaseModel):
+    """Во что обойдётся прогон и можно ли его начинать.
+
+    Вердикт тремя состояниями, а не флагом: «не хватает квоты» лечится
+    ожиданием или повышением лимита, «остаток неизвестен» — починкой доступа к
+    Ahrefs, и показать человеку не ту причину значит отправить его не туда.
+    """
+
+    projects: int
+    units_estimated: int
+    requests_planned: int
+    requests_cached: int
+    scheme_lines: list[str]
+    quota_left: int | None
+    quota_reserved: int
+    verdict: str
+    may_start: bool
+    reason: str = ""

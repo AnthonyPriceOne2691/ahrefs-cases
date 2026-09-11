@@ -83,3 +83,18 @@ def normalize_columns(header: list[str]) -> tuple[str, ...]:
     заголовка.
     """
     return tuple(column.strip().lower() for column in header)
+
+
+def table_from_matrix(origin: str, values: list[list[str]]) -> RawTable:
+    """Матрица «заголовок + строки» → сырая таблица. Одна сборка на все источники.
+
+    Сборка была написана дважды — в читателе CSV и в читателе XLSX, — и пока
+    они отличались мелочью (`str(path)` против имени), это читалось как две
+    разные функции. Стоило обоим начать принимать происхождение параметром, как
+    совпадение стало дословным: заголовок, нормализация, нумерация строк. Место
+    для этого знания одно, здесь.
+    """
+    if not values:
+        return RawTable(origin=origin, columns=(), rows=())
+    columns = normalize_columns(values[0])
+    return RawTable(origin=origin, columns=columns, rows=build_rows(columns, values[1:]))

@@ -14,6 +14,7 @@ from ahrefs_cases.api.routers import (
     auth_router,
     cases_router,
     health_router,
+    intake_router,
     projects_router,
     rulesets_router,
     runs_router,
@@ -52,6 +53,7 @@ app = FastAPI(
 for router in (
     health_router,
     auth_router,
+    intake_router,
     projects_router,
     cases_router,
     rulesets_router,

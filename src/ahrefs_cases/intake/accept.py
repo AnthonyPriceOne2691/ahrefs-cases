@@ -7,17 +7,18 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases.intake.csv_source import read_csv
+from ahrefs_cases.intake.csv_source import decode, parse_csv_text, read_csv
 from ahrefs_cases.intake.gsheet_source import Fetcher, read_gsheet
 from ahrefs_cases.intake.report import IntakeReport
 from ahrefs_cases.intake.rows import RawTable
 from ahrefs_cases.intake.upsert import upsert_projects
 from ahrefs_cases.intake.validate import validate_table
-from ahrefs_cases.intake.xlsx_source import read_xlsx
+from ahrefs_cases.intake.xlsx_source import read_xlsx, read_xlsx_stream
 
 _XLSX_SUFFIXES = (".xlsx", ".xlsm")
 _SHEET_MARKER = "docs.google.com/spreadsheets"
@@ -55,6 +56,25 @@ def read_source(reference: str | Path, fetch: Fetcher | None = None) -> RawTable
     if not path.exists():
         raise SourceNotFoundError(f"файл не найден: {path}")
     return read_xlsx(path) if suffix in _XLSX_SUFFIXES else read_csv(path)
+
+
+def read_upload(filename: str, data: bytes) -> RawTable:
+    """Загруженный файл → сырая таблица. Формат по имени, содержимое из памяти.
+
+    Отдельная дверь от `read_source`, потому что у загрузки нет пути: файл
+    пришёл телом запроса, а имя — единственное, что говорит о формате. Разбор
+    при этом тот же самый: отказы по строкам обязаны совпадать с отказами
+    консольного приёма, иначе у одного файла станет две правды.
+    """
+    suffix = Path(filename).suffix.lower()
+    if suffix in _XLSX_SUFFIXES:
+        return read_xlsx_stream(BytesIO(data), origin=filename)
+    if suffix == ".csv":
+        return parse_csv_text(decode(data), origin=filename)
+    raise UnknownSourceError(
+        f"не понимаю формат файла: {filename}. Ожидаю .xlsx или .csv — "
+        "либо пришлите ссылку на опубликованную Google Sheet."
+    )
 
 
 async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:

@@ -22,20 +22,19 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
-from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thresholds_of
+from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
+from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.cli.case_commands import pack_cases, render_case, show_cases
 from ahrefs_cases.cli.user_commands import add_user
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
-from ahrefs_cases.collect.scheme import PointWindows
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
     UnknownSourceError,
@@ -76,30 +75,9 @@ async def _intake(reference: str) -> int:
     return 0 if report.accepted else 1
 
 
-async def _point_windows(session: AsyncSession) -> PointWindows:
-    """Окна точек из активной версии порогов — сюда, а не внутрь `collect`.
-
-    Слои: контракт `layers` в `.importlinter` запрещает `collect` знать про
-    `classify`, потому что классификация обязана быть бесплатной и
-    переигрываемой на уже собранных данных. Пороги читает тот, кто и так знает
-    оба слоя, — командная строка (а с Ф5 это будет обработчик запроса).
-
-    Берётся **максимум** окон А и Б: покупаем одним размером, а считает каждая
-    точка по своему окну. Разные размеры окон дали бы разную цену у двух
-    запросов одного проекта и смету, которую нельзя объяснить одной строкой.
-    """
-    await seed_thresholds(session)
-    thresholds = thresholds_of(await active_ruleset(session))
-    windows = thresholds.windows
-    return PointWindows(
-        point_months=max(windows.point_a_months, windows.point_b_months),
-        baseline_months=windows.pre_start_baseline_months,
-    )
-
-
 async def _collect(*, refresh: bool = False) -> int:
     async with get_sessionmaker()() as session:
-        report = await collect_all(session, refresh=refresh, windows=await _point_windows(session))
+        report = await collect_all(session, refresh=refresh, windows=await point_windows(session))
         await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.projects_ok else 1
@@ -122,7 +100,7 @@ async def _stage2(*, refresh: bool = False) -> int:
             return 0
         print(f"кандидатов: {len(candidates)} из {len(projects)}")
         report = await collect_stage2(
-            session, candidates, refresh=refresh, windows=await _point_windows(session)
+            session, candidates, refresh=refresh, windows=await point_windows(session)
         )
         await session.commit()
     print("\n".join(report.as_lines()))
@@ -153,7 +131,7 @@ async def _case_data(*, refresh: bool = False) -> int:
             return 0
         print(f"проектов с кейсом: {len(ids)}")
         report = await collect_case_data(
-            session, ids, refresh=refresh, windows=await _point_windows(session)
+            session, ids, refresh=refresh, windows=await point_windows(session)
         )
         await session.commit()
     print("\n".join(report.as_lines()))

@@ -18,6 +18,7 @@ import logging
 
 from sqlalchemy import select
 
+from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.runner import collect_projects
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
@@ -46,7 +47,18 @@ async def _collect(run_id: int, *, refresh: bool) -> str:
     async with get_sessionmaker()() as session:
         run = await session.get(Run, run_id)
         projects = list((await session.execute(select(Project))).scalars().all())
-        report = await collect_projects(session, projects, refresh=refresh, run=run)
+        # Окна точек передаёт вызывающий: `collect` не знает про пороги по
+        # контракту слоёв. Без них задача покупала бы бесплатный максимум под
+        # минимальную цену запроса — то есть прогон, запущенный кнопкой, стоил
+        # бы и собирал не то же, что прогон из консоли, и смета на экране
+        # называла бы цену другого прогона.
+        report = await collect_projects(
+            session,
+            projects,
+            refresh=refresh,
+            run=run,
+            windows=await point_windows(session),
+        )
         await session.commit()
     return f"собрано проектов: {report.projects_ok}, units: {report.units_spent}"
 

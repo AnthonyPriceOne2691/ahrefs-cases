@@ -67,8 +67,21 @@ def read_gsheet(link: str, fetch: Fetcher | None = None) -> RawTable:
 
 
 def _http_fetch(url: str) -> bytes:
-    response = httpx.get(url, timeout=_TIMEOUT_SEC, follow_redirects=True)
-    response.raise_for_status()
+    """Скачать экспорт. Любая сетевая беда — «таблица недоступна», а не пятисотка.
+
+    Ошибка `httpx` уходила наружу сырой, и роутер приёма (Ф6) отвечал на неё
+    `500`: человеку это читается как «сервис сломан», хотя сломана ссылка,
+    доступ или сеть. Тип здесь один и тот же, потому что действие одно —
+    открыть доступ или прислать файлом.
+    """
+    try:
+        response = httpx.get(url, timeout=_TIMEOUT_SEC, follow_redirects=True)
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise SheetAccessError(
+            f"таблица недоступна по ссылке ({type(exc).__name__}: {exc}). "
+            "Проверьте доступ «по ссылке» или выгрузите список файлом."
+        ) from exc
     return response.content
 
 

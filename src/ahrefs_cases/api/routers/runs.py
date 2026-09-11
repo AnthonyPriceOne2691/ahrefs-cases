@@ -15,13 +15,19 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, text
 
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
-from ahrefs_cases.api.schemas import MAX_PAGE, RunRow, RunStarted
+from ahrefs_cases.api.schemas import MAX_PAGE, RunEstimate, RunRow, RunStarted
+from ahrefs_cases.classify.windows import point_windows
+from ahrefs_cases.collect.budget import reserved_units
+from ahrefs_cases.collect.factory import build_provider, build_quota
+from ahrefs_cases.collect.plan import build_stage1_plan
+from ahrefs_cases.collect.quota import preflight
 from ahrefs_cases.collect.run_journal import open_run
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
@@ -73,6 +79,47 @@ async def list_runs(
     """Журнал прогонов: свежие сверху."""
     stmt = select(Run).order_by(Run.id.desc()).limit(limit)
     return [_row(run) for run in (await session.execute(stmt)).scalars().all()]
+
+
+@router.get("/estimate", response_model=RunEstimate)
+async def estimate_run(
+    session: SessionDep,
+    _: Annotated[object, Depends(require_right("read"))] = None,
+) -> RunEstimate:
+    """Во что обойдётся прогон сбора и можно ли его начинать.
+
+    Объявлен **выше** `/{run_id}` нарочно: FastAPI берёт первый подходящий
+    маршрут, и ниже слово `estimate` уехало бы в целочисленный параметр,
+    превратив смету в `422`.
+
+    Смета считается **не открывая прогон**: строка прогона держит резерв units
+    и попадает в чужую смету, а человек, посмотревший цену и передумавший,
+    оставлял бы за собой отклонённый прогон в журнале. Ничего платного здесь не
+    происходит — план строится по базе, а остаток квоты стоит 0 units.
+    """
+    projects = list((await session.execute(select(Project))).scalars().all())
+    plan = await build_stage1_plan(
+        session,
+        projects,
+        source=build_provider().source,
+        now=date.today(),  # noqa: DTZ011 — календарная граница закрытого месяца
+        windows=await point_windows(session),
+    )
+    estimate = plan.estimated_units()
+    reserved = await reserved_units(session)
+    state = await preflight(build_quota(), needed=estimate, reserved=reserved)
+    return RunEstimate(
+        projects=len(projects),
+        units_estimated=estimate,
+        requests_planned=len(plan.tasks),
+        requests_cached=len(plan.cached),
+        scheme_lines=list(plan.scheme_breakdown().as_lines()),
+        quota_left=state.left,
+        quota_reserved=reserved,
+        verdict=state.verdict.value,
+        may_start=state.may_start,
+        reason=state.reason,
+    )
 
 
 @router.get("/{run_id}", response_model=RunRow)

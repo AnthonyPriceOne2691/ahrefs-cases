@@ -15,7 +15,7 @@ from pathlib import Path
 
 import chardet
 
-from ahrefs_cases.intake.rows import RawTable, build_rows, normalize_columns
+from ahrefs_cases.intake.rows import RawTable, table_from_matrix
 
 _FALLBACK_ENCODINGS = ("utf-8-sig", "cp1251", "latin-1")
 """Порядок значим. `latin-1` последний и декодирует что угодно: он существует,
@@ -39,12 +39,7 @@ def parse_csv_text(text: str, origin: str) -> RawTable:
     запятой внутри — ровно там, где расхождение заметят не сразу.
     """
     delimiter = _sniff_delimiter(text)
-    rows = list(csv.reader(text.splitlines(), delimiter=delimiter))
-    if not rows:
-        return RawTable(origin=origin, columns=(), rows=())
-
-    columns = normalize_columns(rows[0])
-    return RawTable(origin=origin, columns=columns, rows=build_rows(columns, rows[1:]))
+    return table_from_matrix(origin, list(csv.reader(text.splitlines(), delimiter=delimiter)))
 
 
 def decode(data: bytes) -> str:

@@ -12,31 +12,38 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from openpyxl import load_workbook
 
-from ahrefs_cases.intake.rows import RawTable, build_rows, normalize_columns
+from ahrefs_cases.intake.rows import RawTable, table_from_matrix
 
 
 def read_xlsx(path: Path) -> RawTable:
+    """Книга на диске → сырая таблица. Имя файла становится происхождением."""
+    with path.open("rb") as stream:
+        return read_xlsx_stream(stream, origin=str(path))
+
+
+def read_xlsx_stream(stream: IO[bytes], origin: str) -> RawTable:
     """Первый лист книги → сырая таблица.
 
     Читаем именно первый лист, а не лист по имени: имя у каждого отдела своё
     («Лист1», «домены», «Sheet1»), а порядок один.
+
+    Поток, а не только путь: книга приходит и телом HTTP-запроса (экран
+    загрузки Ф6), и писать её на диск ради `openpyxl` значило бы заводить
+    временные файлы и убирать их за собой — при том, что читатель и так
+    работает с потоком.
     """
-    workbook = load_workbook(filename=path, read_only=True, data_only=True)
+    workbook = load_workbook(filename=stream, read_only=True, data_only=True)
     try:
         sheet = workbook.worksheets[0]
         rows = [[_cell_to_str(cell) for cell in row] for row in sheet.iter_rows(values_only=True)]
     finally:
         workbook.close()
 
-    if not rows:
-        return RawTable(origin=str(path), columns=(), rows=())
-
-    columns = normalize_columns(rows[0])
-    return RawTable(origin=str(path), columns=columns, rows=build_rows(columns, rows[1:]))
+    return table_from_matrix(origin, rows)
 
 
 def _cell_to_str(value: Any) -> str:
