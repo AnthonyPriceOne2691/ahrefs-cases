@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony (примеры E2, E3, E8 — из спеки Ф3б, подписанной до кода; состав второй половины объявлен при дроблении и принят)
@@ -27,8 +27,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** предпросмотр не создаёт ни одной строки в `verdicts` и не двигает статусы проектов; предпросмотр и пересчёт по одной версии дают одинаковые группы; проект без вердикта показан как «нет вердикта → группа», проект с нехваткой купленных месяцев — отдельной строкой, а не среди «без изменений»
+- **observe_until:** 2026-09-25
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Вторая половина Ф3б
