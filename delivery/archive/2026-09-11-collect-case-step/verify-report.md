@@ -3,8 +3,8 @@
 **Date:** 2026-09-11
 **Verifier:** human:anthony
 **asserts_reviewed_by:** n/a (все утверждения ведут к одобренным примерам — см. дайджест ниже)
-**CI run:** <ссылка на зелёный прогон после этого коммита>
-**Commit:** 455208e
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/34586597034
+**Commit:** 164a263
 
 ## Shape oracles
 - [x] PASS — pre-commit, 29 хуков, упавших 0
