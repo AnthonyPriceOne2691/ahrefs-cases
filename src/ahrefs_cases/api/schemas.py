@@ -123,3 +123,51 @@ class RunStarted(BaseModel):
 
     run_id: int
     queued_as: str
+
+
+class RulesetRow(BaseModel):
+    """Версия порогов в списке. Содержимое отдаётся целиком: его правят."""
+
+    id: int
+    version: str
+    is_active: bool
+    note: str
+    created_at: datetime
+    payload: dict[str, object]
+
+
+class RulesetCreate(BaseModel):
+    """Новая версия порогов. Имя версии — ключ, и он неизменяем."""
+
+    version: str = Field(min_length=1, max_length=40)
+    note: str = Field(default="", max_length=500)
+    payload: dict[str, object]
+
+
+class PreviewChange(BaseModel):
+    domain: str
+    was: str | None
+    becomes: str
+
+
+class PreviewView(BaseModel):
+    """Что изменится при этой версии порогов — и чего в этом счёте нет.
+
+    Четыре состояния, а не два: сменит группу, получит вердикт впервые, данных
+    этой версии не хватает, не изменится (уроки L31 и L32).
+    """
+
+    version: str
+    total: int
+    changes: list[PreviewChange]
+    first_time: list[PreviewChange]
+    unchanged: int
+    missing_data: list[str]
+
+
+class AlertView(BaseModel):
+    """Повод, о котором оператор должен узнать сам."""
+
+    kind: str
+    severity: str
+    message: str

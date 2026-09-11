@@ -10,10 +10,12 @@ from fastapi.responses import JSONResponse
 
 from ahrefs_cases import config
 from ahrefs_cases.api.routers import (
+    alerts_router,
     auth_router,
     cases_router,
     health_router,
     projects_router,
+    rulesets_router,
     runs_router,
     usage_router,
 )
@@ -51,7 +53,9 @@ for router in (
     auth_router,
     projects_router,
     cases_router,
+    rulesets_router,
     runs_router,
+    alerts_router,
     usage_router,
 ):
     app.include_router(router)
