@@ -1,7 +1,7 @@
 # Stack acceptance
 
 **Date:** 2026-09-10
-**Stack:** delivery@1.88 · cqg@2.32 · okf@absent
+**Stack:** delivery@1.88 · cqg@2.32 · okf@0.2
 **Где лежат каноны:** вне репо: `~/Documents/Prepare` (вариант D, см. «Остатки»)
 
 stack-selftest: external (~/Documents/Prepare)
@@ -18,13 +18,13 @@ stale_after: 2026-10-10
 ## Что развёрнуто
 
 Развёртывание идёт **волнами** по `docs/CONTOUR_ROLLOUT.md`: ось приходит, когда
-канон нужен, с названным предельным сроком. Пройдены волны **В0 и В1**.
+канон нужен, с названным предельным сроком. Пройдены волны **В0, В1 и В2**.
 
 | Слой | Состояние | Примечание |
 |---|---|---|
 | ① delivery/ | deployed | дерево §2.3 полностью, constitution заполнен под продукт |
 | ② гейты | deployed | 27 хуков зелёные; 15 скриптов, подключено 11, осознанно нет 4; адаптация — `scripts/lint/adapted.json` |
-| ③ knowledge/ | absent | волна В2, предельный срок — начало Ф8 (до калибровки порогов) |
+| ③ knowledge/ | deployed | волна В2 пройдена 11.09.2026: bundle `knowledge/` по OKF 0.2, восемь концептов с `implementation:`, два гейта в pre-commit и CI. Preflight §0 выполнен — upstream SPEC 0.2 совпал с pinned |
 | ④ CI + гейт мержа | tooling | CI зелёный (gates + delivery + tests); merge_guard: да; pre-push hook: да; branch protection: **да** — ruleset `main` (active, bypass пуст): deletion, non_fast_forward, creation |
 | ⑤ поведение модели | n/a | волна В3; в MVP текст кейса шаблонный, модель не вызывается |
 

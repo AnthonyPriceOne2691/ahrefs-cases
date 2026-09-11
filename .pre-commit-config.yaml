@@ -320,6 +320,28 @@ repos:
         pass_filenames: false
         always_run: true
 
+  # Канон знаний (③ OKF, волна В2). Два гейта, и они про разное:
+  # формат bundle отдельно от синхронности канона с кодом.
+  - repo: local
+    hooks:
+      - id: okf-validate
+        name: OKF — формат bundle (type, index.md, размеры)
+        entry: .venv/bin/python scripts/okf_validate.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: okf-sync
+        name: OKF — тронул код по implementation, тронь concept
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)"; if git diff --cached --quiet; then .venv/bin/python scripts/okf_sync_gate.py --base origin/main; else .venv/bin/python scripts/okf_sync_gate.py --staged; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+        # Ловит ровно один класс: инвариант изменился в коде, а канон остался
+        # прежним — и через месяц ему верят, потому что он выглядит свежим.
+        # Смысл не менялся (типы, формат, переименование) → строка
+        # `canon_drift_waiver: reason=… by=human:…` в STATUS активной поставки,
+        # а НЕ правка concept'а «чтобы позеленело».
+
   # Мета-гейт — ПОСЛЕДНИМ. Проверяет, что все гейты выше вообще подключены:
   # забытый в этом файле скрипт молча не работает (§3, gate-coverage).
   - repo: local
