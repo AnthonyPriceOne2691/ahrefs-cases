@@ -3,15 +3,15 @@
 - **slug:** intake-volume-notice
 - **stack:** delivery@1.88, cqg@2.32, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** S
+- **class:** M
 - **kind:** bugfix
 - **repro_test:** tests/test_intake_validate.py::test_text_volume_keeps_the_project
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («давай возьмем первый» — не ронять строку из-за объёма работ, ячейку показывать замечанием)
-- **human_ok_plan:** n/a reason=класс S
+- **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** n/a reason=артефактов не производит
