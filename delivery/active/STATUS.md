@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony (спека E1, E4–E7, E9, E10 подписана до кода)
@@ -27,8 +27,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** пересчёт по версии порогов не делает ни одного HTTP-запроса; вердикты прошлых версий остаются после пересчёта по новой; проект, которому версия порогов просит непокупленные месяцы, попадает в пропуски с названными месяцами и **не получает вердикт**; домен без истории вовсе получает `insufficient_data`, а не пропуск
+- **observe_until:** 2026-09-25
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Почему это идёт первым из оставшегося
