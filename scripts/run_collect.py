@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ahrefs_cases import config
 from ahrefs_cases.cases.builder import build_cases
 from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, Change
+from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
@@ -36,6 +37,7 @@ from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.collect.scheme import PointWindows
+from ahrefs_cases.export.pdf_renderer import render_pdf
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
     UnknownSourceError,
@@ -52,6 +54,7 @@ from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 _SOURCE_ERRORS = (SourceNotFoundError, UnknownSourceError, SheetLinkError, SheetAccessError)
 _EXIT_BAD_SOURCE = 2
 _EXIT_RUN_FAILED = 3
+_EXIT_CONTENT_BLOCKED = 4
 _EXIT_INTERRUPTED = 130
 
 
@@ -322,12 +325,47 @@ def _change_line(change: Change) -> str:
     return f"{change.label:32} {change.before:>10.0f} → {change.after:>10.0f}  ({growth})"
 
 
+async def _render(domain: str) -> int:
+    """Собрать кейс одного проекта и положить PDF на диск.
+
+    Отдельный код возврата у контент-запрета (4), потому что действие по нему
+    другое: не «смотреть логи», а править входной файл или не публиковать этот
+    проект вовсе. Слить его с «прогон упал» значило бы отправить человека искать
+    поломку там, где сработало правило.
+    """
+    async with get_sessionmaker()() as session:
+        await seed_thresholds(session)
+        report = await build_cases(session, domain=domain, source=config_source())
+        await session.commit()
+
+    if not report.attempts:
+        print(f"проект не найден: {domain}", file=sys.stderr)
+        return _EXIT_BAD_SOURCE
+    built = report.by_outcome(CaseOutcome.BUILT)
+    if not built:
+        print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
+        print("\n".join(report.as_lines()), file=sys.stderr)
+        return _EXIT_BAD_SOURCE
+
+    for attempt in built:
+        if attempt.case is None:
+            continue
+        try:
+            rendered = render_pdf(attempt.case)
+        except ContentBlockedError as exc:
+            print(f"{attempt.domain}: {exc}", file=sys.stderr)
+            return _EXIT_CONTENT_BLOCKED
+        print(f"{attempt.domain} → {rendered.path} ({rendered.pages} стр.)")
+    return 0
+
+
 async def _main(args: argparse.Namespace) -> int:
     """Разбор команды. Наружу не выходит ни одна необработанная ошибка.
 
     Коды различают причины, потому что по ним принимают разные решения:
     2 — список не прочитан (чинит человек, правя путь или доступ),
     3 — прогон упал (смотреть журнал прогона и логи),
+    4 — кейс заблокирован контент-запретом (править входной файл, не логи),
     130 — прервано с клавиатуры (не ошибка вовсе).
     """
     print(f"провайдер: {config.ahrefs.provider}", flush=True)
@@ -348,6 +386,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _preview(args.version)
         if args.command == "cases":
             return await _cases(args.domain, args.version)
+        if args.command == "render":
+            return await _render(args.domain)
         if args.command == "diagnose":
             return await _diagnose(args.domain)
         if args.command == "explain":
@@ -411,6 +451,8 @@ def main() -> int:
         default=None,
         help="версия порогов; без неё — действующая. Кейс собирается по вердикту этой версии",
     )
+    render_parser = sub.add_parser("render", help="собрать кейс проекта и положить PDF на диск")
+    render_parser.add_argument("domain", help="канонический домен проекта")
     diagnose_parser = sub.add_parser(
         "diagnose", help="разбор «плохих»: что просело, когда началось, потеряны ли домены"
     )

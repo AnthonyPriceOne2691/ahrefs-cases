@@ -27,6 +27,11 @@ coverage.json
 # node
 node_modules/
 web/dist/
+
+# Артефакты установки пакета (`pip install -e .`) и сборки.
+*.egg-info/
+build/
+dist/
 web/node_modules/
 .vite/
 

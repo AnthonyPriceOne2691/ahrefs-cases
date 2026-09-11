@@ -19,7 +19,7 @@ implementation:
 
 | Что | Как запускается |
 |---|---|
-| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `diagnose`, `explain`, `all` |
+| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `diagnose`, `explain`, `all` |
 | Тесты | `.venv/bin/python -m pytest -q` — нужна дев-база Postgres |
 | Гейты формы | `.venv/bin/python -m pre_commit run --all-files` (27 хуков) |
 | Контур поставки | `python scripts/delivery_check.py [--diff-base REF]` |
@@ -29,14 +29,17 @@ implementation:
 # Где что лежит
 
 Слои идут сверху вниз, и направление зависимостей проверяется import-linter:
-`api`/`workers` → `cases`/`export` → `classify` → `collect`/`intake` → `storage`
-→ `config`.
+`api`/`workers` → `export` → `cases` → `classify` → `collect`/`intake` →
+`storage` → `config`.
 
 | Каталог | Что в нём | Граница |
 |---|---|---|
 | `src/ahrefs_cases/intake/` | приём списка: источники, нормализация, отказы | не знает про Ahrefs |
 | `src/ahrefs_cases/collect/` | план, провайдеры, кэш, журнал, смета units | **не знает про `classify`** — классификация обязана быть переигрываемой |
 | `src/ahrefs_cases/classify/` | точки, дельты, правила, вердикты, пересчёт, предпросмотр, диагностика | не ходит в сеть |
+| `src/ahrefs_cases/cases/` | структура кейса, стоп-лист | не знает про форматы |
+| `src/ahrefs_cases/export/` | HTML-шаблон и PDF | **выше** `cases`: рендер знает структуру, кейс о рендере — нет |
+| `templates/` | `case.html.j2` — печатный лист и веб-карточка одновременно | коммитится: тест на него стоять обязан (L21) |
 | `src/ahrefs_cases/storage/` | модели и сессия | ничего не решает |
 | `src/ahrefs_cases/config/` | типизированные настройки | **единственное место `os.getenv`** |
 | `delivery/` | контур поставки: активная, архив, уроки | вне предохранителей размера |
@@ -69,6 +72,9 @@ implementation:
   Лечится `pragma: allowlist secret` на строке, не расширением baseline.
 - **Дев-база живёт между прогонами** и копит следы ручных запусков CLI. Тест,
   читающий «все проекты», обязан чистить внутри своей транзакции.
+- **WeasyPrint требует системных библиотек** (cairo, pango): `pip install`
+  ставит только обвязку. Нет их — падает импорт, а не рендер, и выглядит это
+  как сломанный пакет.
 - **Пороги заказчика вне репозитория.** Тест, стоящий на `config/thresholds.yml`,
   зелёный только на машине автора; в git — нейтральные умолчания.
 

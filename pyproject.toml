@@ -19,10 +19,13 @@ dependencies = [
     "chardet>=5.2",
     "bcrypt>=4.2",
     "PyJWT>=2.10",
+    # PDF — требование ТЗ, а не режим: кейсы и есть продукт. Системные
+    # зависимости WeasyPrint (cairo, pango) ставятся пакетным менеджером ОС.
+    "jinja2>=3.1",
+    "weasyprint>=63.0",
 ]
 
 [project.optional-dependencies]
-export = ["jinja2>=3.1", "weasyprint>=63.0"]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

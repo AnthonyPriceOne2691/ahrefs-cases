@@ -1,0 +1,239 @@
+{#
+  Одностраничный кейс: печатный лист A4 и он же — будущая веб-карточка.
+
+  Вёрстка печатная, а не экранная: размеры в миллиметрах и пунктах, разрывы
+  запрещены там, где блок обязан остаться целым, шрифты системные — сервер
+  агентства может быть без выхода в интернет, а кейс обязан собираться.
+
+  Цвет метрики закреплён за метрикой, а не за местом в таблице: тот же цвет она
+  получит на графиках. Подпись рядом с цветом есть всегда — цвет ничего не
+  сообщает в одиночку.
+#}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>{{ case.title }} — кейс</title>
+<style>
+  @page {
+    size: A4;
+    margin: 14mm 12mm 16mm;
+    @bottom-right {
+      content: counter(page) " / " counter(pages);
+      font: 7pt sans-serif;
+      color: #898781;
+      vertical-align: top;
+    }
+  }
+
+  :root {
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --surface: #fcfcfb;
+    --plane: #f9f9f7;
+    --accent: #2a78d6;
+    --up: #006300;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  /* Шапка: единственный крупный цветной блок. Всё остальное — ink на бумаге. */
+  .masthead {
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: 3mm;
+    padding: 6mm 7mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .masthead__title { font-size: 20pt; font-weight: 600; line-height: 1.15; margin: 0; }
+  .masthead__meta { margin-top: 2.5mm; font-size: 8.5pt; opacity: 0.92; }
+  .masthead__meta span + span::before { content: " · "; }
+  .masthead__aside { text-align: right; font-size: 8pt; opacity: 0.92; white-space: nowrap; }
+  .masthead__kicker { font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; }
+  .masthead__period { margin-top: 2mm; font-size: 11pt; font-weight: 600; }
+
+  /* Главный результат. Ровно один такой на кейс. */
+  .hero {
+    margin-top: 6mm;
+    display: flex;
+    align-items: baseline;
+    border-bottom: 0.4mm solid var(--hairline);
+    padding-bottom: 5mm;
+  }
+  .hero__value { font-size: 44pt; font-weight: 700; color: var(--accent); line-height: 1; }
+  .hero__body { margin-left: 6mm; }
+  .hero__label { font-size: 11pt; font-weight: 600; }
+  .hero__detail { color: var(--ink-2); font-size: 9pt; margin-top: 1mm; }
+
+  .tiles { display: flex; margin-top: 6mm; break-inside: avoid; }
+  .tile {
+    flex: 1;
+    background: var(--surface);
+    border: 0.3mm solid var(--hairline);
+    border-top: 1.2mm solid var(--slot, var(--accent));
+    border-radius: 2mm;
+    padding: 4.5mm 5mm;
+    margin-right: 4mm;
+  }
+  .tile:last-child { margin-right: 0; }
+  .tile__label { color: var(--ink-2); font-size: 8pt; }
+  .tile__value { font-size: 18pt; font-weight: 600; margin-top: 1mm; line-height: 1.1; }
+  .tile__delta { font-size: 8.5pt; margin-top: 0.5mm; }
+
+  .up { color: var(--up); font-weight: 600; }
+  .down { color: var(--ink-2); }
+
+  .facts { display: flex; margin-top: 6mm; break-inside: avoid; }
+  .fact { flex: 1; padding-right: 6mm; }
+  .fact__label { color: var(--muted); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; }
+  .fact__value { font-size: 9.5pt; margin-top: 1mm; }
+
+  h2 {
+    font-size: 10pt;
+    margin: 7mm 0 2.5mm;
+    padding-bottom: 1.5mm;
+    border-bottom: 0.3mm solid var(--hairline);
+  }
+
+  table { width: 100%; border-collapse: collapse; break-inside: avoid; }
+  th {
+    text-align: right;
+    font-size: 7.5pt;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding-bottom: 1.5mm;
+  }
+  th:first-child { text-align: left; }
+  td { padding: 2.4mm 0; border-top: 0.2mm solid var(--hairline); text-align: right; }
+  td:first-child { text-align: left; }
+  .cell-num { font-variant-numeric: tabular-nums; }
+  .swatch {
+    display: inline-block;
+    width: 2.2mm;
+    height: 2.2mm;
+    border-radius: 0.6mm;
+    background: var(--slot, var(--muted));
+    margin-right: 2mm;
+  }
+
+  .note {
+    margin-top: 8mm;
+    padding-top: 3mm;
+    border-top: 0.3mm solid var(--hairline);
+    color: var(--ink-2);
+    font-size: 8pt;
+    break-inside: avoid;
+  }
+  .note p { margin: 0 0 1.5mm; }
+  .note strong { color: var(--ink); }
+  .note__source { color: var(--muted); font-size: 7.5pt; }
+
+  /* Цвет закреплён за метрикой: та же метрика — тот же цвет на графиках. */
+  .m-org_traffic { --slot: #2a78d6; }
+  .m-kw_top10    { --slot: #eb6834; }
+  .m-kw_top3     { --slot: #1baf7a; }
+  .m-kw_total    { --slot: #eda100; }
+  .m-refdomains  { --slot: #e87ba4; }
+  .m-org_cost    { --slot: #008300; }
+  .m-dr          { --slot: #4a3aa7; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div>
+    <p class="masthead__title">{{ case.title }}</p>
+    <div class="masthead__meta">
+      <span>{{ case.geo }}</span><span>{{ case.niche }}</span><span>{{ case.service }}</span>
+    </div>
+  </div>
+  <div class="masthead__aside">
+    <div class="masthead__kicker">Кейс</div>
+    <div class="masthead__period">{{ case.period.months }} мес.</div>
+    <div>{{ case.period.start.strftime("%m.%Y") }} — {{ case.period.end.strftime("%m.%Y") }}</div>
+  </div>
+</header>
+
+{% if hero %}
+<section class="hero">
+  <div class="hero__value">{{ hero | growth }}</div>
+  <div class="hero__body">
+    <div class="hero__label">{{ hero.label }}</div>
+    <div class="hero__detail">
+      {{ hero.before | num }} → {{ hero.after | num }} за {{ case.period.months }} мес.
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if tiles %}
+<section class="tiles">
+  {% for tile in tiles %}
+  <div class="tile m-{{ tile.subject }}">
+    <div class="tile__label">{{ tile.label }}</div>
+    <div class="tile__value">{{ tile.after | num }}</div>
+    <div class="tile__delta {{ 'up' if tile.grew else 'down' }}">
+      {{ tile | growth }} · было {{ tile.before | num }}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="facts">
+  <div class="fact">
+    <div class="fact__label">Задача</div>
+    <div class="fact__value">{{ case.service }}, ниша «{{ case.niche }}»</div>
+  </div>
+  {% if case.work_volume is not none %}
+  <div class="fact">
+    <div class="fact__label">Что сделали</div>
+    <div class="fact__value">{{ case.work_volume | num }} ед. работ</div>
+  </div>
+  {% endif %}
+</section>
+
+<h2>Результат: точка А → точка Б</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Метрика</th><th>Было</th><th>Стало</th><th>Изменение</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr class="m-{{ row.subject }}">
+      <td><span class="swatch"></span>{{ row.label }}</td>
+      <td class="cell-num">{{ row.before | num }}</td>
+      <td class="cell-num">{{ row.after | num }}</td>
+      <td class="cell-num {{ 'up' if row.grew else 'down' }}">{{ row | growth }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# Блок под графики поставки 4. Заглушку не рисуем: обещание в артефакте,
+   который уходит клиенту, хуже его отсутствия. #}
+
+<footer class="note">
+  <p><strong>{{ attribution }}</strong>
+  Точки А и Б — средние по окну на границах периода, а не отдельные месяцы.</p>
+  <p class="note__source">{{ footnote }}</p>
+</footer>
+
+</body>
+</html>
