@@ -30,6 +30,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
 COPY scripts ./scripts
+# Шаблон кейса — часть продукта, а не оформление: без него `render` падает
+# `TemplateNotFound`, то есть образ не умеет делать то, ради чего сервис есть.
+COPY templates ./templates
 
 # --- Питон, боевой режим -----------------------------------------------------
 FROM base AS prod
@@ -43,6 +46,9 @@ COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
 COPY scripts ./scripts
+# Шаблон кейса — часть продукта, а не оформление: без него `render` падает
+# `TemplateNotFound`, то есть образ не умеет делать то, ради чего сервис есть.
+COPY templates ./templates
 
 # --- Фронт, режим разработки -------------------------------------------------
 # Зависимости ставятся в образе и живут в томе (см. компоуз): каталог

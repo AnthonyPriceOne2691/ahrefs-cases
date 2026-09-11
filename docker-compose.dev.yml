@@ -74,6 +74,7 @@ services:
       - ./migrations:/app/migrations
       - ./config:/app/config
       - ./scripts:/app/scripts
+      - ./templates:/app/templates
       - ./data:/app/data
     # «Поднялся» значит «отвечает», а не «процесс запущен»: `curl` в slim-образе
     # нет, поэтому спрашиваем сам питон.
@@ -105,6 +106,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./config:/app/config
+      - ./templates:/app/templates
       - ./data:/app/data
     depends_on:
       postgres:

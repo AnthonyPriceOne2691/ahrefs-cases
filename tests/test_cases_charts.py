@@ -179,3 +179,40 @@ def test_svg_is_deterministic() -> None:
     """E10: геометрия считается от данных, а не от порядка обхода."""
     series = [_series("org_traffic", [10.0, 20.0, 30.0])]
     assert curves_svg(series, period_start=START) == curves_svg(series, period_start=START)
+
+
+def test_chart_carries_its_own_paper() -> None:
+    """E1 и E2: рисунок несёт свою бумагу, а не полагается на чужую.
+
+    Найдено тёмной темой веб-карточки: чернила выбраны под белый лист, заливка
+    затухает в цвет полотна, а самого полотна в разметке не было — на тёмном
+    фоне подписи значений сливались (урок L82).
+
+    Проверяется, что подложка идёт **первой** (иначе она закроет кривые) и
+    покрывает весь холст, включая подписи осей и легенду.
+    """
+    from ahrefs_cases.export.charts import SURFACE, curves_svg
+
+    svg = curves_svg(
+        [
+            CaseSeries(
+                subject=Metric.ORG_TRAFFIC.value,
+                points=((date(2025, 1, 1), 10.0), (date(2025, 2, 1), 20.0)),
+            )
+        ],
+        period_start=date(2025, 1, 1),
+    )
+
+    body = svg.split("</defs>", 1)[1]
+    assert body.startswith("<rect"), "подложка обязана идти под всем остальным"
+    assert f'fill="{SURFACE}"' in body
+    # Холст 420×210: подложка меньше только на толщину рамки.
+    assert 'width="419"' in body
+    assert 'height="209"' in body
+
+
+def test_empty_series_draw_no_paper() -> None:
+    """E3: рядов нет — рисунка нет вовсе, подложка в одиночку не появляется."""
+    from ahrefs_cases.export.charts import curves_svg
+
+    assert curves_svg([], period_start=date(2025, 1, 1)) == ""

@@ -73,6 +73,7 @@ def curves_svg(
     months = sorted({month for item in drawable for month, _ in item.points})
     top = max(value for item in drawable for _, value in item.points) * _HEADROOM
     parts = [
+        _paper(),
         _grid(top),
         _before_start(months, period_start),
         _window_band(months, window_a, "А"),
@@ -147,6 +148,28 @@ def _axis_max(value: float) -> float:
         return 0.0
     magnitude = float(10 ** (math.floor(math.log10(value)) - 1))
     return float(math.floor(value / magnitude)) * magnitude
+
+
+def _paper() -> str:
+    """Собственная бумага рисунка — под всем остальным.
+
+    Рисунок сделан для печати: чернила тёмные, а заливка под кривой затухает в
+    **цвет полотна**. Пока потребитель был один (белый лист PDF), полотно
+    подразумевалось и совпадало с настоящим. С Ф6 тот же SVG показывается в
+    веб-карточке, а она бывает тёмной — и тогда фона у рисунка нет вовсе:
+    подписи значений сливаются, а затухание читается белой дымкой.
+
+    Поэтому подложка едет внутри самого рисунка, а не плашкой на фронте: цвет
+    объявлен здесь, и второй его экземпляр в CSS разошёлся бы с этим при первой
+    правке. Заодно правильным становится скачанный файл.
+
+    Форма повторяет плитки метрик кейса (скругление, волосяная рамка): на листе
+    рисунок стоит с ними в одном ряду, и другая форма читалась бы вставкой.
+    """
+    return (
+        f'<rect x="0.5" y="0.5" width="{_WIDTH - 1:.0f}" height="{_HEIGHT - 1:.0f}" '
+        f'rx="6" fill="{SURFACE}" stroke="{HAIRLINE}" stroke-width="1"/>'
+    )
 
 
 def _grid(top: float) -> str:
@@ -271,15 +294,21 @@ def _month_labels(months: Sequence[date]) -> str:
 
 
 def _legend(series: Sequence[CaseSeries]) -> str:
-    """Две кривые и больше — легенда обязательна: цвет не сообщает ничего в одиночку."""
+    """Две кривые и больше — легенда обязательна: цвет не сообщает ничего в одиночку.
+
+    Отступ от нижнего края холста — не вкус: базовая линия стояла ровно на
+    границе `viewBox`, и выносные элементы букв («у», «р») срезались всегда.
+    Без рамки этого не было видно, а с появлением бумаги легенда ещё и упёрлась
+    в неё.
+    """
     parts = []
     x = _LEFT
     for item in series:
         parts.append(
-            f'<rect x="{x:.1f}" y="{_HEIGHT - 6:.1f}" width="7" height="7" rx="1.5" '
+            f'<rect x="{x:.1f}" y="{_HEIGHT - 12:.1f}" width="7" height="7" rx="1.5" '
             f'fill="{SUBJECT_COLORS[item.subject]}"/>'
         )
-        parts.append(_text(x + 10, _HEIGHT, item.label, size=8, fill=MUTED))
+        parts.append(_text(x + 10, _HEIGHT - 6, item.label, size=8, fill=MUTED))
         x += 12 + len(item.label) * 4.6
     return "".join(parts)
 
