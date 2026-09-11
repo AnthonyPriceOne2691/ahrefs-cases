@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
+from functools import lru_cache
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Тесты не читают .env разработчика: иначе результат зависит от чужой машины.
 os.environ.setdefault("AHREFS_PROVIDER", "fixture")
 
-_SKIP_REASON = "дев-база недоступна: docker compose -f docker-compose.dev.yml up -d postgres"
+_UP_COMMAND = "docker compose -f docker-compose.dev.yml up -d postgres"
+_SKIP_REASON = f"дев-база недоступна: {_UP_COMMAND}"
+_ALLOW_NO_DB = "AHREFS_TESTS_ALLOW_NO_DB"
+_DB_FIXTURES = frozenset({"needs_db", "migrated_db", "db_session"})
 
 
 async def _probe_database(url: str) -> bool:
@@ -37,22 +41,64 @@ async def _probe_database(url: str) -> bool:
             await asyncio.sleep(0)
 
 
-@pytest.fixture(scope="session")
-def db_available() -> bool:
-    """Доступна ли дев-база.
+@lru_cache(maxsize=1)
+def _database_reachable() -> bool:
+    """Проба базы — **один раз на прогон**, а не на каждый тест.
 
-    Недоступна — тесты на миграции и health пропускаются с явной причиной, а не
-    тихо считаются пройденными: пропуск и успех обязаны различаться в выводе.
+    Кэш на функции, а не фикстура, потому что ответ нужен ещё и на этапе сбора
+    тестов, куда фикстуры не дотягиваются.
     """
     from ahrefs_cases import config
 
     return asyncio.run(_probe_database(config.storage.database_url))
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Нет базы, а тесты её требуют — остановить прогон, а не пропустить их.
+
+    До этого `pytest` без дев-базы печатал «253 passed, 154 skipped» и возвращал
+    ноль. Формально честно — пропуск и успех в выводе различаются, — а читается
+    как «всё хорошо»: чтобы понять, что проверена треть, нужно заметить второе
+    число. Тот же класс, что L8, L58 и L68 («зелёный по причине окружения»),
+    только здесь окружение не подменяет данные, а **убирает проверки**.
+
+    Останавливаемся один раз: причина одна, и сотня одинаковых красных спрятала
+    бы её среди самих себя. Остановка касается только прогонов, где такие тесты
+    действительно выбраны: чистые модульные тесты базы не требуют и докера
+    требовать не должны.
+
+    `AHREFS_TESTS_ALLOW_NO_DB=1` возвращает прежний пропуск. Пропуск сам по себе
+    не зло — злом было умолчание; набранная руками переменная делает выбор
+    видимым.
+    """
+    if os.getenv(_ALLOW_NO_DB) == "1":
+        return
+    if not any(_DB_FIXTURES & set(item.fixturenames) for item in items):
+        return
+    if _database_reachable():
+        return
+    pytest.exit(
+        f"прогон остановлен: {_SKIP_REASON}. "
+        f"Пропустить эти тесты осознанно: {_ALLOW_NO_DB}=1 pytest",
+        returncode=1,
+    )
+
+
+@pytest.fixture(scope="session")
+def db_available() -> bool:
+    """Доступна ли дев-база. К этому моменту прогон уже остановлен, если она
+    нужна и недоступна, — значит `False` здесь означает выбранный человеком
+    `AHREFS_TESTS_ALLOW_NO_DB`."""
+    return _database_reachable()
+
+
 @pytest.fixture
 def needs_db(db_available: bool) -> None:
-    """Пропуск, а не падение, когда базы нет. Уборки за собой нет — поэтому
-    `return`, а не `yield`: фикстура-генератор без teardown вводит в заблуждение."""
+    """Пропуск, а не падение, когда базы нет **и человек этого попросил**.
+
+    Уборки за собой нет — поэтому `return`, а не `yield`: фикстура-генератор
+    без teardown вводит в заблуждение.
+    """
     if not db_available:
         pytest.skip(_SKIP_REASON)
 
