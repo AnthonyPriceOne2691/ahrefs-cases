@@ -23,6 +23,10 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   { path: '/cases', label: 'Кейсы', right: 'read' },
   { path: '/runs', label: 'Прогоны', right: 'read' },
   { path: '/usage', label: 'Расход units', right: 'read' },
+  // `edit_thresholds`, хотя предпросмотр в API открыт праву `read`: таблица
+  // доступа ТЗ говорит про раздел «Пороги» — «Пользователь: нет», и расширять
+  // её решает заказчик, а не мы. Открытый предпросмотр остаётся: он доступен
+  // по API тому, кто спросит, и им пользуется тот, кто утверждает пороги.
   { path: '/thresholds', label: 'Пороги', right: 'edit_thresholds' },
   { path: '/users', label: 'Люди', right: 'manage_users' },
 ];

@@ -169,6 +169,16 @@ export interface UsageView {
   per_hundred_domains: number | null;
 }
 
+export interface RulesetRow {
+  id: number;
+  version: string;
+  is_active: boolean;
+  note: string;
+  created_at: string;
+  /** Пороги целиком. Форму знает `pages/thresholds/rules.ts` — там же и разбор. */
+  payload: Record<string, unknown>;
+}
+
 export interface AlertView {
   kind: string;
   /** `critical` | `serious` | `warning` | `good` — четыре, а не две. */

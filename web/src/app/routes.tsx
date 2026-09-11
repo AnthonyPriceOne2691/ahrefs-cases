@@ -12,6 +12,7 @@ import { CasesPage } from '../pages/CasesPage';
 import { IntakePage } from '../pages/IntakePage';
 import { ProjectCardPage } from '../pages/ProjectCardPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
+import { ThresholdsPage } from '../pages/ThresholdsPage';
 import { RunsPage } from '../pages/RunsPage';
 import { UsagePage } from '../pages/UsagePage';
 
@@ -23,6 +24,7 @@ const SCREENS: Record<string, () => React.ReactElement> = {
   '/intake': IntakePage,
   '/projects': ProjectsPage,
   '/cases': CasesPage,
+  '/thresholds': ThresholdsPage,
   '/runs': RunsPage,
   '/usage': UsagePage,
 };
