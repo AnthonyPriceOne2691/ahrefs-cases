@@ -1,31 +1,54 @@
 /**
- * Пороги: что утверждено сейчас.
+ * Пороги: что утверждено сейчас и что будет, если применить другую версию.
  *
  * Самое опасное место сервиса — одна цифра перекладывает по группам всю базу и
- * решает, какие кейсы уйдут клиентам. Поэтому первое, на что экран отвечает, —
- * «по чему считается то, что я вижу на остальных экранах», и отвечает словами,
- * а не JSON'ом: пороги утверждают Head of Link Building и Owner.
+ * решает, какие кейсы уйдут клиентам. Поэтому экран сначала отвечает
+ * «что действует», и только потом — «что изменится».
  *
- * Список версий с предпросмотром последствий и правка приедут следующими
- * поставками; правка будет закрыта правом `edit_thresholds` и на сервере.
+ * Раздел закрыт правом `edit_thresholds` — так говорит таблица доступа ТЗ, и
+ * то, что предпросмотр в API открыт праву `read`, её не отменяет (урок L94).
+ * Правка приедет следующей поставкой и будет закрыта тем же правом на сервере.
  */
 import { Container, Stack, Title } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 
-import { fetchRulesets } from '../api/thresholds';
-import type { RulesetRow } from '../api/types';
+import { fetchRulesets, previewRuleset } from '../api/thresholds';
+import type { PreviewView, RulesetRow } from '../api/types';
 
+import { failureText } from './cases/failure';
 import { CurrentVersion } from './thresholds/CurrentVersion';
+import { VersionsSection } from './thresholds/VersionsSection';
 
-/** Действующая версия — та, по которой посчитаны вердикты. Её нет только на
- *  сервисе, которому нечем классифицировать, и это говорится вслух. */
-function active(rows: RulesetRow[] | undefined): RulesetRow | null {
+/** Показываем выбранную версию, а по умолчанию — действующую: именно по ней
+ *  посчитаны вердикты, которые человек видит на остальных экранах. */
+function shown(rows: RulesetRow[] | undefined, chosen: string | null): RulesetRow | null {
   if (!rows || rows.length === 0) return null;
+  if (chosen) return rows.find((row) => row.version === chosen) ?? null;
   return rows.find((row) => row.is_active) ?? rows[0] ?? null;
 }
 
 export function ThresholdsPage() {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewView | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [busyVersion, setBusyVersion] = useState<string | null>(null);
+
   const rulesets = useQuery({ queryKey: ['rulesets'], queryFn: () => fetchRulesets() });
+  const rows = rulesets.data ?? [];
+  const current = shown(rulesets.data, chosen);
+
+  const ask = useMutation({
+    mutationFn: (row: RulesetRow) => previewRuleset(row.version),
+    onMutate: (row: RulesetRow) => {
+      setPreviewError(null);
+      setPreview(null);
+      setBusyVersion(row.version);
+    },
+    onSuccess: setPreview,
+    onError: (error: unknown) => setPreviewError(failureText(error, 'предпросмотр не посчитался')),
+    onSettled: () => setBusyVersion(null),
+  });
 
   return (
     <Container size="xl">
@@ -33,11 +56,23 @@ export function ThresholdsPage() {
         <Title order={2}>Пороги</Title>
 
         <CurrentVersion
-          current={active(rulesets.data)}
+          current={current}
           pending={rulesets.isPending}
           error={rulesets.isError ? rulesets.error : null}
-          empty={rulesets.isSuccess && (rulesets.data?.length ?? 0) === 0}
+          empty={rulesets.isSuccess && rows.length === 0}
         />
+
+        {rows.length > 0 && (
+          <VersionsSection
+            rows={rows}
+            selected={current?.version ?? null}
+            busyVersion={busyVersion}
+            preview={preview}
+            error={previewError}
+            onSelect={(row) => setChosen(row.version)}
+            onPreview={(row) => ask.mutate(row)}
+          />
+        )}
       </Stack>
     </Container>
   );

@@ -14,13 +14,7 @@
 import { Badge, Text } from '@mantine/core';
 
 import { groupInk } from '../../theme';
-
-const LABELS: Record<string, string> = {
-  good: 'хороший',
-  medium: 'средний',
-  poor: 'плохой',
-  insufficient_data: 'данных не хватает',
-};
+import { groupWord } from '../groups';
 
 export function GroupBadge({ group }: { group: string | null }) {
   if (!group) {
@@ -38,7 +32,7 @@ export function GroupBadge({ group }: { group: string | null }) {
       style={{ color: groupInk[group as keyof typeof groupInk] ?? 'inherit' }}
       data-group={group}
     >
-      {LABELS[group] ?? group}
+      {groupWord(group)}
     </Badge>
   );
 }

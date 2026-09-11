@@ -179,6 +179,24 @@ export interface RulesetRow {
   payload: Record<string, unknown>;
 }
 
+export interface PreviewChange {
+  domain: string;
+  /** `null` — вердикта ещё не было: проект получит группу впервые. */
+  was: string | null;
+  becomes: string;
+}
+
+export interface PreviewView {
+  version: string;
+  total: number;
+  changes: PreviewChange[];
+  first_time: PreviewChange[];
+  unchanged: number;
+  /** Проекты, которые этой версией считать нечем: не куплены нужные месяцы.
+   *  Это третье состояние, а не разновидность «не изменится». */
+  missing_data: string[];
+}
+
 export interface AlertView {
   kind: string;
   /** `critical` | `serious` | `warning` | `good` — четыре, а не две. */
