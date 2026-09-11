@@ -31,7 +31,7 @@ from ahrefs_cases.collect.budget import (
     run_saved,
     run_spend,
 )
-from ahrefs_cases.collect.factory import build_provider
+from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.fetch import TaskOutcome, fetch_one
 from ahrefs_cases.collect.plan import (
     CollectTask,
@@ -40,7 +40,7 @@ from ahrefs_cases.collect.plan import (
     build_stage2_plan,
 )
 from ahrefs_cases.collect.provider import AhrefsProvider
-from ahrefs_cases.collect.quota import FixtureQuota, QuotaSource, preflight
+from ahrefs_cases.collect.quota import QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
     add_item,
     count_outcome,
@@ -161,7 +161,7 @@ async def _execute_run(
     scheme = plan.scheme_breakdown()
 
     state = await preflight(
-        options.quota or FixtureQuota(),
+        options.quota or build_quota(),
         needed=estimate,
         reserved=await reserved_units(session),
     )

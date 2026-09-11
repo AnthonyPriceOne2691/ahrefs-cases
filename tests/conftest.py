@@ -58,6 +58,34 @@ def needs_db(db_available: bool) -> None:
 
 
 @pytest.fixture(autouse=True)
+def engine_without_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Движок приложения в тестах строится без пула соединений.
+
+    `dispose()` закрывает **свободные** соединения; выданное в момент закрытия
+    остаётся сиротой и всплывает `ResourceWarning`ом уже при сборке мусора — то
+    есть в случайном следующем тесте, а при `filterwarnings = ["error"]` это
+    падение там, где ничего не ломали. `NullPool` закрывает соединение при
+    возврате, и сирот не остаётся.
+
+    Подменяется **сборка** движка, а не функция `get_engine`: её импортируют по
+    имени в нескольких местах, и подмена самой функции оставила бы часть кода
+    на старом, пулированном движке — то есть на двух движках сразу.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine as real_create
+    from sqlalchemy.pool import NullPool
+
+    from ahrefs_cases.storage import session as session_module
+
+    def _without_pool(url: str, **options: object) -> object:
+        options.pop("pool_pre_ping", None)
+        return real_create(url, poolclass=NullPool, **options)
+
+    monkeypatch.setattr(session_module, "create_async_engine", _without_pool)
+    session_module.get_sessionmaker.cache_clear()
+    session_module.get_engine.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def dispose_engine_after_test() -> Iterator[None]:
     """Закрывать пул после каждого теста.
 

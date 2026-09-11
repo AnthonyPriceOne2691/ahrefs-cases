@@ -8,7 +8,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ahrefs_cases import config
-from ahrefs_cases.api.routers import auth_router, health_router
+from ahrefs_cases.api.routers import (
+    auth_router,
+    cases_router,
+    health_router,
+    projects_router,
+    usage_router,
+)
 from ahrefs_cases.storage import dispose_engine
 
 
@@ -37,5 +43,5 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
-app.include_router(health_router)
-app.include_router(auth_router)
+for router in (health_router, auth_router, projects_router, cases_router, usage_router):
+    app.include_router(router)

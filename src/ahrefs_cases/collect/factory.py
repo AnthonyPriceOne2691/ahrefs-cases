@@ -1,4 +1,4 @@
-"""Выбор провайдера Ahrefs по конфигу.
+"""Выбор провайдера Ahrefs и источника остатка квоты по конфигу.
 
 Одно место, где решается «фикстуры или живой API». Разбросай это условие по
 вызовам — и переключение в live стало бы не решением, а следствием того, какой
@@ -15,6 +15,7 @@ from ahrefs_cases import config
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.live import AhrefsLive
 from ahrefs_cases.collect.provider import AhrefsProvider
+from ahrefs_cases.collect.quota import FixtureQuota, LiveQuota, QuotaSource
 from ahrefs_cases.collect.single_flight import SingleFlightProvider
 
 
@@ -27,3 +28,15 @@ def build_provider() -> AhrefsProvider:
     """
     inner: AhrefsProvider = AhrefsLive() if config.ahrefs.provider == "live" else AhrefsFixture()
     return SingleFlightProvider(inner)
+
+
+def build_quota() -> QuotaSource:
+    """Откуда узнавать остаток units — по тому же конфигу, что и провайдер.
+
+    До этой функции источник выбирался **умолчанием вызывающего**: прогон брал
+    `FixtureQuota()`, если ему не передали другой, и в живом режиме сверял смету
+    с фикстурными десятью тысячами вместо настоящего остатка. Проверка,
+    выглядевшая работающей, не защищала ничего — и заметно это стало бы в Ф7,
+    на первых настоящих деньгах.
+    """
+    return LiveQuota() if config.ahrefs.provider == "live" else FixtureQuota()
