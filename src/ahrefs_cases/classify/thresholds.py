@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from ahrefs_cases import config
 
@@ -93,9 +93,34 @@ class GroupRule(_Model):
 
 class Duration(_Model):
     normalize_after_months: int = Field(0, ge=0, le=60)
-    """Нормализация на длительность работ — Ф3б, и она ждёт формулу заказчика.
-    Здесь поле разбирается, но не применяется: разбирать чужой документ и
-    молчать о неизвестных полях — разные вещи."""
+    """Нормализация на длительность работ: «чем дольше срок, тем слабее результат».
+
+    Требование ТЗ есть, **формулы от заказчика нет**, поэтому блок не
+    реализован. До 11.09.2026 поле просто разбиралось и молчало — и это был
+    худший из вариантов: в документе порогов оно выглядит рабочим, а в
+    интерфейсе Ф6 будет полем ввода. Поставив здесь 12 на калибровке, заказчик
+    увидел бы прежние группы и сделал вывод о порогах, а не о нереализованном
+    блоке.
+
+    Поэтому ненулевое значение теперь **отказывает**, а не игнорируется. Когда
+    формула придёт, отказ снимается вместе с реализацией — одним изменением,
+    в одном месте.
+    """
+
+    @model_validator(mode="after")
+    def normalization_is_not_implemented(self) -> Duration:
+        if self.normalize_after_months:
+            message = (
+                "duration.normalize_after_months = "
+                f"{self.normalize_after_months}, но нормализация на длительность "
+                "работ не реализована: формулы от заказчика нет (ТЗ требует "
+                "«чем дольше срок работ, тем слабее результат», формула не "
+                "прислана). Считать по этой версии порогов нельзя — вердикты "
+                "выглядели бы нормализованными, не будучи ими. Поставьте 0, "
+                "пока формула не придёт."
+            )
+            raise ValueError(message)
+        return self
 
 
 class Guards(_Model):

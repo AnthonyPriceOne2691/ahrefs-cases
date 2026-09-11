@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
 from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thresholds_of
@@ -184,6 +185,31 @@ async def _preview(version: str) -> int:
     return 0
 
 
+async def _diagnose(domain: str | None) -> int:
+    """Диагностика «плохих»: что просело, когда началось, потеряны ли домены.
+
+    По ТЗ кейс «плохим» не формируется, но список с краткой причиной нужен для
+    внутреннего анализа. Ahrefs не трогается, в базу ничего не пишется.
+    """
+    async with get_sessionmaker()() as session:
+        if domain is not None:
+            one = await diagnose_domain(session, domain, source=config_source())
+            if one is None:
+                print(f"проект не найден: {domain}", file=sys.stderr)
+                return _EXIT_BAD_SOURCE
+            print("\n".join(one.as_lines()))
+            return 0
+
+        found = await diagnose_poor(session, source=config_source())
+    if not found:
+        print("«плохих» проектов нет — диагностировать нечего")
+        return 0
+    print(f"«плохих» проектов: {len(found)}")
+    for item in found:
+        print("\n".join(item.as_lines()))
+    return 0
+
+
 async def _explain(domain: str) -> int:
     """Показать вердикт одного домена со всеми условиями.
 
@@ -233,6 +259,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _recalc(args.version, make_active=args.activate)
         if args.command == "preview":
             return await _preview(args.version)
+        if args.command == "diagnose":
+            return await _diagnose(args.domain)
         if args.command == "explain":
             return await _explain(args.domain)
         code = await _intake(args.source)
@@ -280,6 +308,12 @@ def main() -> int:
         "preview", help="показать, кто сменит группу при этой версии порогов (без записи)"
     )
     preview_parser.add_argument("version", help="версия порогов, например 2026-09-A")
+    diagnose_parser = sub.add_parser(
+        "diagnose", help="разбор «плохих»: что просело, когда началось, потеряны ли домены"
+    )
+    diagnose_parser.add_argument(
+        "domain", nargs="?", default=None, help="домен; без него — список всех «плохих»"
+    )
     explain_parser = sub.add_parser("explain", help="показать вердикт одного домена по условиям")
     explain_parser.add_argument("domain", help="канонический домен проекта")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
