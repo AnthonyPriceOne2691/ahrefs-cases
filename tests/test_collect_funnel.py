@@ -99,9 +99,9 @@ async def test_stage2_asks_only_candidates(db_session: AsyncSession) -> None:
     # это два запроса, — а у `refdomains-history` (строка 5) дешевле история,
     # один запрос. Считать «проекты × endpoint'ы» больше нельзя.
     by_endpoint = Counter(endpoint for endpoint, _domain in provider.calls)
-    assert by_endpoint["keywords-history"] == len(GROWING) * 2, "две точки — два запроса"
-    assert by_endpoint["refdomains-history"] == len(GROWING), "история — один запрос"
-    assert report.requests_made == sum(by_endpoint.values())
+    assert by_endpoint["keywords-history"] == len(GROWING) * 2, "E1: две точки — два запроса"
+    assert by_endpoint["refdomains-history"] == len(GROWING), "E2: история — один запрос"
+    assert report.requests_made == sum(by_endpoint.values()), "E3: счёт запросов сходится"
     assert report.projects_total == len(GROWING), "проектов столько же, сколько кандидатов (L13)"
 
 

@@ -86,13 +86,18 @@ def test_refdomains_window_overlap_is_named() -> None:
 
 
 def test_long_period_flips_refdomains_to_points() -> None:
-    """Граница у refdomains существует, просто она дальше: с двадцати одной
-    строки история дороже двух точек, и решение переворачивается само."""
+    """E9: у refdomains граница тоже есть, просто дальше — с двадцати одной строки.
+
+    **Пример добавлен при реализации.** Спека говорила «refdomains собирается
+    историей», и это неправда в общем виде: правило одно для всех endpoint'ов,
+    просто точка перелома у каждого своя. Записать «refdomains — всегда
+    история» значило бы захардкодить сегодняшний период.
+    """
     short = _choose(REFDOMAINS_HISTORY, date(2026, 6, 1))
     long = _choose(REFDOMAINS_HISTORY, date(2027, 6, 1))
 
-    assert short.scheme is CollectScheme.FULL_HISTORY
-    assert long.scheme is CollectScheme.TWO_POINTS
+    assert short.scheme is CollectScheme.FULL_HISTORY, "E9: 19 строк — история"
+    assert long.scheme is CollectScheme.TWO_POINTS, "E9: 31 строка — точки"
     assert long.units_full_history > long.units_two_points
 
 
@@ -235,4 +240,4 @@ def test_free_rows_follow_the_price_not_the_endpoint(spec, expected_free_rows: i
     У дорогой строки впрок не купишь: `keywords-history` берёт ровно то окно,
     что просят пороги. У дешёвой запас велик, и это тоже не выбор, а арифметика.
     """
-    assert spec.rows_under_minimum() == expected_free_rows
+    assert spec.rows_under_minimum() == expected_free_rows, "E4: ёмкость минимума — следствие цены"

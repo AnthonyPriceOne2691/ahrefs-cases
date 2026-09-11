@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («делаем шаг 2 сначала» — состав объявлен маршрутом в docs/UNITS_OPTIMIZATION.md, принятым 11.09.2026)
@@ -27,8 +27,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** на шаге 2 `keywords-history` собирается двумя точками, `refdomains-history` — историей, и оба решения видны в отчёте отдельными строками; смета шага 2 на тридцати кандидатах равна 8 820 units против 30 240 историей; разреженность ключей не влияет на `max_gap_months`
+- **observe_until:** 2026-09-25
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Почему это следующая поставка
