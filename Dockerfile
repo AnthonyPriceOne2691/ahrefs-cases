@@ -35,7 +35,10 @@ COPY scripts ./scripts
 FROM base AS prod
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install "."
+# `build/` — след setuptools: копия исходников, оставшаяся после установки.
+# Удаляется тем же слоем, иначе так и лежит в образе лишними 864 КБ — мелочь,
+# но ровно того же рода, что `.venv` в контексте сборки (урок L69).
+RUN pip install "." && rm -rf build
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
@@ -53,3 +56,18 @@ WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 CMD ["npm", "run", "dev"]
+
+# --- Фронт, сборка -----------------------------------------------------------
+# Отдельная стадия: инструменты сборки (node, npm, 372 МБ зависимостей) в боевой
+# образ не попадают — туда едут только получившиеся файлы.
+FROM node:22-slim AS web-build
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
+# --- Фронт, боевой режим -----------------------------------------------------
+FROM nginx:1.27-alpine AS web
+COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=web-build /app/web/dist /usr/share/nginx/html

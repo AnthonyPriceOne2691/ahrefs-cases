@@ -1,0 +1,131 @@
+# Боевой компоуз: сервис на сервере агентства.
+#
+# Отличия от дев-компоуза — не косметика, а разные решения:
+#   • исходники **не монтируются**: образ и есть то, что работает;
+#   • фронт — собранные файлы, отданные nginx, а не dev-сервер с исходниками;
+#   • API без `--reload`;
+#   • база и очередь наружу не опубликованы: к ним ходят только из сети докера;
+#   • **ни одного значения секрета в этом файле** — он едет в git и на сервер.
+#     Значения приходят из окружения (`.env` рядом, `env_file` или экспорт в
+#     оболочке). Запись `${VAR:?...}` означает: нет переменной — компоуз не
+#     стартует и называет, чего не хватает, вместо тихого запуска с пустотой.
+#
+# Провайдер Ahrefs по умолчанию `fixture` **нарочно**: живой ключ жжёт units
+# заказчика, и переключение в `live` — решение человека, а не следствие того,
+# что сервис уехал на сервер.
+name: ahrefs-cases
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://cases:${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD}@postgres:5432/cases
+  REDIS_URL: redis://redis:6379/0
+  JWT_SECRET: ${JWT_SECRET:?нужен JWT_SECRET — без него токены не подписать}
+  AHREFS_PROVIDER: ${AHREFS_PROVIDER:-fixture}
+  AHREFS_API_KEY: ${AHREFS_API_KEY:-}
+  AHREFS_UNITS_MIN_LEFT: ${AHREFS_UNITS_MIN_LEFT:-1000}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cases
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?нужен POSTGRES_PASSWORD}
+      POSTGRES_DB: cases
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cases -d cases"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    command: alembic upgrade head
+    environment: *backend-env
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    command: uvicorn ahrefs_cases.api.main:app --host 0.0.0.0 --port 8000
+    environment: *backend-env
+    restart: unless-stopped
+    volumes:
+      # Артефакты кейсов переживают пересоздание контейнера: PDF и ZIP собраны
+      # за units заказчика, и терять их при обновлении образа нельзя.
+      - casedata:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    command: python -m ahrefs_cases.workers.main
+    environment: *backend-env
+    restart: unless-stopped
+    volumes:
+      - casedata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    restart: unless-stopped
+    ports:
+      # 8080 снаружи, чтобы не спорить с занятым 80 на машине разработчика. На
+      # сервере здесь встанут 80 и 443 вместе с сертификатом (Ф9).
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  casedata:
