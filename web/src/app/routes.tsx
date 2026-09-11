@@ -9,6 +9,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { IntakePage } from '../pages/IntakePage';
+import { ProjectsPage } from '../pages/ProjectsPage';
 
 import { NAV_SECTIONS } from './nav';
 
@@ -16,6 +17,7 @@ import { NAV_SECTIONS } from './nav';
  *  заглушка говорит об этом вслух, а не показывает пустую страницу. */
 const SCREENS: Record<string, () => React.ReactElement> = {
   '/intake': IntakePage,
+  '/projects': ProjectsPage,
 };
 
 function Placeholder({ title }: { title: string }) {

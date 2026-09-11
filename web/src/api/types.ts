@@ -64,3 +64,26 @@ export interface RunRow {
   units_actual: number;
   error: string;
 }
+
+export interface ProjectRow {
+  id: number;
+  domain: string;
+  niche: string;
+  geo: string;
+  service_type: string;
+  period_start: string;
+  period_end: string;
+  publishable: boolean;
+  status: string;
+  /** `null` — проект не классифицирован действующей версией порогов. Это
+   *  ответ, а не пустота: докупить историю и запустить классификацию. */
+  group: string | null;
+  score: number | null;
+}
+
+export interface ProjectsQuery {
+  group?: string | null;
+  query?: string;
+  limit: number;
+  offset: number;
+}
