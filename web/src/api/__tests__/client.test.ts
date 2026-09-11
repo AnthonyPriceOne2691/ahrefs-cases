@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe('клиент API', () => {
-  it('кладёт токен в заголовок, когда он есть', async () => {
+  it('E2: кладёт токен в заголовок, когда он есть', async () => {
     const seen: RequestInit[] = [];
     vi.stubGlobal(
       'fetch',
@@ -36,6 +36,7 @@ describe('клиент API', () => {
     await request('/api/projects');
 
     const headers = seen[0]?.headers as Record<string, string>;
+    // E2: токеном пользуются на каждом запросе, а не только при входе
     expect(headers.Authorization).toBe('Bearer токен-для-теста');
   });
 
@@ -61,12 +62,13 @@ describe('клиент API', () => {
     expect((failure as ApiError).message).toContain('активной версии порогов');
   });
 
-  it('не теряет код ответа, если тело не разобралось', async () => {
+  it('L23: не теряет код ответа, если тело не разобралось', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('<html>шлюз</html>', { status: 502 })),
     );
 
+    // L23: код ответа важнее тела — именно он говорит, что делать дальше
     await expect(request('/api/projects')).rejects.toThrow(/502/);
   });
 });
