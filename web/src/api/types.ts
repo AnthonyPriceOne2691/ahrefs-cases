@@ -138,6 +138,29 @@ export interface ChartBlock {
   svg: string;
 }
 
+export interface CaseRow {
+  id: number;
+  project_id: number;
+  domain: string;
+  version: number;
+  /** Кейс собран без имени домена: публиковать его под именем нельзя. */
+  anonymized: boolean;
+  status: string;
+  created_at: string;
+  /** `null` — кейс в базе есть, файла к нему нет: скачивать нечего. */
+  filename: string | null;
+  checksum: string | null;
+}
+
+export interface PackView {
+  exists: boolean;
+  filename: string | null;
+  size_bytes: number | null;
+  built_at: string | null;
+  /** Что сказать человеку: когда пачка собрана или почему её нет. */
+  note: string;
+}
+
 export interface UsageView {
   spent: number;
   reserved: number;

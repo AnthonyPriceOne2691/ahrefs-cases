@@ -77,6 +77,45 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return (await response.json()) as T;
 }
 
+/** Файл, полученный с сервера: содержимое и имя, под которым его сохранять. */
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+}
+
+/**
+ * Скачать файл тем же токеном, что и остальные запросы.
+ *
+ * Прямая ссылка `<a href="/api/cases/1/download">` здесь не работает: браузер
+ * отправит её без заголовка `Authorization` — токен у нас не в куке — и человек
+ * получит `401` вместо кейса. Поэтому файл берётся запросом, а сохраняется уже
+ * из памяти.
+ */
+export async function download(path: string, fallbackName: string): Promise<DownloadedFile> {
+  const headers: Record<string, string> = {};
+  const token = storedToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(path, { headers });
+  if (!response.ok) throw new ApiError(response.status, await readDetail(response));
+  return { blob: await response.blob(), filename: nameFromHeaders(response) ?? fallbackName };
+}
+
+/**
+ * Имя файла из `Content-Disposition`.
+ *
+ * Имена у нас кириллические («example.com — Кейс.pdf»), и сервер отдаёт их
+ * формой `filename*=utf-8''…` с процентами. Не раскодировав, человек сохранил
+ * бы файл с именем из процентов — и не узнал бы его в папке загрузок.
+ */
+function nameFromHeaders(response: Response): string | null {
+  const header = response.headers.get('content-disposition') ?? '';
+  const encoded = /filename\*=utf-8''([^;]+)/i.exec(header);
+  if (encoded?.[1]) return decodeURIComponent(encoded[1]);
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1] ?? null;
+}
+
 async function readDetail(response: Response): Promise<string> {
   // Тело читается в try: сервер мог ответить не JSON (прокси, шлюз), и потерять
   // код ответа из-за этого нельзя — именно он говорит, что делать дальше.

@@ -8,6 +8,7 @@ import { Alert, Container, Stack, Text, Title } from '@mantine/core';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
+import { CasesPage } from '../pages/CasesPage';
 import { IntakePage } from '../pages/IntakePage';
 import { ProjectCardPage } from '../pages/ProjectCardPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
@@ -21,6 +22,7 @@ import { NAV_SECTIONS } from './nav';
 const SCREENS: Record<string, () => React.ReactElement> = {
   '/intake': IntakePage,
   '/projects': ProjectsPage,
+  '/cases': CasesPage,
   '/runs': RunsPage,
   '/usage': UsagePage,
 };
