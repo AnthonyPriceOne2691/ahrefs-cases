@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** n/a reason=меняется поведение самого прогона тестов; проверяется исполнением с погашенной базой
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («давай» — сделать отсутствие базы локальной ошибкой)
