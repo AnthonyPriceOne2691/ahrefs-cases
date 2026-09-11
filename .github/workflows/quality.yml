@@ -431,9 +431,12 @@ jobs:
       MIGRATION_CYCLE_TEST: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      # Версии те же, что в соседних job'ах: на v4/v5 GitHub печатал
+      # «Node.js 20 is deprecated» каждый прогон — предупреждение того же
+      # класса, что и editable-установка, и гасится оно работой, а не чтением.
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
