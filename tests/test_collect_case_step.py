@@ -104,9 +104,11 @@ def test_curve_is_bought_as_series_even_though_points_are_cheaper() -> None:
     Две точки обошлись бы в 100 units против 399 за серию — но показать по ним
     нечего. Цена решает только там, где назначение допускает оба варианта.
     """
-    assert KEYWORDS_GRAPH.needs_series is True
-    assert METRICS_VALUE.needs_series is False
-    assert 2 * KEYWORDS_GRAPH.estimate_units(2) < KEYWORDS_GRAPH.estimate_units(19)
+    assert KEYWORDS_GRAPH.needs_series is True, "E1: кривая покупается серией"
+    assert METRICS_VALUE.needs_series is False, "E4: стоимость трафика — число"
+    assert 2 * KEYWORDS_GRAPH.estimate_units(2) < KEYWORDS_GRAPH.estimate_units(19), (
+        "E1: точки дешевле серии, и всё равно берём серию"
+    )
 
 
 async def test_only_the_missing_middle_is_bought(db_session: AsyncSession) -> None:
@@ -275,5 +277,6 @@ def test_missing_month_is_not_a_zero_in_aggregation() -> None:
     """
     months = [date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1)]
 
-    assert aggregate({date(2025, 2, 1): 500.0}, months, flow=True) == 500.0
-    assert aggregate({}, months, flow=True) is None
+    one_month = {date(2025, 2, 1): 500.0}
+    assert aggregate(one_month, months, flow=True) == 500.0, "E9: пустой месяц не ноль"
+    assert aggregate({}, months, flow=True) is None, "E9: нет данных — не ноль"
