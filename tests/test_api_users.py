@@ -158,6 +158,30 @@ def _headers(client: TestClient, email: str, password: str = PASSWORD) -> dict[s
     return {"Authorization": f"Bearer {body['access_token']}"}
 
 
+def test_rights_catalog_comes_from_the_same_table(client: TestClient) -> None:
+    """E7: справочник прав — из той же таблицы, что проверяют роутеры.
+
+    Экран показывает, что человеку дала группа, а что выдали лично, и без
+    справочника держал бы вторую копию таблицы прав. Копия расходится молча —
+    ровно в тот день, когда таблицу правят.
+    """
+    from ahrefs_cases.api.deps import ALL_RIGHTS, rights_of
+    from ahrefs_cases.storage import UserGroup
+
+    body = client.get("/api/users/rights", headers=_headers(client, ADMIN)).json()
+
+    assert set(body["rights"]) == set(ALL_RIGHTS)
+    assert set(body["groups"]) == {group.value for group in UserGroup}
+    assert set(body["groups"]["admin"]) == set(rights_of(UserGroup.ADMIN))
+    # Слово `rights` не уезжает в `{user_id}`: иначе выдача стала бы `422`.
+    assert "manage_users" in body["rights"]
+
+
+def test_rights_catalog_needs_the_right(client: TestClient) -> None:
+    """E8: справочник закрыт тем же правом, что и остальное управление людьми."""
+    assert client.get("/api/users/rights", headers=_headers(client, CLERK)).status_code == 403
+
+
 def test_plain_user_may_not_manage_people(client: TestClient) -> None:
     """E1: заводить людей — право `manage_users`, у группы `user` его нет."""
     response = client.post(

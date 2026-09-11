@@ -24,7 +24,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from ahrefs_cases.api.deps import ALL_RIGHTS, SessionDep, UserDep, require_right, rights_of_user
+from ahrefs_cases.api.deps import (
+    ALL_RIGHTS,
+    SessionDep,
+    UserDep,
+    require_right,
+    rights_of,
+    rights_of_user,
+)
 from ahrefs_cases.api.schemas import MAX_PAGE
 from ahrefs_cases.api.security import generate_password, hash_password
 from ahrefs_cases.storage import UserGroup
@@ -67,6 +74,18 @@ class UserPatch(BaseModel):
     отбирает, отсутствие ключа — «как в группе»."""
 
 
+class RightsCatalog(BaseModel):
+    """Какие права существуют и что даёт каждая группа.
+
+    Экрану это нужно, чтобы отличить право «как в группе» от выданного лично:
+    без справочника он держал бы вторую копию таблицы прав, а копия расходится
+    молча — ровно тогда, когда таблицу правят (урок L97).
+    """
+
+    rights: list[str]
+    groups: dict[str, list[str]]
+
+
 class UserWithPassword(BaseModel):
     """Ответ на заведение и перевыпуск. Пароль показывается **один раз**."""
 
@@ -83,6 +102,19 @@ async def list_users(
     """Кто заведён. Выданное точечно право видно строкой, а не выводится из роли."""
     stmt = select(User).order_by(User.email).limit(limit).offset(offset)
     return [_row(user) for user in (await session.execute(stmt)).scalars().all()]
+
+
+@router.get("/rights", response_model=RightsCatalog)
+async def rights_catalog() -> RightsCatalog:
+    """Справочник прав — из той же таблицы, которую проверяют роутеры.
+
+    Объявлен выше маршрутов с `{user_id}`: ниже слово `rights` уехало бы в
+    целочисленный параметр (та же ловушка, что поймала смету прогона).
+    """
+    return RightsCatalog(
+        rights=sorted(ALL_RIGHTS),
+        groups={group.value: sorted(rights_of(group)) for group in UserGroup},
+    )
 
 
 @router.post("", response_model=UserWithPassword, status_code=status.HTTP_201_CREATED)

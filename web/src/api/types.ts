@@ -203,6 +203,25 @@ export interface RecalcView {
   lines: string[];
 }
 
+export interface UserRow {
+  id: number;
+  email: string;
+  full_name: string;
+  group: string;
+  is_active: boolean;
+  /** Решённое **лично**: `true` — выдано сверх группы, `false` — отобрано у неё. */
+  personal_rights: Record<string, boolean>;
+  /** Итог: что человеку можно на самом деле. */
+  rights: string[];
+}
+
+export interface RightsCatalog {
+  rights: string[];
+  /** Что даёт каждая группа. По этому списку экран отличает право «как в
+   *  группе» от выданного лично, не храня второй копии таблицы прав. */
+  groups: Record<string, string[]>;
+}
+
 export interface AlertView {
   kind: string;
   /** `critical` | `serious` | `warning` | `good` — четыре, а не две. */
