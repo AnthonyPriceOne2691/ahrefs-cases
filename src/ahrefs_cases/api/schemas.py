@@ -102,6 +102,22 @@ class CaseRow(BaseModel):
     checksum: str | None = None
 
 
+class PackView(BaseModel):
+    """Пачка кейсов на диске: то, что забирают целиком.
+
+    Отсутствие архива — это ответ, а не ошибка: кейсы могли ещё не собираться.
+    Поэтому `exists: false` приходит кодом 200 и с пояснением, чем это чинится,
+    а `404` остаётся за случаем «просили файл, файла нет» (класс урока L1).
+    """
+
+    exists: bool
+    filename: str | None = None
+    size_bytes: int | None = None
+    built_at: datetime | None = None
+    note: str
+    """Что видит человек: когда собрана пачка или почему её нет."""
+
+
 class UsageView(BaseModel):
     """Расход units: что потрачено, что зарезервировано, что осталось."""
 
