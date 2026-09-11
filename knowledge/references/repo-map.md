@@ -19,12 +19,12 @@ implementation:
 
 | Что | Как запускается |
 |---|---|
-| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `pack`, `diagnose`, `explain`, `all` |
+| Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `pack`, `useradd`, `diagnose`, `explain`, `all` |
 | Тесты | `.venv/bin/python -m pytest -q` — нужна дев-база Postgres |
 | Гейты формы | `.venv/bin/python -m pre_commit run --all-files` (27 хуков) |
 | Контур поставки | `python scripts/delivery_check.py [--diff-base REF]` |
 | Канон знаний | `python scripts/okf_validate.py`, `python scripts/okf_sync_gate.py --staged` |
-| API | `src/ahrefs_cases/api/main.py` — пока только health, наполнится в Ф5 |
+| API | `src/ahrefs_cases/api/main.py` — health и вход; роутеры данных приходят поставками Ф5 |
 
 # Где что лежит
 
@@ -79,6 +79,12 @@ implementation:
   тестов**, и читается оно как «сломался пакет», а не «не хватает библиотеки ОС».
   В CI ставится шагом `System libraries for PDF`; на сервере агентства — тем же
   пакетным менеджером.
+- **Право — строка, и таблица прав одна** (`api/deps._GROUP_RIGHTS`). Вторая
+  копия правила стояла свойствами `can_*` у модели пользователя с Ф1 и не
+  использовалась нигде; такие копии не расходятся ровно до первой ссылки.
+- **Приложение FastAPI без нашего `lifespan` не закрывает движок базы.** В
+  тестах это всплывает `ResourceWarning`ом в чужом тесте, потому что
+  `filterwarnings = ["error"]` роняет прогон там, где ничего не ломали.
 - **Пороги заказчика вне репозитория.** Тест, стоящий на `config/thresholds.yml`,
   зелёный только на машине автора; в git — нейтральные умолчания.
 

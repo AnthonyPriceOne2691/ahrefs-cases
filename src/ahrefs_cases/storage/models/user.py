@@ -21,20 +21,7 @@ class User(Base, TimestampMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
-    @property
-    def can_edit_thresholds(self) -> bool:
-        """Право строкой, а не сравнением роли по месту вызова.
-
-        Проверка живёт здесь, чтобы «кто может править пороги» имело один ответ:
-        разъехавшиеся копии условия — способ тихо сдвинуть границу без ревью.
-        """
-        return self.group in (UserGroup.ENGINEER, UserGroup.ADMIN)
-
-    @property
-    def can_manage_users(self) -> bool:
-        return self.group in (UserGroup.ENGINEER, UserGroup.ADMIN)
-
-    @property
-    def can_change_technical_settings(self) -> bool:
-        """Ключи, лимиты расхода, провайдер — работа инженера, не руководителя."""
-        return self.group is UserGroup.ENGINEER
+    # Прав у модели нет намеренно: право — строка, а таблица «группа → права»
+    # живёт одна, в `api/deps.py`. Свойства `can_*` стояли здесь с Ф1, ими не
+    # пользовался никто, и это худший вид дубля — он не расходится ровно до
+    # первой ссылки на него (урок L33).

@@ -7,13 +7,19 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases.api.security import SecretMissingError, TokenError, read_token
 from ahrefs_cases.storage import UserGroup, session_scope
+from ahrefs_cases.storage.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
@@ -38,14 +44,56 @@ def rights_of(group: UserGroup) -> frozenset[str]:
     return _GROUP_RIGHTS[group]
 
 
-async def current_group() -> UserGroup:
-    """Заглушка Ф1: пока нет аутентификации, все запросы идут как `user`.
+_UNAUTHORIZED = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="нужен действующий токен",
+    headers={"WWW-Authenticate": "Bearer"},
+)
+"""Один ответ на все причины отказа: нет заголовка, чужая подпись, истёк срок,
+пользователь выключен. Различать их снаружи — помогать подбирать токены;
+в логе причина остаётся (урок L23 наоборот: здесь склейка сознательная)."""
 
-    Именно `user`, а не `engineer`: заглушка обязана быть наименее правой из
-    возможных. Иначе Ф5 включит аутентификацию и обнаружит, что часть роутеров
-    работала только потому, что заглушка была всесильной.
+
+async def current_user(request: Request, session: SessionDep) -> User:
+    """Пользователь из заголовка `Authorization: Bearer <токен>`.
+
+    Заглушка Ф1 возвращала группу `user` всем; теперь источник настоящий, а
+    форма проверки прав не изменилась — `require_right` писался в Ф1 именно так.
+
+    Пользователь перечитывается из базы, потому что токен живёт до 12 часов:
+    выключенный за это время сотрудник обязан перестать входить сразу, а не
+    когда истечёт его токен.
     """
-    return UserGroup.USER
+    header = request.headers.get("Authorization", "")
+    scheme, _, token = header.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        logger.info("запрос без токена: %s %s", request.method, request.url.path)
+        raise _UNAUTHORIZED
+    try:
+        claims = read_token(token)
+    except TokenError as exc:
+        raise _UNAUTHORIZED from exc
+    except SecretMissingError as exc:
+        # Не 401: это мисконфигурация сервиса, а не беда пользователя.
+        logger.exception("токен не разобран: сервис без секрета подписи")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="сервис не настроен: нет секрета подписи токенов",
+        ) from exc
+
+    user = (await session.execute(select(User).where(User.id == claims.user_id))).scalars().first()
+    if user is None or not user.is_active:
+        logger.info("токен принят, но пользователь %s недоступен", claims.user_id)
+        raise _UNAUTHORIZED
+    return user
+
+
+UserDep = Annotated[User, Depends(current_user)]
+
+
+async def current_group(user: UserDep) -> UserGroup:
+    """Группа запроса. Берётся из пользователя, а не из токена: см. `current_user`."""
+    return user.group
 
 
 GroupDep = Annotated[UserGroup, Depends(current_group)]

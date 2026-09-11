@@ -32,6 +32,7 @@ from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thre
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.cli.case_commands import pack_cases, render_case, show_cases
+from ahrefs_cases.cli.user_commands import add_user
 from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.collect.scheme import PointWindows
@@ -304,6 +305,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await render_case(args.domain)
         if args.command == "pack":
             return await pack_cases()
+        if args.command == "useradd":
+            return await add_user(args.email, args.group)
         if args.command == "diagnose":
             return await _diagnose(args.domain)
         if args.command == "explain":
@@ -368,6 +371,9 @@ def main() -> int:
         help="версия порогов; без неё — действующая. Кейс собирается по вердикту этой версии",
     )
     sub.add_parser("pack", help="собрать кейсы «хороших» и «средних» в ZIP-архив")
+    user_parser = sub.add_parser("useradd", help="завести пользователя сервиса (пароль спросит)")
+    user_parser.add_argument("email", help="почта — она же логин")
+    user_parser.add_argument("group", choices=["engineer", "admin", "user"], help="группа доступа")
     render_parser = sub.add_parser("render", help="собрать кейс проекта и положить PDF на диск")
     render_parser.add_argument("domain", help="канонический домен проекта")
     diagnose_parser = sub.add_parser(
