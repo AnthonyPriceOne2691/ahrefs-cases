@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases.classify import coverage as coverage_module
 from ahrefs_cases.classify import points as points_module
 from ahrefs_cases.classify import series as series_module
 from ahrefs_cases.classify.deltas import between
@@ -92,6 +93,54 @@ async def compute_verdict(
         period_start=project.period_start,
     )
     return Computed(decision=decision, point_a=point_a, point_b=point_b, months=tuple(months))
+
+
+@dataclass(frozen=True, slots=True)
+class Evaluated:
+    """Проект, посчитанный по версии порогов, вместе с ответом «хватило ли данных».
+
+    Общий шаг пересчёта и предпросмотра. Живёт здесь, а не в каждом из них,
+    потому что иначе чтение серии, проверка покрытия и вызов правил оказались
+    бы в двух местах — и разошлись бы ровно тогда, когда заказчик доверится
+    предпросмотру на калибровке. Пересчёт добавляет к этому запись, предпросмотр
+    — сравнение; сам расчёт один.
+    """
+
+    project: Project
+    computed: Computed
+    gap: coverage_module.CoverageGap
+
+    @property
+    def has_data(self) -> bool:
+        """Хватило ли купленных месяцев под окна этой версии порогов."""
+        return self.gap.is_empty
+
+
+async def evaluate(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    ruleset: Ruleset,
+    *,
+    source: MetricSource = MetricSource.FIXTURE,
+) -> list[Evaluated]:
+    """Посчитать вердикты по версии порогов и проверить покрытие. Без записи."""
+    windows = thresholds_of(ruleset).windows
+    evaluated: list[Evaluated] = []
+    for project in projects:
+        computed = await compute_verdict(session, project, ruleset, source=source)
+        evaluated.append(
+            Evaluated(
+                project=project,
+                computed=computed,
+                gap=coverage_module.gap(
+                    computed.months,
+                    period_start=project.period_start,
+                    period_end=project.period_end,
+                    windows=windows,
+                ),
+            )
+        )
+    return evaluated
 
 
 async def classify_project(

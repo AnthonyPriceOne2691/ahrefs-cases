@@ -22,9 +22,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases.classify import coverage as coverage_module
 from ahrefs_cases.classify import verdicts as verdicts_module
-from ahrefs_cases.classify.rulesets import thresholds_of
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.storage._enums import Group, MetricSource
 from ahrefs_cases.storage.models.project import Project
@@ -120,23 +118,15 @@ async def recalc(
     вердикт по половине окна выглядит настоящим.
     """
     ruleset = await ruleset_by_version(session, version)
-    windows = thresholds_of(ruleset).windows
     targets = list(projects) if projects is not None else await _all_projects(session)
 
     report = RecalcReport(version=ruleset.version, total=len(targets))
-    for project in targets:
-        computed = await verdicts_module.compute_verdict(session, project, ruleset, source=source)
-        gap = coverage_module.gap(
-            computed.months,
-            period_start=project.period_start,
-            period_end=project.period_end,
-            windows=windows,
-        )
-        if not gap.is_empty:
-            report.skipped.append(Skipped(domain=project.domain, reason=gap.describe()))
+    for item in await verdicts_module.evaluate(session, targets, ruleset, source=source):
+        if not item.has_data:
+            report.skipped.append(Skipped(domain=item.project.domain, reason=item.gap.describe()))
             continue
-        await verdicts_module.store(session, project, ruleset, computed)
-        group = computed.decision.group
+        await verdicts_module.store(session, item.project, ruleset, item.computed)
+        group = item.computed.decision.group
         report.by_group[group] = report.by_group.get(group, 0) + 1
     await session.flush()
     return report

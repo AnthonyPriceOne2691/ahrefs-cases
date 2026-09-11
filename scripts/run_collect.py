@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
 from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds, thresholds_of
 from ahrefs_cases.classify.thresholds import ThresholdsError
@@ -164,6 +165,25 @@ async def _recalc(version: str, *, make_active: bool) -> int:
     return 0 if report.recalculated else 1
 
 
+async def _preview(version: str) -> int:
+    """Что даст версия порогов, если её применить. Ничего не меняет.
+
+    Нужна калибровке: заказчик правит порог, смотрит последствия, спорит,
+    правит снова. Отвечать на это записью вердиктов значит смотреть на уже
+    изменённое и откатывать руками.
+    """
+    async with get_sessionmaker()() as session:
+        await seed_thresholds(session)
+        try:
+            report = await preview(session, version, source=config_source())
+        except ThresholdsError as exc:
+            print(f"предпросмотр не выполнен: {exc}", file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+        await session.commit()
+    print("\n".join(report.as_lines()))
+    return 0
+
+
 async def _explain(domain: str) -> int:
     """Показать вердикт одного домена со всеми условиями.
 
@@ -211,6 +231,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _classify()
         if args.command == "recalc":
             return await _recalc(args.version, make_active=args.activate)
+        if args.command == "preview":
+            return await _preview(args.version)
         if args.command == "explain":
             return await _explain(args.domain)
         code = await _intake(args.source)
@@ -254,6 +276,10 @@ def main() -> int:
         action="store_true",
         help="сделать версию действующей: следующая классификация пойдёт по ней",
     )
+    preview_parser = sub.add_parser(
+        "preview", help="показать, кто сменит группу при этой версии порогов (без записи)"
+    )
+    preview_parser.add_argument("version", help="версия порогов, например 2026-09-A")
     explain_parser = sub.add_parser("explain", help="показать вердикт одного домена по условиям")
     explain_parser.add_argument("domain", help="канонический домен проекта")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
