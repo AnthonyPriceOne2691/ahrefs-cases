@@ -426,6 +426,14 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      # Системные библиотеки WeasyPrint. `pip install` ставит только обвязку:
+      # без HarfBuzz-Subset импорт weasyprint печатает DeprecationWarning, а
+      # `filterwarnings = ["error"]` превращает его в ошибку сборки тестов.
+      # Ставим библиотеку, а не глушим предупреждение: будущие версии
+      # WeasyPrint потребуют её, и сервер агентства тоже.
+      - name: System libraries for PDF
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libharfbuzz-subset0
+
       - name: Install
         run: pip install -e ".[dev]"
 
