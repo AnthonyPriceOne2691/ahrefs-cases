@@ -273,9 +273,24 @@ jobs:
       - name: Canon sync gate (code <-> knowledge)
         if: always()
         env:
+          # На PR база канонная — origin плюс base_ref. На push в main её нет:
+          # origin/main совпадает с HEAD, дифф пуст, и гейт справедливо отказывается
+          # судить ноль файлов. Берём состояние до пуша; если оно недоступно
+          # (первый пуш, force-push) — предыдущий коммит. Адаптация записана в
+          # scripts/lint/adapted.json.
           BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
+          BEFORE: ${{ github.event.before }}
         run: |
           if [ -f scripts/okf_sync_gate.py ]; then
+            if ! git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null \
+               || [ -z "$(git diff --name-only "$BASE"...HEAD)" ]; then
+              if git rev-parse --verify --quiet "$BEFORE^{commit}" >/dev/null; then
+                BASE="$BEFORE"
+              else
+                BASE="HEAD~1"
+              fi
+            fi
+            echo "canon sync base: $BASE"
             python scripts/okf_sync_gate.py --base "$BASE"
           else
             echo "no OKF sync gate — skip"

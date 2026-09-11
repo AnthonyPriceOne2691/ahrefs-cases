@@ -332,7 +332,7 @@ repos:
         always_run: true
       - id: okf-sync
         name: OKF — тронул код по implementation, тронь concept
-        entry: bash -c 'cd "$(git rev-parse --show-toplevel)"; if git diff --cached --quiet; then .venv/bin/python scripts/okf_sync_gate.py --base origin/main; else .venv/bin/python scripts/okf_sync_gate.py --staged; fi'
+        entry: bash -c 'cd "$(git rev-parse --show-toplevel)"; if git diff --cached --quiet; then .venv/bin/python scripts/okf_sync_gate.py --base HEAD~1; else .venv/bin/python scripts/okf_sync_gate.py --staged; fi'
         language: system
         pass_filenames: false
         always_run: true
