@@ -15,7 +15,7 @@ import sys
 
 from sqlalchemy import select
 
-from ahrefs_cases.api.security import hash_password
+from ahrefs_cases.api.security import generate_password, hash_password
 from ahrefs_cases.storage import UserGroup
 from ahrefs_cases.storage.models.user import User
 from ahrefs_cases.storage.session import get_sessionmaker
@@ -38,6 +38,11 @@ async def add_user(email: str, group: str, *, password: str | None = None) -> in
     secret = password if password is not None else _ask_password()
     if secret is None:
         return EXIT_BAD_INPUT
+    generated = not secret
+    if generated:
+        # Пустой ввод — просьба сгенерировать: первый администратор заводится
+        # на сервере, и придумывать пароль в чужой консоли незачем.
+        secret = generate_password()
 
     async with get_sessionmaker()() as session:
         existing = (
@@ -59,12 +64,19 @@ async def add_user(email: str, group: str, *, password: str | None = None) -> in
         )
         await session.commit()
     print(f"заведён {email}, группа {user_group.value}")
+    if generated:
+        print(f"пароль (показывается один раз): {secret}")
     return 0
 
 
 def _ask_password() -> str | None:
-    """Спросить пароль дважды. Несовпадение — отказ, а не третья попытка молча."""
-    first = getpass.getpass("пароль: ")
+    """Спросить пароль дважды. Пустой ввод означает «сгенерируй сам».
+
+    Несовпадение — отказ, а не третья попытка молча.
+    """
+    first = getpass.getpass("пароль (пусто — сгенерировать): ")
+    if not first:
+        return ""
     if len(first) < MIN_PASSWORD_LEN:
         print(f"пароль короче {MIN_PASSWORD_LEN} символов", file=sys.stderr)
         return None

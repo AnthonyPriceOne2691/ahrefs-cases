@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -44,6 +45,31 @@ class TokenClaims:
     user_id: int
     email: str
     group: UserGroup
+
+
+PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"  # noqa: S105 # pragma: allowlist secret
+"""Без `l`, `o`, `0`, `1`: пароль диктуют голосом и переписывают с экрана, и
+перепутанная пара стоит обращения в поддержку, а не взлома."""
+
+PASSWORD_GROUPS = 4
+PASSWORD_GROUP_LEN = 4
+"""Шестнадцать символов из тридцати двух — около 80 бит. Длина вместо правил
+про заглавные и знаки: правило даёт `Password1!` у всех шестерых сотрудников,
+длина измерима."""
+
+
+def generate_password() -> str:
+    """Сгенерировать пароль: `secrets`, а не `random`.
+
+    Предсказуемый генератор — открытая дверь, а не неудобство: `random` сеется
+    временем, и пароли, выданные в одну минуту, восстанавливаются перебором
+    секунд. Группы через дефис — чтобы человек мог его переписать.
+    """
+    groups = (
+        "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_GROUP_LEN))
+        for _ in range(PASSWORD_GROUPS)
+    )
+    return "-".join(groups)
 
 
 def hash_password(raw: str) -> str:

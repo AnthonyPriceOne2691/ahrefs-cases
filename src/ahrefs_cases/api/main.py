@@ -18,6 +18,7 @@ from ahrefs_cases.api.routers import (
     rulesets_router,
     runs_router,
     usage_router,
+    users_router,
 )
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.storage import dispose_engine
@@ -57,6 +58,7 @@ for router in (
     runs_router,
     alerts_router,
     usage_router,
+    users_router,
 ):
     app.include_router(router)
 

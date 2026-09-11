@@ -40,8 +40,33 @@ _GROUP_RIGHTS: dict[UserGroup, frozenset[str]] = {
 }
 
 
+ALL_RIGHTS: frozenset[str] = frozenset().union(*_GROUP_RIGHTS.values())
+"""Все известные права. Выдать можно только такое: право, которого не
+проверяет ни один роутер, — обещание, а не доступ."""
+
+
 def rights_of(group: UserGroup) -> frozenset[str]:
     return _GROUP_RIGHTS[group]
+
+
+def rights_of_user(user: User) -> frozenset[str]:
+    """Права человека: группа даёт набор, **личное решение перекрывает его**.
+
+    Приём из CRM агентства (`features/auth/rbac.py`): `{"edit_thresholds": true}`
+    выдаёт право сверх группы, `false` — отбирает, даже если группа его даёт.
+    Перекрытие работает в обе стороны нарочно: «этому человеку — нет» встречается
+    так же часто, как «этому — да», и через роль оно не выражается вовсе.
+
+    Права расходятся быстрее, чем роли: без этого первое же новое право
+    потребовало бы четвёртой группы или правки кода.
+    """
+    granted = set(rights_of(user.group))
+    for right, allowed in (user.permissions or {}).items():
+        if allowed:
+            granted.add(right)
+        else:
+            granted.discard(right)
+    return frozenset(granted)
 
 
 _UNAUTHORIZED = HTTPException(
@@ -99,20 +124,20 @@ async def current_group(user: UserDep) -> UserGroup:
 GroupDep = Annotated[UserGroup, Depends(current_group)]
 
 
-def require_right(right: str) -> Callable[[UserGroup], UserGroup]:
+def require_right(right: str) -> Callable[[User], UserGroup]:
     """Фабрика зависимости: `Depends(require_right("edit_thresholds"))`.
 
-    Ф1 отдаёт группу заглушкой — реальная аутентификация приходит в Ф5. Форма
-    проверки при этом уже настоящая, чтобы Ф5 подставил источник, а не переписал
-    все роутеры.
+    Источник прав менялся дважды, а роутеры — ни разу: сначала заглушка Ф1
+    отдавала группу всем, потом появился токен, теперь права берутся у
+    **пользователя** (личные поверх групповых). Ради этого форма и писалась.
     """
 
-    def _check(group: GroupDep) -> UserGroup:
-        if right not in rights_of(group):
+    def _check(user: UserDep) -> UserGroup:
+        if right not in rights_of_user(user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"группе {group.value} не выдано право {right}",
+                detail=f"нет права {right}: группа {user.group.value}",
             )
-        return group
+        return user.group
 
     return _check

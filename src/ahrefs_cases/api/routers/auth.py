@@ -18,6 +18,7 @@ from ahrefs_cases.api.deps import SessionDep, UserDep, rights_of
 from ahrefs_cases.api.security import (
     SecretMissingError,
     TokenClaims,
+    hash_password,
     issue_token,
     verify_password,
 )
@@ -25,6 +26,11 @@ from ahrefs_cases.storage.models.user import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+MIN_PASSWORD_LEN = 10
+"""Длина, а не правила про заглавные и знаки: правило даёт `Password1!` у всех
+шестерых сотрудников, длина измерима. Совпадает с ограничением команды
+`useradd` — требование одно, и оно не должно расходиться по входам."""
 
 _DENIED = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -52,6 +58,13 @@ class TokenResponse(BaseModel):
     expires_in_hours: int
     group: str
     rights: list[str]
+
+
+class PasswordChange(BaseModel):
+    """Смена своего пароля. Старый обязателен: иначе украденный токен меняет пароль."""
+
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=MIN_PASSWORD_LEN, max_length=256)
 
 
 class WhoAmI(BaseModel):
@@ -103,6 +116,21 @@ async def me(user: UserDep) -> WhoAmI:
         group=user.group.value,
         rights=sorted(rights_of(user.group)),
     )
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(payload: PasswordChange, session: SessionDep, user: UserDep) -> None:
+    """Сменить свой пароль, зная старый.
+
+    Старый пароль обязателен, даже когда токен уже проверен: иначе достаточно
+    один раз увести токен, чтобы забрать учётную запись насовсем.
+    """
+    if not verify_password(payload.current_password, user.password_hash):
+        logger.info("смена пароля отклонена: неверный текущий (%s)", user.email)
+        raise _DENIED
+    user.password_hash = hash_password(payload.new_password)
+    await session.flush()
+    logger.info("пароль сменён: %s", user.email)
 
 
 _DUMMY_HASH = "$2b$12$" + "." * 53

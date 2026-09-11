@@ -14,6 +14,7 @@ from ahrefs_cases.api.routers.projects import router as projects_router
 from ahrefs_cases.api.routers.rulesets import router as rulesets_router
 from ahrefs_cases.api.routers.runs import router as runs_router
 from ahrefs_cases.api.routers.usage import router as usage_router
+from ahrefs_cases.api.routers.users import router as users_router
 
 __all__ = [
     "alerts_router",
@@ -24,4 +25,5 @@ __all__ = [
     "rulesets_router",
     "runs_router",
     "usage_router",
+    "users_router",
 ]

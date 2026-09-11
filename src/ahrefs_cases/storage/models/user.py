@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import Boolean, Enum, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ahrefs_cases.storage._enums import UserGroup
@@ -20,6 +21,16 @@ class User(Base, TimestampMixin):
         Enum(UserGroup, name="user_group"), nullable=False, default=UserGroup.USER
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    permissions: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, default=dict)
+    """Личные права поверх группы: `{"edit_thresholds": true}` даёт право, а
+    `false` — отбирает, даже если группа его даёт.
+
+    Приём перенесён из CRM агентства, где эта развилка уже пройдена: права
+    расходятся быстрее, чем роли, и первое же новое право иначе требует либо
+    четвёртой группы, либо правки кода. Здесь выдача права одному человеку —
+    запись в этом поле.
+    """
 
     # Прав у модели нет намеренно: право — строка, а таблица «группа → права»
     # живёт одна, в `api/deps.py`. Свойства `can_*` стояли здесь с Ф1, ими не
