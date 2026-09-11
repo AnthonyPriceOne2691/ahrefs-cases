@@ -49,19 +49,27 @@ export function forgetToken(): void {
 interface RequestOptions {
   method?: string;
   body?: unknown;
+  /**
+   * Тело уходит как есть, без JSON: так отправляется файл списка.
+   *
+   * `Content-Type` при этом не подставляется вовсе — его ставит браузер по типу
+   * файла. Подставить свой значило бы соврать серверу о содержимом.
+   */
+  raw?: Blob;
   /** Запрос без токена — только вход. */
   anonymous?: boolean;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
+  if (!options.raw) headers['Content-Type'] = 'application/json';
   const token = storedToken();
   if (token && !options.anonymous) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(path, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.raw ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
   });
 
   if (response.status === 204) return undefined as T;

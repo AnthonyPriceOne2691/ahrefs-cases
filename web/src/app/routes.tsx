@@ -8,8 +8,15 @@ import { Alert, Container, Stack, Text, Title } from '@mantine/core';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
+import { IntakePage } from '../pages/IntakePage';
 
 import { NAV_SECTIONS } from './nav';
+
+/** Готовые экраны по адресу раздела. Чего здесь нет — то ещё заглушка, и
+ *  заглушка говорит об этом вслух, а не показывает пустую страницу. */
+const SCREENS: Record<string, () => React.ReactElement> = {
+  '/intake': IntakePage,
+};
 
 function Placeholder({ title }: { title: string }) {
   return (
@@ -34,13 +41,16 @@ export function AppRoutes() {
 
   return (
     <Routes>
-      {allowed.map((section) => (
-        <Route
-          key={section.path}
-          path={section.path}
-          element={<Placeholder title={section.label} />}
-        />
-      ))}
+      {allowed.map((section) => {
+        const Screen = SCREENS[section.path];
+        return (
+          <Route
+            key={section.path}
+            path={section.path}
+            element={Screen ? <Screen /> : <Placeholder title={section.label} />}
+          />
+        );
+      })}
       {/* Раздел без права не просто спрятан в меню: адрес, введённый руками,
           ведёт на разрешённый экран. Это удобство, а не защита — проверки
           стоят на сервере и остаются. */}

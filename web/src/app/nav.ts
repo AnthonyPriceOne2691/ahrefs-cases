@@ -16,6 +16,9 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: readonly NavSection[] = [
+  // «Загрузка» первой: с неё начинается работа, и порядок меню — это порядок
+  // сценария, а не алфавит.
+  { path: '/intake', label: 'Загрузка', right: 'run' },
   { path: '/projects', label: 'Проекты', right: 'read' },
   { path: '/cases', label: 'Кейсы', right: 'read' },
   { path: '/runs', label: 'Прогоны', right: 'read' },
