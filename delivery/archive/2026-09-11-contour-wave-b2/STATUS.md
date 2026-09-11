@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** n/a reason=не bugfix
 - **diagnosis:** n/a reason=не bugfix
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («добьём Ф3 и В2» — состав волны задан docs/CONTOUR_ROLLOUT.md и OKF_KNOWLEDGE_BUNDLE.md §5)
@@ -27,8 +27,8 @@
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **observability:** 1
-- **observe_signal:** <заполняется на handoff>
-- **observe_until:** <заполняется на handoff>
+- **observe_signal:** `okf_validate` даёт 0 ошибок на 16 файлах bundle'а; `okf_sync_gate` краснеет на правке кода по пути из `implementation:` без правки концепта и зеленеет вместе с ней; оба хука видны в `gate-coverage`; CI зелёный и на push в main, и на PR-потоке
+- **observe_until:** 2026-09-25
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Почему волна пришла именно сейчас
