@@ -98,8 +98,12 @@ describe('список людей', () => {
     show();
 
     expect(await screen.findByText('human-1@test.local')).toBeInTheDocument();
-    expect(screen.getByText('админ')).toBeInTheDocument();
-    expect(screen.getByText('пользователь')).toBeInTheDocument();
+    // Ищем в строках таблицы: слова «админ» и «пользователь» есть ещё и в
+    // форме заведения, и общий поиск нашёл бы их там (переключатель группы).
+    const строки = document.querySelectorAll('[data-user]');
+    expect(строки).toHaveLength(2);
+    expect(строки[0]?.querySelector('[data-group="admin"]')?.textContent).toBe('админ');
+    expect(строки[1]?.querySelector('[data-group="user"]')?.textContent).toBe('пользователь');
   });
 
   it('E2: право, выданное лично поверх группы, помечено', async () => {

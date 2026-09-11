@@ -18,7 +18,14 @@ const GROUP_LABELS: Record<string, string> = {
   user: 'пользователь',
 };
 
-export function UsersTable({ rows, catalog }: { rows: UserRow[]; catalog: RightsCatalog }) {
+interface Props {
+  rows: UserRow[];
+  catalog: RightsCatalog;
+  selected: number | null;
+  onSelect: (user: UserRow) => void;
+}
+
+export function UsersTable({ rows, catalog, selected, onSelect }: Props) {
   return (
     <Table.ScrollContainer minWidth={860}>
       <Table striped>
@@ -36,7 +43,13 @@ export function UsersTable({ rows, catalog }: { rows: UserRow[]; catalog: Rights
         </Table.Thead>
         <Table.Tbody>
           {rows.map((user) => (
-            <Table.Tr key={user.id} data-user={user.id}>
+            <Table.Tr
+              key={user.id}
+              data-user={user.id}
+              data-selected={user.id === selected ? 'yes' : 'no'}
+              onClick={() => onSelect(user)}
+              style={{ cursor: 'pointer' }}
+            >
               <Table.Td>{user.email}</Table.Td>
               <Table.Td>
                 <Text size="sm">{user.full_name || '—'}</Text>

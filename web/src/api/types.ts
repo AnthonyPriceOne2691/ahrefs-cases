@@ -215,6 +215,21 @@ export interface UserRow {
   rights: string[];
 }
 
+export interface UserWithPassword {
+  user: UserRow;
+  /** Показывается **один раз**: в базе только хеш, повторно — перевыпуск. */
+  password: string;
+}
+
+export interface UserPatch {
+  group?: string;
+  is_active?: boolean;
+  full_name?: string;
+  /** Личные права целиком: `true` выдаёт сверх группы, `false` отбирает,
+   *  отсутствие ключа — «как в группе». */
+  personal_rights?: Record<string, boolean>;
+}
+
 export interface RightsCatalog {
   rights: string[];
   /** Что даёт каждая группа. По этому списку экран отличает право «как в

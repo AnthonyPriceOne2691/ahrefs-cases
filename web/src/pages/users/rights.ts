@@ -29,6 +29,19 @@ export function rightLabel(right: string): string {
 }
 
 /**
+ * Права в порядке **подписей**, а не внутренних имён.
+ *
+ * Сервер отдаёт их отсортированными латиницей
+ * (`change_technical_settings`, `edit_thresholds`, …), а человек читает
+ * «технические настройки», «править пороги» — и видит список, перемешанный без
+ * причины. Найдено прогоном живого экрана: я сам нажал «выдать» не у того
+ * права, потому что первым в списке стояло не то, что ожидалось.
+ */
+export function byLabel(rights: readonly string[]): string[] {
+  return [...rights].sort((left, right) => rightLabel(left).localeCompare(rightLabel(right), 'ru'));
+}
+
+/**
  * Состояние каждого права человека: даёт ли группа, решили ли лично.
  *
  * `fromGroup` — набор его группы из справочника сервера. Права, которых группа
@@ -40,14 +53,16 @@ export function rightStates(
   fromGroup: readonly string[],
 ): RightState[] {
   const states: RightState[] = [];
-  for (const right of fromGroup) {
+  for (const right of byLabel(fromGroup)) {
     if (personal[right] === false) {
       states.push({ right, allowed: false, origin: 'отобрано лично' });
     } else {
       states.push({ right, allowed: true, origin: 'группа' });
     }
   }
-  for (const [right, allowed] of Object.entries(personal)) {
+  for (const [right, allowed] of Object.entries(personal).sort(([left], [second]) =>
+    rightLabel(left).localeCompare(rightLabel(second), 'ru'),
+  )) {
     if (allowed && !fromGroup.includes(right)) {
       states.push({ right, allowed: true, origin: 'выдано лично' });
     }
