@@ -15,13 +15,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases.cases import highlights as highlights_module
+from ahrefs_cases.cases import narrative as narrative_module
 from ahrefs_cases.cases.model import (
     CASE_SUBJECTS,
     CHART_SUBJECTS,
@@ -95,7 +97,7 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
     """
     changes = _changes(verdict)
     anonymized = not project.publishable
-    return CaseData(
+    case = CaseData(
         title=_title(project, anonymized=anonymized),
         anonymized=anonymized,
         geo=project.geo,
@@ -106,10 +108,14 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
         group=verdict.group,
         ruleset_version=verdict.ruleset_version,
         changes=changes,
+        highlights=highlights_module.pick(changes),
         series=_chart_series(series),
         window_a=tuple(window_from(verdict.point_a.at, verdict.point_a.months_used, forward=True)),
         window_b=tuple(window_from(verdict.point_b.at, verdict.point_b.months_used, forward=False)),
     )
+    # Текст собирается по готовой структуре и сверяется с её числами: собрать
+    # его раньше значило бы считать те же величины второй раз.
+    return replace(case, narrative=narrative_module.compose(case))
 
 
 def _title(project: Project, *, anonymized: bool) -> str:
@@ -269,6 +275,8 @@ async def _attempt(
         domain=project.domain,
         outcome=CaseOutcome.BUILT,
         case=build_case(project, view, series),
+        project_id=project.id,
+        verdict_id=verdict.id,
         stale_subjects=stale_subjects(view, series),
     )
 

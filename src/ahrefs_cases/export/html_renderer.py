@@ -19,6 +19,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from ahrefs_cases import config
+from ahrefs_cases.cases.format import number, percent
 from ahrefs_cases.cases.model import CaseData, CaseSeries, Change
 from ahrefs_cases.classify.points import KW_TOP10
 from ahrefs_cases.export.charts import SUBJECT_COLORS, curves_svg
@@ -105,20 +106,6 @@ def _environment(templates_dir: Path | None) -> Environment:
     return environment
 
 
-def number(value: float) -> str:
-    """Число как в отчёте: разделитель тысяч — неразрывный пробел.
-
-    Дробная часть показывается только у маленьких величин: «58,4» у Domain
-    Rating осмысленно, «113 312,0» визитов — шум.
-    """
-    if abs(value) < 10 and value != int(value):
-        return f"{value:.1f}".replace(".", ",")
-    return f"{round(value):,}".replace(",", " ")
-
-
 def growth(change: Change) -> str:
-    """Рост словами шаблона: процент или «с нуля», если базы не было."""
-    if change.pct is None:
-        return "с нуля"
-    digits = 0 if abs(change.pct) >= 10 else 1
-    return f"{change.pct:+.{digits}f} %".replace(".", ",")
+    """Рост метрики для шаблона. Форматирование — `cases.format`, один на всех."""
+    return percent(change.pct)

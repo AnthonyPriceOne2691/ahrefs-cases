@@ -123,9 +123,13 @@ def test_failed_check_leaves_no_file(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_empty_work_volume_leaves_the_block_out() -> None:
-    """E7: «что сделали» не выдумывается — как и в структуре кейса."""
-    assert "Что сделали" in render_html(_case())
-    assert "Что сделали" not in render_html(_case(work_volume=None))
+    """E7: «что сделали» не выдумывается — как и в структуре кейса.
+
+    Блок переехал в текст кейса (поставка `case-narrative`): отдельной строкой
+    фактов лист повторял одно и то же дважды. Проверка поехала за ним.
+    """
+    assert "Объём работ" in render_html(_case(narrative="Объём работ по проекту — 120."))
+    assert "Объём работ" not in render_html(_case(work_volume=None))
 
 
 def test_numbers_in_html_are_the_numbers_of_the_case() -> None:

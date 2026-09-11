@@ -28,6 +28,7 @@ from ahrefs_cases import config
 from ahrefs_cases.cases.builder import build_cases
 from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, Change
 from ahrefs_cases.cases.stoplist import ContentBlockedError
+from ahrefs_cases.cases.store import store_artifact, store_case
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
@@ -336,26 +337,38 @@ async def _render(domain: str) -> int:
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
         report = await build_cases(session, domain=domain, source=config_source())
+
+        if not report.attempts:
+            print(f"проект не найден: {domain}", file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+        built = report.by_outcome(CaseOutcome.BUILT)
+        if not built:
+            print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
+            print("\n".join(report.as_lines()), file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+
+        for attempt in built:
+            if attempt.case is None or attempt.project_id is None or attempt.verdict_id is None:
+                continue
+            try:
+                rendered = render_pdf(attempt.case)
+            except ContentBlockedError as exc:
+                print(f"{attempt.domain}: {exc}", file=sys.stderr)
+                return _EXIT_CONTENT_BLOCKED
+            # Запись идёт после файла: кейса без артефакта в базе не бывает,
+            # а артефакт без записи — просто файл, который можно пересобрать.
+            case_row = await store_case(
+                session,
+                project_id=attempt.project_id,
+                verdict_id=attempt.verdict_id,
+                case=attempt.case,
+            )
+            artifact = await store_artifact(session, case_id=case_row.id, path=rendered.path)
+            print(
+                f"{attempt.domain} → {rendered.path} ({rendered.pages} стр.), "
+                f"версия кейса {case_row.version}, sha256 {artifact.checksum[:12]}"
+            )
         await session.commit()
-
-    if not report.attempts:
-        print(f"проект не найден: {domain}", file=sys.stderr)
-        return _EXIT_BAD_SOURCE
-    built = report.by_outcome(CaseOutcome.BUILT)
-    if not built:
-        print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
-        print("\n".join(report.as_lines()), file=sys.stderr)
-        return _EXIT_BAD_SOURCE
-
-    for attempt in built:
-        if attempt.case is None:
-            continue
-        try:
-            rendered = render_pdf(attempt.case)
-        except ContentBlockedError as exc:
-            print(f"{attempt.domain}: {exc}", file=sys.stderr)
-            return _EXIT_CONTENT_BLOCKED
-        print(f"{attempt.domain} → {rendered.path} ({rendered.pages} стр.)")
     return 0
 
 

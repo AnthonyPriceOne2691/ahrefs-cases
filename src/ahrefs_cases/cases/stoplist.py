@@ -14,7 +14,8 @@
 ответ и недоступный ответ — разные случаи).
 
 **Проверяются и гео, и текст.** Код страны `RU` ловится структурно, но проект
-с гео `DE` и нишей «доставка из Москвы» запрещён ровно так же.
+с гео `DE` и нишей «доставка из Москвы» запрещён ровно так же. Текст кейса
+проверяется вместе с ними: он собран из полей того же входного файла.
 """
 
 from __future__ import annotations
@@ -82,6 +83,7 @@ def check(case: CaseData) -> tuple[Hit, ...]:
         "заголовок": case.title,
         "ниша": case.niche,
         "услуга": case.service,
+        "текст": case.narrative,
     }
     hits = [hit for where, value in fields.items() for hit in _scan(where, value)]
     if case.geo.upper() in FORBIDDEN_GEO:

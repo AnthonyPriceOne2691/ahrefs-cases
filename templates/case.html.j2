@@ -95,10 +95,16 @@
   .up { color: var(--up); font-weight: 600; }
   .down { color: var(--ink-2); }
 
-  .facts { display: flex; margin-top: 5mm; break-inside: avoid; }
-  .fact { flex: 1; padding-right: 6mm; }
-  .fact__label { color: var(--muted); font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; }
-  .fact__value { font-size: 9.5pt; margin-top: 1mm; }
+  /* Текст кейса. Он же закрывает блоки ТЗ «задача» и «что сделали»: пока они
+     стояли отдельной строкой фактов, лист повторял одно и то же дважды. */
+  .narrative {
+    margin: 5mm 0 0;
+    padding-left: 4mm;
+    border-left: 1mm solid var(--accent);
+    font-size: 9.5pt;
+    line-height: 1.55;
+    break-inside: avoid;
+  }
 
   h2 {
     font-size: 10pt;
@@ -195,18 +201,10 @@
 </section>
 {% endif %}
 
-<section class="facts">
-  <div class="fact">
-    <div class="fact__label">Задача</div>
-    <div class="fact__value">{{ case.service }}, ниша «{{ case.niche }}»</div>
-  </div>
-  {% if case.work_volume is not none %}
-  <div class="fact">
-    <div class="fact__label">Что сделали</div>
-    <div class="fact__value">{{ case.work_volume | num }} ед. работ</div>
-  </div>
-  {% endif %}
-</section>
+
+{% if case.narrative %}
+<p class="narrative">{{ case.narrative }}</p>
+{% endif %}
 
 <h2>Результат: точка А → точка Б</h2>
 <table>
