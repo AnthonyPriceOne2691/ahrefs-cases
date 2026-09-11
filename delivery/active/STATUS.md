@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** n/a reason=дефект в конфигурации CI; воспроизводится прогоном workflow, в аннотациях каждого прогона висит предупреждение
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** n/a reason=класс S
