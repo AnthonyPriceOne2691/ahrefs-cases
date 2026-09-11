@@ -1,6 +1,20 @@
-# Дев-окружение. Прод-компоуз появится в Ф9 отдельным файлом: смешивать их
-# значит держать в одном месте два разных набора решений про секреты и порты.
+# Дев-окружение: `docker compose -f docker-compose.dev.yml up` поднимает сервис
+# целиком — базу, очередь, миграции, API, воркер и фронт.
+#
+# Прод-компоуз — отдельный файл (`docker-compose.yml`, следующая поставка):
+# смешивать их значит держать в одном месте два разных набора решений про
+# секреты, порты и монтирование исходников.
+#
+# Исходники монтируются, а не лежат слоем образа: правка в редакторе обязана
+# подхватываться без пересборки. Обратная сторона — образ и рабочее дерево могут
+# разойтись по зависимостям; лечится `docker compose build`.
 name: ahrefs-cases-dev
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://cases:cases@postgres:5432/cases
+  REDIS_URL: redis://redis:6379/0
+  AHREFS_PROVIDER: fixture
+  JWT_SECRET: dev-only-not-a-secret
 
 services:
   postgres:
@@ -29,29 +43,57 @@ services:
       timeout: 3s
       retries: 10
 
+  # Миграции — отдельный одноразовый сервис, а не шаг старта API. В бою
+  # экземпляров API несколько, и каждый начал бы мигрировать базу одновременно.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    command: alembic upgrade head
+    environment: *backend-env
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - ./alembic.ini:/app/alembic.ini
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
       target: dev
     command: uvicorn ahrefs_cases.api.main:app --host 0.0.0.0 --port 8000 --reload
-    environment:
-      DATABASE_URL: postgresql+asyncpg://cases:cases@postgres:5432/cases
-      REDIS_URL: redis://redis:6379/0
-      AHREFS_PROVIDER: fixture
-      JWT_SECRET: dev-only-not-a-secret
+    environment: *backend-env
     ports:
       - "8000:8000"
     volumes:
       - ./src:/app/src
       - ./migrations:/app/migrations
       - ./config:/app/config
+      - ./scripts:/app/scripts
       - ./data:/app/data
+    # «Поднялся» значит «отвечает», а не «процесс запущен»: `curl` в slim-образе
+    # нет, поэтому спрашиваем сам питон.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -59,18 +101,40 @@ services:
       dockerfile: Dockerfile
       target: dev
     command: python -m ahrefs_cases.workers.main
-    environment:
-      DATABASE_URL: postgresql+asyncpg://cases:cases@postgres:5432/cases
-      REDIS_URL: redis://redis:6379/0
-      AHREFS_PROVIDER: fixture
+    environment: *backend-env
     volumes:
       - ./src:/app/src
+      - ./config:/app/config
       - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web-dev
+    environment:
+      # Адрес бэкенда — забота окружения, а не кода: `vite.config.ts` читает его
+      # отсюда, и в компонентах адресов нет вовсе.
+      VITE_API_URL: http://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app/web
+      # Отдельный том поверх монтирования: иначе каталог машины накрывает
+      # `node_modules` контейнера, и Linux пытается запустить бинарник esbuild,
+      # собранный под macOS.
+      - web_node_modules:/app/web/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  web_node_modules:

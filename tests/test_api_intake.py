@@ -378,7 +378,10 @@ def test_estimate_matches_the_plan(client: TestClient) -> None:
             )
             return plan.estimated_units()
 
-    assert body["projects"] == GOOD_ROWS
+    # Смета считается по **всей** базе, а не по последней загрузке: у дев-базы
+    # своя история, и требовать «ровно десять проектов» значит проверять
+    # содержимое машины, а не свойство сметы (тот же класс, что L58 и L68).
+    assert body["projects"] >= GOOD_ROWS
     assert body["units_estimated"] == asyncio.run(_plan_units())
     assert body["requests_planned"] > 0
     assert body["scheme_lines"]

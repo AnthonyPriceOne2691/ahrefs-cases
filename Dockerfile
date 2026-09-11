@@ -18,15 +18,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# --- Питон, режим разработки -------------------------------------------------
+# Исходники приезжают монтированием (см. компоуз), а не слоем образа: правка в
+# редакторе обязана подхватываться без пересборки. В образ кладётся то, без чего
+# контейнер не стартует вовсе.
 FROM base AS dev
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install -e ".[dev,export]"
-COPY . .
+RUN pip install -e ".[dev]"
+COPY alembic.ini ./
+COPY migrations ./migrations
+COPY config ./config
+COPY scripts ./scripts
 
+# --- Питон, боевой режим -----------------------------------------------------
 FROM base AS prod
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install ".[export]"
+RUN pip install "."
+COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
+COPY scripts ./scripts
+
+# --- Фронт, режим разработки -------------------------------------------------
+# Зависимости ставятся в образе и живут в томе (см. компоуз): каталог
+# `node_modules`, собранный на машине разработчика, в Linux-контейнере
+# неработоспособен — там бинарники под другую систему.
+#
+# Версия прибита цифрой нарочно: обновление node — отдельное решение, а не
+# побочный эффект пересборки в другой день.
+FROM node:22-slim AS web-dev
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+CMD ["npm", "run", "dev"]

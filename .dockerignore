@@ -1,0 +1,52 @@
+# Контекст сборки. Правило одно: в образ не уезжает ничего, что собрано на
+# машине разработчика.
+#
+# Без этого файла дев-стадия (`COPY . .`) тащила внутрь `.venv` (319 МБ,
+# собранный под macOS и в Linux нерабочий) и `node_modules` (372 МБ, с
+# бинарником esbuild под ту же macOS). Сборка была бы долгой, а контейнер —
+# с окружением, которое не запускается.
+
+# Окружения, собранные на машине
+.venv/
+venv/
+node_modules/
+web/node_modules/
+web/dist/
+
+# История и служебное
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+
+# Кэши инструментов
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.import_linter_cache/
+.coverage
+htmlcov/
+
+# Локальные документы клиента и тексты канона: они и в git не уезжают
+# (вариант D, `.git/info/exclude`), и в образ им тем более незачем.
+docs/
+delivery/
+knowledge/
+AGENT_*.md
+CODE_QUALITY_GATES.md
+OKF_KNOWLEDGE_BUNDLE.md
+extract_payload.py
+selftest_sizes.py
+stack_selftest.py
+
+# Секреты не попадают в образ даже случайно
+.env
+.env.*
+!.env.example
+
+# Данные прогонов и артефакты кейсов
+data/
