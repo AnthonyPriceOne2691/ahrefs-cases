@@ -25,6 +25,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.cases.builder import build_cases
+from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, Change
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
@@ -41,8 +43,7 @@ from ahrefs_cases.intake.accept import (
     read_source,
 )
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError
-from ahrefs_cases.storage._enums import MetricSource
-from ahrefs_cases.storage._enums import Group
+from ahrefs_cases.storage._enums import Group, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -247,8 +248,10 @@ async def _explain(domain: str) -> int:
     """
     async with get_sessionmaker()() as session:
         project = (
-            await session.execute(select(Project).where(Project.domain == domain))
-        ).scalars().first()
+            (await session.execute(select(Project).where(Project.domain == domain)))
+            .scalars()
+            .first()
+        )
         if project is None:
             print(f"проект не найден: {domain}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
@@ -256,14 +259,67 @@ async def _explain(domain: str) -> int:
         decision = await classify_project(session, project, ruleset)
         await session.commit()
 
-    print(f"{domain}: {decision.group.value} (пороги {ruleset.version}, score {decision.score:.0f})")
+    print(
+        f"{domain}: {decision.group.value} (пороги {ruleset.version}, score {decision.score:.0f})"
+    )
     for reason in decision.reasons:
         mark = "✓" if reason.passed else "✗"
         weight = "решает" if reason.decisive else "справочно"
         fact = "—" if reason.fact is None else f"{reason.fact:.1f}"
         threshold = "—" if reason.threshold is None else f"{reason.threshold:.1f}"
-        print(f"  {mark} {reason.subject:34} факт {fact:>10}  порог {threshold:>10}  [{weight}] {reason.note}")
+        print(
+            f"  {mark} {reason.subject:34} факт {fact:>10}  порог {threshold:>10}  [{weight}] {reason.note}"
+        )
     return 0
+
+
+async def _cases(domain: str | None, version: str | None) -> int:
+    """Показать, что соберётся в кейсы. Ничего не пишет, Ahrefs не трогает.
+
+    Печатает **все четыре исхода**, включая нулевые: отсутствие строки человек
+    читает как «таких не было», не отличив от «не проверяли» (L32, L34).
+    """
+    async with get_sessionmaker()() as session:
+        await seed_thresholds(session)
+        try:
+            report = await build_cases(
+                session, domain=domain, version=version, source=config_source()
+            )
+        except ThresholdsError as exc:
+            print(f"кейсы не собраны: {exc}", file=sys.stderr)
+            return _EXIT_BAD_SOURCE
+        await session.commit()
+
+    if not report.attempts:
+        print("проектов нет: сначала `intake`, потом `collect` и `classify`")
+        return 0
+    print("\n".join(report.as_lines()))
+    for attempt in report.by_outcome(CaseOutcome.BUILT):
+        if attempt.case is not None:
+            print("")
+            print("\n".join(_case_lines(attempt.domain, attempt.case)))
+            if attempt.stale_subjects:
+                missing = ", ".join(SUBJECT_LABELS[subject] for subject in attempt.stale_subjects)
+                print(f"  куплено, но не в вердикте: {missing} — перезапустите `classify`")
+    return 0
+
+
+def _case_lines(domain: str, case: CaseData) -> list[str]:
+    """Кейс одной карточкой. Анонимность защищает артефакт, а не консоль:
+    оператору нужен и домен, и то, каким кейс уйдёт наружу."""
+    head = f"{domain} — {case.group.value}, {case.period.months} мес., {case.geo} / {case.niche}"
+    if case.anonymized:
+        head += f" [анонимно: «{case.title}»]"
+    lines = [head]
+    if case.work_volume is not None:
+        lines.append(f"  что сделали: {case.work_volume}")
+    lines.extend(f"  {_change_line(change)}" for change in case.changes)
+    return lines
+
+
+def _change_line(change: Change) -> str:
+    growth = "с нуля" if change.pct is None else f"{change.pct:+.0f} %"
+    return f"{change.label:32} {change.before:>10.0f} → {change.after:>10.0f}  ({growth})"
 
 
 async def _main(args: argparse.Namespace) -> int:
@@ -290,6 +346,8 @@ async def _main(args: argparse.Namespace) -> int:
             return await _recalc(args.version, make_active=args.activate)
         if args.command == "preview":
             return await _preview(args.version)
+        if args.command == "cases":
+            return await _cases(args.domain, args.version)
         if args.command == "diagnose":
             return await _diagnose(args.domain)
         if args.command == "explain":
@@ -342,6 +400,17 @@ def main() -> int:
         "preview", help="показать, кто сменит группу при этой версии порогов (без записи)"
     )
     preview_parser.add_argument("version", help="версия порогов, например 2026-09-A")
+    cases_parser = sub.add_parser(
+        "cases", help="показать, что соберётся в кейсы (без записи и без Ahrefs)"
+    )
+    cases_parser.add_argument(
+        "domain", nargs="?", default=None, help="домен; без него — все проекты"
+    )
+    cases_parser.add_argument(
+        "--version",
+        default=None,
+        help="версия порогов; без неё — действующая. Кейс собирается по вердикту этой версии",
+    )
     diagnose_parser = sub.add_parser(
         "diagnose", help="разбор «плохих»: что просело, когда началось, потеряны ли домены"
     )
