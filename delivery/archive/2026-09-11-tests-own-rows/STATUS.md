@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cleanup_scope.py::test_tests_delete_only_their_own_rows
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-11 by=human:anthony («Брать её сейчас»)
