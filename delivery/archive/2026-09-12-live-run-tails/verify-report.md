@@ -5,7 +5,7 @@
 **asserts_reviewed_by:** yes (by=human:anthony at=2026-09-12) — непривязанное
 утверждение одно и показано на артефакте: пересобранный кейс `ahrefs.com`
 показывает подпись «3 596 467» целиком, слева от точки
-**CI run:** пуш после приёмки
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/34690314203 — зелёный
 **Commit:** см. `git log -1`
 
 ## Shape oracles
@@ -58,8 +58,8 @@ in (...)`), а не меняет, что пишется.
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 commit(s) after first phase: handoff |
 | harness_hardened | no |
-| implement_retries | MANUAL — fills from session log |
-| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
-| est_token_or_cost | MANUAL / n/a |
+| implement_retries | 4 — не-ASCII имя в runner, поле отчёта `items`, неразрывный пробел в числе, подпись на оси Y перепуталась с подписью значения |
+| verify_fails_before_green | 0 — все три дефекта найдены прогоном до этой поставки |
+| est_token_or_cost | n/a (Ahrefs не вызывался: кейс пересобран из купленных рядов) |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
