@@ -32,12 +32,22 @@ _LIMITS_PATH = "/v3/subscription-info/limits-and-usage"
 _ENVELOPE_KEY = "limits_and_usage"
 _UNITS_LIMIT_KEY = "units_limit_api_key"
 _UNITS_USED_KEY = "units_usage_api_key"
-"""Имена и вложенность замерены живым ключом 10.09.2026.
+_WORKSPACE_LIMIT_KEY = "units_limit_workspace"
+_WORKSPACE_USED_KEY = "units_usage_workspace"
+"""Имена и вложенность замерены живым ключом 10.09.2026 и подтверждены
+12.09.2026.
 
 Ответ приходит обёрткой `{limits_and_usage: {...}}`, а внутри две пары чисел:
-`*_workspace` — на весь воркспейс, `*_api_key` — на наш ключ. Считаем по
-ключу: воркспейс делится с другими сервисами агентства, и его остаток ничего
-не говорит о том, сколько можем потратить мы."""
+`*_api_key` — на наш ключ, `*_workspace` — на весь воркспейс.
+
+**Потолок — минимум из двух, а не остаток ключа.** Прежняя редакция считала
+только по ключу с доводом «воркспейс делится с другими сервисами агентства, и
+его остаток ничего не говорит о том, сколько можем потратить мы». Половина
+довода верна: остаток воркспейса не говорит, сколько нам **можно**, — но он
+ограничивает, сколько нам **дадут**. Выжги его соседний сервис, и preflight
+сказал бы «хватает», а запросы начали бы отбиваться на середине прогона: ровно
+тот случай, против которого этот модуль и написан (замер 12.09.2026: ключ
+1 469 188, воркспейс 4 215 578)."""
 
 
 class QuotaVerdict(StrEnum):
@@ -93,7 +103,24 @@ class LiveQuota:
             raise AhrefsResponseError(message)
         limit = require_int(envelope, _UNITS_LIMIT_KEY, "subscription-info")
         used = require_int(envelope, _UNITS_USED_KEY, "subscription-info")
-        return max(0, limit - used)
+        left = max(0, limit - used)
+        return min(left, _workspace_left(envelope)) if _has_workspace(envelope) else left
+
+
+def _has_workspace(envelope: dict[str, object]) -> bool:
+    """Есть ли в ответе лимит воркспейса.
+
+    Необязателен нарочно: у ключа без воркспейса (а такие тарифы бывают) его
+    отсутствие — не «не знаем остаток», а «второго потолка нет». Требовать эти
+    поля строго значило бы запретить прогоны на тарифе, где всё в порядке.
+    """
+    return _WORKSPACE_LIMIT_KEY in envelope and _WORKSPACE_USED_KEY in envelope
+
+
+def _workspace_left(envelope: dict[str, object]) -> int:
+    limit = require_int(envelope, _WORKSPACE_LIMIT_KEY, "subscription-info")
+    used = require_int(envelope, _WORKSPACE_USED_KEY, "subscription-info")
+    return max(0, limit - used)
 
 
 @dataclass(frozen=True, slots=True)

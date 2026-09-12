@@ -94,6 +94,60 @@ async def test_hundred_domains_collected_without_network(
     assert points == report.points_written > DOMAINS
 
 
+async def test_only_collects_the_named_domains(db_session: AsyncSession, tmp_path: Path) -> None:
+    """Прогон собирает названный список, а не всё, что лежит в базе.
+
+    Найдено исполнением 12.09.2026: живой прогон на пять доменов собрал
+    шестнадцать — рядом в базе стояли отладочные проекты, и он ушёл за ними в
+    Ahrefs. На фикстурах «вся база» и «мой список» совпадают, поэтому тест
+    этого класса пишется только после живого прогона.
+    """
+    await _load(db_session, tmp_path, ["d1.example.com", "d2.example.com", "d3.example.com"])
+
+    report = await collect_all(
+        db_session,
+        AhrefsFixture(),
+        quota=FixtureQuota(),
+        only=["d1.example.com", "d3.example.com"],
+    )
+
+    assert report.projects_total == 2, "в прогоне ровно названные проекты"
+
+    # И в базе ряды появились только у них: отчёт считает проекты, а истина —
+    # в точках, и проверять надо её.
+    with_points = set(
+        (
+            await db_session.execute(
+                select(Project.domain)
+                .join(MetricPoint, MetricPoint.project_id == Project.id)
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert with_points == {"d1.example.com", "d3.example.com"}
+
+
+async def test_unknown_domain_in_the_list_is_an_error(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """Названный домен, которого нет в базе, останавливает прогон.
+
+    Собрать меньше названного молча — худший исход: человек решит, что прогон
+    сделан, а часть списка осталась без данных (тот же класс, что урок L1).
+    """
+    await _load(db_session, tmp_path, ["d1.example.com"])
+
+    with pytest.raises(ValueError, match="нет проектов"):
+        await collect_all(
+            db_session,
+            AhrefsFixture(),
+            quota=FixtureQuota(),
+            only=["d1.example.com", "нет-такого.example.com"],
+        )
+
+
 async def test_units_ledger_has_a_row_per_request(db_session: AsyncSession, tmp_path: Path) -> None:
     """B10: строка журнала на каждый запрос, сумма — по модели стоимости."""
     await _load(db_session, tmp_path, [f"d{index}.example.com" for index in range(DOMAINS)])

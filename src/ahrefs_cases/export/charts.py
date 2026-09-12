@@ -53,6 +53,16 @@ _LEFT, _RIGHT, _TOP, _BOTTOM = 44.0, 46.0, 22.0, 30.0
 _HEADROOM = 1.12
 """Запас над максимумом, чтобы метка последнего значения не упиралась в рамку."""
 
+_DIGIT_WIDTH = 5.8
+"""Ширина знака в Arial 10px, с запасом. Нужна, чтобы **посчитать**, влезает ли
+подпись последнего значения справа от точки.
+
+Найдено глазами на готовом PDF 12.09.2026: у `ahrefs.com` последнее значение —
+семизначное, и подпись «3 596 464» уехала за границу `viewBox`, превратившись в
+«3 596 46…». В разметке SVG она не обрезана — режет её растеризация, поэтому ни
+один тест на строку такого не увидит (тот же класс, что урок L84, где срезалась
+легенда)."""
+
 
 def curves_svg(
     series: Sequence[CaseSeries],
@@ -266,14 +276,26 @@ def _start_mark(months: Sequence[date], period_start: date) -> str:
 
 
 def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> str:
+    """Последняя точка кривой и её значение.
+
+    Сторона подписи выбирается по месту: справа, если она туда влезает, иначе
+    слева от точки. Длинное число иначе уходит за край рисунка — и это видно
+    только на растре, не в разметке.
+    """
     month, value = item.points[-1]
     x, y = _x(month, months), _y(value, top)
     color = SUBJECT_COLORS[item.subject]
+    text = _number(value)
+    fits_right = x + 9 + len(text) * _DIGIT_WIDTH <= _WIDTH - 2
+    label = (
+        _text(x + 9, y + 3.5, text, size=10, fill=INK, weight="700")
+        if fits_right
+        else _text(x - 9, y + 3.5, text, size=10, fill=INK, weight="700", anchor="end")
+    )
     return (
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{color}" opacity="0.18"/>'
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.4" fill="#ffffff" stroke="{color}" '
-        'stroke-width="2"/>'
-        + _text(x + 9, y + 3.5, _number(value), size=10, fill=INK, weight="700")
+        'stroke-width="2"/>' + label
     )
 
 

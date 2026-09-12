@@ -116,6 +116,65 @@ async def test_unknown_quota_stops_the_run(db_session: AsyncSession) -> None:
     assert "неизвестен" in report.error
 
 
+class _Answer:
+    """Ответ `subscription-info` с заданными числами — без сети."""
+
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        self.headers: dict[str, str] = {}
+
+
+class _Subscription:
+    """Транспорт, отвечающий одной заготовкой. Живой ключ здесь не участвует."""
+
+    def __init__(self, envelope: dict[str, int]) -> None:
+        self._envelope = envelope
+
+    async def get(self, path: str, params: dict[str, object]) -> _Answer:
+        return _Answer({"limits_and_usage": dict(self._envelope)})
+
+
+async def test_ceiling_is_the_smaller_of_two_limits() -> None:
+    """Потолок — минимум из остатка ключа и остатка воркспейса.
+
+    Замер живого ключа 12.09.2026 показал два лимита: ключа и воркспейса.
+    Воркспейс делится с другими сервисами агентства — выжги его сосед, и
+    остаток ключа перестаёт что-либо обещать. Считать по ключу значит сказать
+    «хватает» и упереться в отказ на середине прогона.
+    """
+    from ahrefs_cases.collect.quota import LiveQuota
+
+    квота = LiveQuota(
+        _Subscription(  # type: ignore[arg-type]
+            {
+                "units_limit_api_key": 2_000_000,
+                "units_usage_api_key": 530_812,  # остаток ключа 1 469 188
+                "units_limit_workspace": 8_000_000,
+                "units_usage_workspace": 7_900_000,  # остаток воркспейса 100 000
+            }
+        )
+    )
+
+    assert await квота.units_left() == 100_000
+
+
+async def test_key_without_workspace_limit_still_works() -> None:
+    """Нет полей воркспейса — значит второго потолка нет, а не «остаток неизвестен».
+
+    Строгость здесь запретила бы прогоны на тарифе, где всё в порядке: у ключа
+    без воркспейса эти поля просто не приходят.
+    """
+    from ahrefs_cases.collect.quota import LiveQuota
+
+    квота = LiveQuota(
+        _Subscription(  # type: ignore[arg-type]
+            {"units_limit_api_key": 2_000_000, "units_usage_api_key": 1_000_000}
+        )
+    )
+
+    assert await квота.units_left() == 1_000_000
+
+
 async def test_unknown_and_not_enough_are_different_verdicts() -> None:
     """C6 против C7: причины лечатся по-разному, значит и коды разные.
 

@@ -75,9 +75,30 @@ async def _intake(reference: str) -> int:
     return 0 if report.accepted else 1
 
 
-async def _collect(*, refresh: bool = False) -> int:
+def _only(raw: str | None) -> list[str] | None:
+    """Список доменов из `--only`: перечисление через запятую или файл со списком.
+
+    Файл — потому что боевой список приходит файлом, и перепечатывать сотню
+    доменов в командную строку никто не станет. Пусто — значит все проекты
+    базы, и это отдельное решение человека, а не умолчание «на всякий случай».
+    """
+    if not raw:
+        return None
+    path = Path(raw)
+    if path.is_file():
+        names = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    else:
+        names = [name.strip() for name in raw.split(",")]
+    return [name for name in names if name]
+
+
+async def _collect(*, refresh: bool = False, only: list[str] | None = None) -> int:
     async with get_sessionmaker()() as session:
-        report = await collect_all(session, refresh=refresh, windows=await point_windows(session))
+        if only is not None:
+            print(f"собираем только названные домены: {len(only)}")
+        report = await collect_all(
+            session, refresh=refresh, windows=await point_windows(session), only=only
+        )
         await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.projects_ok else 1
@@ -266,7 +287,7 @@ async def _main(args: argparse.Namespace) -> int:
         if args.command == "intake":
             return await _intake(args.source)
         if args.command == "collect":
-            return await _collect(refresh=args.refresh)
+            return await _collect(refresh=args.refresh, only=_only(args.only))
         if args.command == "stage2":
             return await _stage2(refresh=args.refresh)
         if args.command == "classify":
@@ -317,6 +338,11 @@ def main() -> int:
     intake_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
     collect_parser = sub.add_parser("collect", help="собрать историю по проектам в базе")
+    collect_parser.add_argument(
+        "--only",
+        default=None,
+        help="домены через запятую или файл со списком: собрать только их, а не всю базу",
+    )
     stage2_parser = sub.add_parser(
         "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
     )

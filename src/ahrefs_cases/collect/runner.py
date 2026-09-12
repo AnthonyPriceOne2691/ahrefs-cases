@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -412,15 +412,31 @@ async def collect_all(
     refresh: bool = False,
     quota: QuotaSource | None = None,
     windows: PointWindows | None = None,
+    only: Collection[str] | None = None,
 ) -> RunReport:
-    """Прогон по всем проектам в базе — то, что делает CLI.
+    """Прогон по проектам базы — то, что делает CLI.
+
+    `only` сужает список до названных доменов. Без него берутся **все** проекты,
+    и в живом режиме это ловушка: на стенде рядом с боевым списком лежат
+    отладочные проекты, и прогон уходит за ними в Ahrefs. Найдено исполнением
+    12.09.2026 — прогон на пять доменов собрал шестнадцать, и часть «выдуманных»
+    доменов оказалась настоящими сайтами.
 
     Фоновая задача сюда не ходит: ей нужно продолжить **уже открытый** прогон,
     и она зовёт `collect_projects` напрямую. Повторять здесь весь список
     параметров ради одного `run` значило бы развести две одинаковые сигнатуры —
     гейт копипаста поймал это в первой же попытке (урок L29).
     """
-    projects = (await session.execute(select(Project))).scalars().all()
+    statement = select(Project)
+    if only is not None:
+        statement = statement.where(Project.domain.in_(list(only)))
+    projects = (await session.execute(statement)).scalars().all()
+    if only is not None and len(projects) != len(set(only)):
+        # Молча собрать меньше названного — худший исход: человек решит, что
+        # прогон сделан, а половина списка осталась без данных.
+        missing = sorted(set(only) - {project.domain for project in projects})
+        message = f"в базе нет проектов: {', '.join(missing)}"
+        raise ValueError(message)
     return await collect_projects(
         session, list(projects), provider, now=now, refresh=refresh, quota=quota, windows=windows
     )

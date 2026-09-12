@@ -69,6 +69,62 @@ def _verdict(months_used: int = 3) -> VerdictView:
     )
 
 
+def _label_x(svg: str, text: str) -> tuple[float, str]:
+    """Координата и выравнивание подписи с заданным текстом.
+
+    Тег ищется целиком, а атрибуты разбираются из него: одним выражением с
+    необязательной группой `text-anchor` ловится «start» всегда — жадный
+    `[^>]*` съедает атрибут раньше, чем до него дойдёт очередь.
+    """
+    # Тот же текст бывает и на оси Y — подпись значения отличается кеглем 10.
+    matches = [
+        found.group(1)
+        for found in re.finditer(rf"<text ([^>]*)>{re.escape(text)}</text>", svg)
+        if 'font-size="10"' in found.group(1)
+    ]
+    assert matches, f"подписи {text!r} кеглем 10 нет в рисунке"
+    attributes = matches[0]
+    x = re.search(r'x="([\d.]+)"', attributes)
+    anchor = re.search(r'text-anchor="(\w+)"', attributes)
+    assert x, "у подписи нет координаты"
+    return float(x.group(1)), anchor.group(1) if anchor else "start"
+
+
+def test_long_end_value_label_stays_inside_the_frame() -> None:
+    """Подпись последнего значения не уезжает за край рисунка.
+
+    Найдено глазами на готовом PDF живого прогона: у `ahrefs.com` последнее
+    значение семизначное, и «3 596 464» превратилось в «3 596 46…». В разметке
+    SVG обрезания нет — режет `viewBox` при растеризации, поэтому проверять
+    надо **геометрию**, а не наличие текста (тот же класс, что L84).
+    """
+    svg = curves_svg(
+        [_series("org_traffic", [900_000.0, 2_000_000.0, 3_596_464.0])],
+        period_start=START,
+    )
+
+    x, anchor_kind = _label_x(svg, "3\u00a0596\u00a0464")
+
+    assert anchor_kind == "end", "справа места нет — подпись разворачивается влево"
+    assert x <= 420.0, "и остаётся внутри viewBox шириной 420"
+
+
+def test_short_end_value_label_stays_on_the_right() -> None:
+    """Короткому числу места хватает, и оно остаётся справа от точки.
+
+    Разворачивать подпись всегда было бы проще и хуже: слева от точки идёт
+    кривая, и подпись легла бы на неё.
+    """
+    svg = curves_svg(
+        [_series("org_traffic", [100.0, 200.0, 320.0])],
+        period_start=START,
+    )
+
+    _, anchor_kind = _label_x(svg, "320")
+
+    assert anchor_kind == "start"
+
+
 def test_missing_month_is_not_interpolated() -> None:
     """E1: кривая рисуется по измеренным месяцам, без сглаживания и подстановок."""
     months = _months(6)
