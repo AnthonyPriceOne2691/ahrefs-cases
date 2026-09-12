@@ -94,13 +94,14 @@ async def test_stage2_asks_only_candidates(db_session: AsyncSession) -> None:
 
     asked = {domain for _endpoint, domain in provider.calls}
     assert asked == set(GROWING)
-    # Запросов больше, чем endpoint'ов: с 11.09.2026 схема выбирается на каждый
-    # endpoint, и у `keywords-history` (строка 51) две точки дешевле истории —
-    # это два запроса, — а у `refdomains-history` (строка 5) дешевле история,
-    # один запрос. Считать «проекты × endpoint'ы» больше нельзя.
+    # Запросов больше, чем endpoint'ов: схема выбирается на каждый endpoint, и
+    # на этом периоде обоим дешевле две точки — по два запроса каждому. До
+    # замера цен 12.09.2026 ссылающиеся домены шли историей (одним запросом):
+    # их строка считалась пятёркой, а стоит шесть. Считать «проекты ×
+    # endpoint'ы» по-прежнему нельзя — число зависит от периода и цены.
     by_endpoint = Counter(endpoint for endpoint, _domain in provider.calls)
     assert by_endpoint["keywords-history"] == len(GROWING) * 2, "E1: две точки — два запроса"
-    assert by_endpoint["refdomains-history"] == len(GROWING), "E2: история — один запрос"
+    assert by_endpoint["refdomains-history"] == len(GROWING) * 2, "E2: и здесь две точки"
     assert report.requests_made == sum(by_endpoint.values()), "E3: счёт запросов сходится"
     assert report.projects_total == len(GROWING), "проектов столько же, сколько кандидатов (L13)"
 

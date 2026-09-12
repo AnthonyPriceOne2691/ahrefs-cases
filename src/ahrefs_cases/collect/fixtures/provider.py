@@ -32,8 +32,11 @@ class AhrefsFixture:
     async def fetch_history(self, spec: EndpointSpec, request: HistoryRequest) -> HistoryResult:
         """История по одному endpoint'у. Сети здесь нет и быть не может."""
         scenario = self._table.scenario_for(request.target)
-        end = request.date_to or date.today()  # noqa: DTZ011 — календарный конец периода
-        series = generate_series(request.target, scenario, seed=self._table.seed, end=end)
+        # Якорь серии — конец **периода работ**, а не конец запрошенного окна:
+        # иначе значение месяца зависело бы от того, каким окном его спросили,
+        # и вердикт ехал бы вслед за схемой сбора (та выбирается по цене).
+        anchor = request.period_end or request.date_to or date.today()  # noqa: DTZ011
+        series = generate_series(request.target, scenario, seed=self._table.seed, end=anchor)
 
         wanted = set(spec.metrics.values())
         points = tuple(
@@ -45,6 +48,7 @@ class AhrefsFixture:
             )
             for point in series
             if point.at >= request.date_from
+            and (request.date_to is None or point.at <= request.date_to)
         )
         # Столько же строк, сколько отдаём: fixture обязан считать units по той
         # же формуле, что применит live, иначе смета проверяется на выдуманных

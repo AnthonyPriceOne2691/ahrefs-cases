@@ -60,9 +60,7 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 async def _project(session: AsyncSession, domain: str) -> Project:
     row = f"{domain},{START.isoformat()},{END.isoformat()},fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
-    return (
-        (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
-    )
+    return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
 
 async def _stage2_points(session: AsyncSession, project: Project) -> None:
@@ -84,30 +82,35 @@ async def _stage2_points(session: AsyncSession, project: Project) -> None:
 
 
 def test_curve_costs_less_because_it_asks_for_fewer_fields() -> None:
-    """E2: та же ручка, другой `select` — цена строки падает с 51 до 21.
+    """E2: та же ручка, другой `select` — цена строки падает с 6 до 3.
 
-    Рычаг, которым не пользовались ни разу: цена строки это `10 × поля + 1`.
-    Графику нужны топ-3 и топ-10, остальные три корзины живут в кейсе числами
-    на границах периода.
+    Рычаг остался, но подешевел вместе со всем остальным: замер 12.09.2026
+    показал, что ключевой бакет стоит **единицу**, а не десять. Графику нужны
+    топ-3 и топ-10; остальные три корзины живут в кейсе числами на границах
+    периода — и экономия от этого теперь копеечная, а не кратная.
     """
     assert KEYWORDS_GRAPH.path == KEYWORDS_HISTORY.path, "ручка та же"
     assert KEYWORDS_GRAPH.select == ("date", "top3", "top4_10")
-    assert KEYWORDS_GRAPH.row_units() == 21
-    assert KEYWORDS_HISTORY.row_units() == 51
-    assert KEYWORDS_GRAPH.estimate_units(15) == 315
-    assert KEYWORDS_HISTORY.estimate_units(15) == 765
+    assert KEYWORDS_GRAPH.row_units() == 3
+    assert KEYWORDS_HISTORY.row_units() == 6
+    assert KEYWORDS_GRAPH.estimate_units(15) == 50, "45 не пробивают минимум"
+    assert KEYWORDS_HISTORY.estimate_units(15) == 90
 
 
-def test_curve_is_bought_as_series_even_though_points_are_cheaper() -> None:
-    """Назначение бьёт цену: кривая покупается серией, хотя точки дешевле.
+def test_curve_is_bought_as_series_because_purpose_decides() -> None:
+    """Назначение бьёт цену — и после замера цена перестала спорить.
 
-    Две точки обошлись бы в 100 units против 399 за серию — но показать по ним
-    нечего. Цена решает только там, где назначение допускает оба варианта.
+    Правило писалось, когда серия стоила 399 units против 100 за две точки:
+    брать серию значило сознательно переплатить за то, что можно показать.
+    Замер 12.09.2026 перевернул арифметику — девятнадцать строк стоят 57, то
+    есть **дешевле** двух точек. Правило остаётся прежним: назначение решает,
+    и теперь оно ничего не стоит.
     """
     assert KEYWORDS_GRAPH.needs_series is True, "E1: кривая покупается серией"
     assert METRICS_VALUE.needs_series is False, "E4: стоимость трафика — число"
-    assert 2 * KEYWORDS_GRAPH.estimate_units(2) < KEYWORDS_GRAPH.estimate_units(19), (
-        "E1: точки дешевле серии, и всё равно берём серию"
+    assert KEYWORDS_GRAPH.estimate_units(19) == 57
+    assert KEYWORDS_GRAPH.estimate_units(19) < 2 * KEYWORDS_GRAPH.estimate_units(2), (
+        "серия дешевле двух точек: спор цены и назначения кончился"
     )
 
 
@@ -137,7 +140,7 @@ async def test_only_the_missing_middle_is_bought(db_session: AsyncSession) -> No
     curve = [task for task in plan.tasks if task.spec is KEYWORDS_GRAPH]
     assert len(curve) == 1
     assert curve[0].expected_rows() == 14
-    assert curve[0].estimated_units() == 294, "14 строк по 21 — платим только за дыру"
+    assert curve[0].estimated_units() == 50, "14 строк по 3 не пробивают минимум запроса"
 
 
 async def test_traffic_value_is_bought_as_two_points(db_session: AsyncSession) -> None:
@@ -203,11 +206,12 @@ async def test_second_run_buys_nothing(db_session: AsyncSession) -> None:
 
 
 async def test_estimate_for_ten_cases(db_session: AsyncSession) -> None:
-    """E8: десять кейсов стоят 4 940 units.
+    """E8: десять кейсов стоят 2 000 units.
 
-    Вся экономия поставки — в составе полей и в том, что платим только за дыру:
-    докупка позиций в лоб (пять корзин, весь период) стоила бы 969 на кейс,
-    то есть почти столько же, сколько вся ступень на десяти.
+    Было 4 940 — по угаданным ценам. После замера 12.09.2026 ступень кейса
+    подешевела вдвое, и не потому, что мы её оптимизировали: позиции и DR
+    оказались в разы дешевле, чем считала модель. Экономия от состава полей при
+    этом почти растаяла — платить всё равно приходится минимум за запрос.
     """
     projects = []
     for index in range(10):
@@ -219,19 +223,23 @@ async def test_estimate_for_ten_cases(db_session: AsyncSession) -> None:
         db_session, projects, source=MetricSource.FIXTURE, now=NOW, windows=WINDOWS
     )
 
-    assert plan.estimated_units() == 4_940
+    assert plan.estimated_units() == 2_000
     assert len(STAGE3_SPECS) == 3, "кривая позиций, стоимость трафика и DR"
     per_case = plan.estimated_units() / len(projects)
-    assert per_case == 494, "294 за дыру в кривой, 100 за стоимость трафика, 100 за DR"
+    assert per_case == 200, "50 за дыру в кривой, 100 за стоимость трафика, 50 за DR историей"
 
 
 async def test_dr_is_bought_as_a_number_for_cases(db_session: AsyncSession) -> None:
     """E10: DR — must-have по ТЗ, и в кейсе это число.
 
-    Он стоял под флагом на шаге 2 и был выключен: тридцати кандидатам историей
-    обошёлся бы в 3000 units. Ступень покупает его двумя точками десяти
-    проектам — 1000. Требование ТЗ выполняется, а не откладывается флагом
-    (урок L33).
+    **Числа переписаны 12.09.2026 по замеру живым ключом.** DR считался дорогим
+    (11 за строку) и потому покупался двумя точками; на деле строка стоит
+    **единицу**, и вся история за период — 50 units против 100 за две точки.
+    Планировщик выбирает по цене и берёт историю; в кейсе DR остаётся числом
+    «было → стало», просто крайние точки теперь достаются из серии.
+
+    Открытие того же класса, что урок L33: решение «выключить по цене» держалось
+    на цене, которую никто не мерил.
     """
     project = await _project(db_session, "dr.example.com")
 
@@ -241,9 +249,10 @@ async def test_dr_is_bought_as_a_number_for_cases(db_session: AsyncSession) -> N
 
     choice = plan.choices[(project.id, DOMAIN_RATING_HISTORY.name)]
     tasks = [task for task in plan.tasks if task.spec is DOMAIN_RATING_HISTORY]
-    assert choice.scheme is CollectScheme.TWO_POINTS, "в кейсе DR это «было → стало»"
-    assert sum(task.estimated_units() for task in tasks) == 100
-    assert choice.units_full_history == 198, "историей стоил бы вдвое дороже: 18 строк по 11"
+    assert choice.scheme is CollectScheme.FULL_HISTORY, "история дешевле двух точек"
+    assert sum(task.estimated_units() for task in tasks) == 50
+    assert choice.units_full_history == 50, "18 строк по 1 не пробивают минимум запроса"
+    assert choice.units_two_points == 100, "а две точки — это два минимума"
 
 
 @pytest.mark.parametrize(
@@ -263,7 +272,8 @@ def test_quarter_aggregation_depends_on_metric_kind(
     последний месяц трафика — треть визитов за квартал.
     """
     months = [date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1)]
-    by_month = dict(zip(months, [1000.0, 1100.0, 1200.0] if flow else [100.0, 110.0, 120.0]))
+    values = [1000.0, 1100.0, 1200.0] if flow else [100.0, 110.0, 120.0]
+    by_month = dict(zip(months, values, strict=True))
 
     assert (metric in FLOW_METRICS) is flow
     assert aggregate(by_month, months, flow=flow) == expected

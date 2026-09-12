@@ -367,6 +367,7 @@ async def _tasks_for_spec(
                     country=project.geo,
                     date_from=asked_window.date_from,
                     date_to=asked_window.date_to,
+                    period_end=project.period_end,
                 ),
             )
         )

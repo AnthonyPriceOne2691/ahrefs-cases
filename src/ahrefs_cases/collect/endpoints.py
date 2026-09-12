@@ -22,11 +22,37 @@ MIN_REQUEST_UNITS = 50
 """Минимальная стоимость запроса по документации Ahrefs (docs/RESEARCH_AHREFS_API.md)."""
 
 FIELD_UNITS = 10
-"""Каждое биллингуемое поле. `date` не считается: это ось, не метрика.
-Замерено: `x-api-units-cost-row` = 21 при двух полях, 11 при одном."""
+"""Цена **незнакомого** поля. Дороже любого замеренного — нарочно: занизить
+цену хуже, чем завысить, а незнакомое поле означает, что его не мерили."""
+
+FIELD_PRICES: Mapping[str, int] = MappingProxyType(
+    {
+        # Замерено живым ключом 12.09.2026 по заголовку `x-api-units-cost-row`:
+        # семь запросов узкими окнами, формула сошлась на всех.
+        "org_traffic": 10,
+        "org_cost": 10,
+        "total_search_volume": 10,
+        "refdomains": 5,
+        "domain_rating": 1,
+        "pages": 1,
+        "top3": 1,
+        "top4_10": 1,
+        "top11_20": 1,
+        "top21_50": 1,
+        "top51_plus": 1,
+    }
+)
+"""Цена каждого поля в строке. **У каждого своя** — это и есть открытие
+замера: прежняя модель («10 за любое поле») завышала цену ключевых слов в семь
+раз и занижала цену ссылающихся доменов.
+
+Дорог только трафик и то, что считается по деньгам; позиции, DR и страницы
+стоят по одному. Отсюда следствие для схемы сбора: кривая позиций и DR дёшевы,
+и отказываться от них ради экономии смысла нет."""
 
 ROW_UNITS = 1
-"""Надбавка за саму строку поверх полей. Из тех же замеров: 10×2+1 = 21."""
+"""Надбавка за саму строку поверх полей. Проверено на крайних случаях: пять
+ключевых бакетов дали 6 (1+5×1), два дорогих поля — 21 (1+10+10)."""
 
 _DATE_FIELD = "date"
 
@@ -59,24 +85,30 @@ class EndpointSpec:
     """
 
     flat_cost: int | None = None
-    """Цена строки, если документация называет её отдельно
-    (`refdomains-history` — 5). Замером **не подтверждена**: разведка Ф7
-    трогала только `metrics-history`. Трактуем как цену строки, а не запроса —
-    это дороже и потому безопаснее для сметы: занизить цену хуже, чем завысить."""
+    """Цена строки, если её назвали замером целиком, а не по полям.
+
+    После замера 12.09.2026 не нужна ни одному endpoint'у: цена собирается из
+    `FIELD_PRICES`. Оставлена как дверь для endpoint'а, который однажды
+    окажется устроен иначе."""
 
     def billable_fields(self) -> tuple[str, ...]:
         return tuple(field for field in self.select if field != _DATE_FIELD)
 
     def row_units(self) -> int:
-        """Цена одной строки ответа.
+        """Цена одной строки ответа: единица плюс сумма цен полей.
 
-        Замерено живым ключом 10.09.2026: `x-api-units-cost-row` = 21 при двух
-        полях и 11 при одном, то есть «10 за каждое биллингуемое поле плюс 1 за
-        саму строку». Совпадает на обоих замерах.
+        Замерено живым ключом 12.09.2026 на семи запросах, сошлось на всех:
+        трафик 11, трафик со стоимостью 21, ссылающиеся домены 6, DR 2,
+        страницы 2, два ключевых бакета 3, пять бакетов 6.
+
+        Прежняя модель считала все поля по 10 — она выведена из единственного
+        замеренного endpoint'а и переносилась на остальные по аналогии.
         """
         if self.flat_cost is not None:
             return self.flat_cost
-        return FIELD_UNITS * len(self.billable_fields()) + ROW_UNITS
+        return ROW_UNITS + sum(
+            FIELD_PRICES.get(field, FIELD_UNITS) for field in self.billable_fields()
+        )
 
     def rows_under_minimum(self) -> int:
         """Сколько строк влезает в минимальную стоимость запроса.
@@ -147,14 +179,19 @@ REFDOMAINS_HISTORY = EndpointSpec(
     list_key="refdomains",
     metrics=MappingProxyType({"refdomains": Metric.REFDOMAINS}),
     stage=2,
-    flat_cost=5,
 )
+"""`flat_cost=5` убран: документация называла 5 за строку, замер 12.09.2026 дал
+6 — единица за строку плюс пять за поле. Занижение цены опаснее завышения:
+по нему preflight пропустил бы прогон, которому квоты не хватит."""
 
 DOMAIN_RATING_HISTORY = EndpointSpec(
     name="domain-rating-history",
     path="/v3/site-explorer/domain-rating-history",
     select=("date", "domain_rating"),
-    list_key="domain_rating",
+    # Ключ **множественного числа**, и это не описка: замер 12.09.2026 показал
+    # `{"domain_ratings": [...]}`. Угаданный `domain_rating` давал ошибку формы,
+    # а DR — must-have из ТЗ.
+    list_key="domain_ratings",
     metrics=MappingProxyType({"domain_rating": Metric.DR}),
     stage=3,
 )
@@ -181,9 +218,12 @@ PAGES_HISTORY = EndpointSpec(
 TOTAL_SEARCH_VOLUME_HISTORY = EndpointSpec(
     name="total-search-volume-history",
     path="/v3/site-explorer/total-search-volume-history",
-    select=("date", "search_volume"),
-    list_key="search_volume",
-    metrics=MappingProxyType({"search_volume": Metric.SEARCH_VOLUME}),
+    # Замер 12.09.2026: endpoint отдаёт `{"metrics": [...]}` — как у трафика, а
+    # не по имени себя, — и поле внутри зовётся `total_search_volume`. Обе
+    # догадки были неверны, и обе читались бы как «истории нет».
+    select=("date", "total_search_volume"),
+    list_key="metrics",
+    metrics=MappingProxyType({"total_search_volume": Metric.SEARCH_VOLUME}),
     stage=2,
 )
 

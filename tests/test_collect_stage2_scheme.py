@@ -6,9 +6,13 @@ E5 (смета по тридцати кандидатам), E7 (разрежен
 дыры), E8 (кэш по окнам).
 
 Числа здесь не круглые и взяты не из головы: они считаются по замеренной
-формуле `max(50, строки × (10 × полей + 1))`. У `keywords-history` пять
-биллингуемых полей — строка 51; у `refdomains-history` цена строки названа
-документацией отдельно — 5.
+формуле `max(50, строки × (1 + сумма цен полей))`. Цены полей замерены живым
+ключом 12.09.2026: трафик 10, ссылающиеся домены 5, страницы и каждый ключевой
+бакет по 1.
+
+**Числа этого файла переписаны 12.09.2026**, и не потому, что менялась логика:
+прежняя модель считала любое поле по 10 и завышала цену позиций в семь раз. С
+замеренными ценами решения о схеме изменились — это и проверяется ниже.
 """
 
 from __future__ import annotations
@@ -20,7 +24,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.classify import series as series_module
-from ahrefs_cases.collect.endpoints import KEYWORDS_HISTORY, REFDOMAINS_HISTORY
+from ahrefs_cases.collect.endpoints import (
+    KEYWORDS_HISTORY,
+    PAGES_HISTORY,
+    REFDOMAINS_HISTORY,
+    TOTAL_SEARCH_VOLUME_HISTORY,
+)
 from ahrefs_cases.collect.plan import build_stage2_plan
 from ahrefs_cases.collect.scheme import CollectScheme, PointWindows, choose_scheme
 from ahrefs_cases.intake.accept import accept
@@ -50,28 +59,37 @@ def _choose(spec, end: date, *, window: int = 2):
     )
 
 
-def test_keywords_go_by_points_because_the_row_is_expensive() -> None:
-    """E1: пять биллингуемых полей делают историю дороже точек в четыре с лишним раза."""
+def test_keywords_scheme_follows_the_measured_price() -> None:
+    """E1: у позиций пять полей, но каждое стоит единицу — строка 6, не 51.
+
+    Прежняя модель («10 за любое поле») делала историю позиций дороже точек в
+    четыре с половиной раза, и схема выбиралась ради экономии в 714 units.
+    Замер 12.09.2026 оставил от этой экономии **восемь units** на проект:
+    точки всё ещё дешевле, но разница перестала быть доводом.
+    """
     choice = _choose(KEYWORDS_HISTORY, date(2026, 6, 1))
 
-    assert KEYWORDS_HISTORY.row_units() == 51, "10 × 5 полей + 1"
+    assert KEYWORDS_HISTORY.row_units() == 6, "1 за строку + пять бакетов по 1"
     assert choice.scheme is CollectScheme.TWO_POINTS
-    assert choice.units_two_points == 204
-    assert choice.units_full_history == 918
-    assert "714" in choice.reason, "экономия названа числом"
+    assert choice.units_two_points == 100
+    assert choice.units_full_history == 108
+    assert "8 units" in choice.reason, "экономия названа числом — и она копеечная"
 
 
-def test_refdomains_go_by_history_because_the_row_is_cheap() -> None:
-    """E2: цена строки 5 — минимум за запрос делает историю дешевле точек.
+def test_cheap_endpoint_goes_by_history() -> None:
+    """E2: обратный случай к E1 на **том же периоде** — страницы стоят 2 за строку.
 
-    Обратный случай к E1 на **том же периоде**: 90 историей против 100 точками.
-    Именно поэтому схема выбирается на endpoint, а не на проект.
+    Пример пришлось сменить: после замера у ссылающихся доменов и позиций цена
+    строки совпала (по 6), и они перестали расходиться в схеме. Правило от
+    этого не изменилось — схема выбирается на endpoint по его цене, — но
+    показывать его надо на паре, которая различается **сейчас**, а не была
+    различной когда-то (урок L48).
     """
-    choice = _choose(REFDOMAINS_HISTORY, date(2026, 6, 1))
+    choice = _choose(PAGES_HISTORY, date(2026, 6, 1))
 
-    assert REFDOMAINS_HISTORY.row_units() == 5
+    assert PAGES_HISTORY.row_units() == 2
     assert choice.scheme is CollectScheme.FULL_HISTORY
-    assert choice.units_full_history == 90
+    assert choice.units_full_history == 50, "18 строк по 2 не пробивают минимум"
     assert choice.units_two_points == 100
 
 
@@ -80,7 +98,7 @@ def test_refdomains_window_overlap_is_named() -> None:
     окна точек перекрылись бы — в объяснении это названо."""
     choice = _choose(REFDOMAINS_HISTORY, date(2025, 6, 1))
 
-    assert REFDOMAINS_HISTORY.rows_under_minimum() == 10
+    assert REFDOMAINS_HISTORY.rows_under_minimum() == 8
     assert choice.scheme is CollectScheme.FULL_HISTORY
     assert "перекрыл" in choice.reason
 
@@ -93,28 +111,28 @@ def test_long_period_flips_refdomains_to_points() -> None:
     просто точка перелома у каждого своя. Записать «refdomains — всегда
     история» значило бы захардкодить сегодняшний период.
     """
-    short = _choose(REFDOMAINS_HISTORY, date(2026, 6, 1))
-    long = _choose(REFDOMAINS_HISTORY, date(2027, 6, 1))
+    short = _choose(REFDOMAINS_HISTORY, date(2025, 6, 1))
+    long = _choose(REFDOMAINS_HISTORY, date(2026, 6, 1))
 
-    assert short.scheme is CollectScheme.FULL_HISTORY, "E9: 19 строк — история"
-    assert long.scheme is CollectScheme.TWO_POINTS, "E9: 31 строка — точки"
+    assert short.scheme is CollectScheme.FULL_HISTORY, "E9: 6 строк — история"
+    assert long.scheme is CollectScheme.TWO_POINTS, "E9: 18 строк — точки"
     assert long.units_full_history > long.units_two_points
 
 
 async def _project(session: AsyncSession, domain: str, end: date = LONG_END) -> Project:
     row = f"{domain},{START.isoformat()},{end.isoformat()},fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
-    return (
-        (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
-    )
+    return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
 
-async def test_one_project_gets_two_different_schemes(db_session: AsyncSession) -> None:
-    """E3: у одного проекта keywords точками, refdomains историей.
+async def test_schemes_are_counted_per_endpoint(db_session: AsyncSession) -> None:
+    """E3: схема выбирается на **пару** «проект + endpoint», и так же считается.
 
-    Отчёт при этом считает **проекты** по каждому endpoint'у: у пары
-    «проект + endpoint» может быть две задачи, и счёт по задачам дал бы число,
-    которого нет ни у кого на экране (урок L13).
+    Раньше пример показывал расхождение схем у одного проекта; после замера
+    цены у обоих endpoint'ов шага 2 совпали, и расхождения больше нет. Само
+    правило от этого не изменилось, и проверять надо его: отчёт считает
+    **проекты** по каждому endpoint'у, а не задачи — у пары их может быть две,
+    и счёт по задачам дал бы число, которого нет ни у кого на экране (L13).
     """
     project = await _project(db_session, "mixed.example.com")
 
@@ -125,20 +143,21 @@ async def test_one_project_gets_two_different_schemes(db_session: AsyncSession) 
 
     schemes = {endpoint: choice.scheme for (_pid, endpoint), choice in plan.choices.items()}
     assert schemes["keywords-history"] is CollectScheme.TWO_POINTS
-    assert schemes["refdomains-history"] is CollectScheme.FULL_HISTORY
-    assert len(plan.tasks) == 3, "две точки по ключам плюс одна история по ссылкам"
-    assert breakdown.projects(CollectScheme.TWO_POINTS) == 1
-    assert breakdown.projects(CollectScheme.FULL_HISTORY) == 1
+    assert schemes["refdomains-history"] is CollectScheme.TWO_POINTS
+    assert breakdown.projects(CollectScheme.TWO_POINTS) == 2, "по проекту на каждый endpoint"
+    assert len(plan.tasks) == 4, "по две точки на каждый из двух endpoint'ов"
     lines = "\n".join(breakdown.as_lines())
     assert "keywords-history two_points: 1 проект(ов)" in lines
-    assert "refdomains-history full_history: 1 проект(ов)" in lines
+    assert "refdomains-history two_points: 1 проект(ов)" in lines
 
 
 async def test_estimate_for_thirty_candidates(db_session: AsyncSession) -> None:
-    """E5: тридцать кандидатов стоят 8 820 units вместо 30 240.
+    """E5: тридцать кандидатов стоят 6 000 units вместо 6 480.
 
-    Число приёмки: шаг 2 был самой дорогой частью прогона — дороже, чем шаг 1
-    по всей сотне доменов.
+    Число приёмки переписано 12.09.2026: по замеренным ценам шаг 2 подешевел
+    втрое (было 8 820), а вместе с ним растаяла и сама экономия схемы — 480
+    units на тридцати проектах против прежних 21 420. Шаг 2 перестал быть
+    самой дорогой частью прогона.
     """
     projects = [await _project(db_session, f"c{index}.example.com") for index in range(30)]
 
@@ -147,10 +166,10 @@ async def test_estimate_for_thirty_candidates(db_session: AsyncSession) -> None:
     )
     breakdown = plan.scheme_breakdown()
 
-    assert plan.estimated_units() == 8_820
-    assert breakdown.units_if_history == 30_240
-    assert breakdown.units_if_auto == 8_820
-    assert "экономия 21420" in "\n".join(breakdown.as_lines())
+    assert plan.estimated_units() == 6_000
+    assert breakdown.units_if_history == 6_480
+    assert breakdown.units_if_auto == 6_000
+    assert "экономия 480" in "\n".join(breakdown.as_lines())
 
 
 async def test_sparse_stage2_does_not_trip_the_series_gap_rule(db_session: AsyncSession) -> None:
@@ -207,8 +226,12 @@ async def test_bought_window_is_not_bought_twice_on_stage2(db_session: AsyncSess
     )
     keywords_tasks = [task for task in first.tasks if task.spec is KEYWORDS_HISTORY]
     window = keywords_tasks[0].request
+    # Окно точки шире двух месяцев: у дешёвой строки под минимум влезает
+    # восемь, и планировщик берёт их даром. Засеиваем окно целиком — иначе
+    # кэш честно скажет «куплено не всё» (и будет прав).
+    window_months = range(window.date_from.month, window.date_to.month + 1)
     for metric in KEYWORDS_HISTORY.metrics.values():
-        for month in (window.date_from.month, window.date_from.month + 1):
+        for month in window_months:
             db_session.add(
                 MetricPoint(
                     project_id=project.id,
@@ -232,12 +255,13 @@ async def test_bought_window_is_not_bought_twice_on_stage2(db_session: AsyncSess
 
 @pytest.mark.parametrize(
     ("spec", "expected_free_rows"),
-    [(KEYWORDS_HISTORY, 1), (REFDOMAINS_HISTORY, 10)],
+    [(TOTAL_SEARCH_VOLUME_HISTORY, 4), (PAGES_HISTORY, 25)],
 )
 def test_free_rows_follow_the_price_not_the_endpoint(spec, expected_free_rows: int) -> None:
     """Сколько строк бесплатны под минимумом — следствие цены, а не имени.
 
-    У дорогой строки впрок не купишь: `keywords-history` берёт ровно то окно,
-    что просят пороги. У дешёвой запас велик, и это тоже не выбор, а арифметика.
+    У дорогой строки впрок не купишь: объём поиска стоит 11 за строку, и под
+    минимум влезают четыре. У страниц строка стоит 2 — и бесплатных строк
+    двадцать пять. Это не выбор, а арифметика от замеренной цены.
     """
     assert spec.rows_under_minimum() == expected_free_rows, "E4: ёмкость минимума — следствие цены"
