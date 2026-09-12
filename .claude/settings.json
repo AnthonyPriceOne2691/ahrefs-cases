@@ -6,9 +6,9 @@
       "Bash(rm -rf /:*)",
       "Bash(psql:*)",
       "Bash(mysql:*)",
+      "Bash(AHREFS_PROVIDER=live:*)",
       "Read(./.env)",
-      "Read(./**/.env)",
-      "Bash(AHREFS_PROVIDER=live:*)"
+      "Read(./**/.env)"
     ],
     "ask": [
       "Bash(git push:*)",
