@@ -67,9 +67,7 @@ async def _project(session: AsyncSession, domain: str) -> Project:
         "fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
     )
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
-    return (
-        (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
-    )
+    return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
 
 async def _points(
@@ -163,7 +161,7 @@ async def test_missing_stage2_data_is_said_in_words(db_session: AsyncSession) ->
     project = await _project(db_session, "nolinks.example.com")
     await _points(db_session, project, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
 
-    found = await diagnose_domain(db_session, project.domain)
+    found = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
 
     assert found is not None
     assert found.refdomains.bought is False
@@ -177,7 +175,7 @@ async def test_lost_refdomains_are_counted(db_session: AsyncSession) -> None:
     await _points(db_session, project, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
     await _points(db_session, project, [120.0, 100.0, 80.0], Metric.REFDOMAINS)
 
-    found = await diagnose_domain(db_session, project.domain)
+    found = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
 
     assert found is not None
     assert found.refdomains.bought is True
@@ -188,16 +186,12 @@ async def test_diagnose_writes_nothing(db_session: AsyncSession) -> None:
     """E6: диагностика ничего не пишет — ни вердиктов, ни статусов."""
     project = await _project(db_session, "quiet.example.com")
     await _points(db_session, project, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
-    before_rows = (
-        await db_session.execute(select(func.count()).select_from(Verdict))
-    ).scalar_one()
+    before_rows = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()
     before_status = project.status
 
-    await diagnose_domain(db_session, project.domain)
+    await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
 
-    after_rows = (
-        await db_session.execute(select(func.count()).select_from(Verdict))
-    ).scalar_one()
+    after_rows = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()
     assert after_rows == before_rows
     assert project.status is before_status
 
@@ -213,10 +207,10 @@ async def test_poor_list_is_stable_and_only_poor(db_session: AsyncSession) -> No
         db_session, growing, [1000.0, 1500.0, 2000.0, 2600.0, 3200.0, 4000.0], Metric.ORG_TRAFFIC
     )
     await seed_thresholds(db_session)
-    await classify_all(db_session)
+    await classify_all(db_session, source=MetricSource.FIXTURE)
 
-    first = await diagnose_poor(db_session)
-    second = await diagnose_poor(db_session)
+    first = await diagnose_poor(db_session, source=MetricSource.FIXTURE)
+    second = await diagnose_poor(db_session, source=MetricSource.FIXTURE)
 
     domains = [item.domain for item in first]
     assert domains == sorted(domains), "порядок по домену, а не как вернула база"
@@ -260,6 +254,6 @@ async def test_normalization_refusal_reaches_every_path(db_session: AsyncSession
     await db_session.flush()
 
     with pytest.raises(ThresholdsError):
-        await recalc(db_session, "2026-09-N")
+        await recalc(db_session, "2026-09-N", source=MetricSource.FIXTURE)
     with pytest.raises(ThresholdsError):
-        await preview(db_session, "2026-09-N")
+        await preview(db_session, "2026-09-N", source=MetricSource.FIXTURE)

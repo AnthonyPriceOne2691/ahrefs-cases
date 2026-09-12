@@ -210,9 +210,7 @@ def _next_month(anchor: date) -> date:
     return date(total // 12, total % 12 + 1, 1)
 
 
-async def diagnose_poor(
-    session: AsyncSession, *, source: MetricSource = MetricSource.FIXTURE
-) -> list[Diagnosis]:
+async def diagnose_poor(session: AsyncSession, *, source: MetricSource) -> list[Diagnosis]:
     """Разбор всех «плохих» по действующей версии порогов.
 
     Чтение живёт здесь же, а не в отдельном модуле: правило диагноза — чистые
@@ -241,7 +239,7 @@ async def diagnose_poor(
 
 
 async def diagnose_domain(
-    session: AsyncSession, domain: str, *, source: MetricSource = MetricSource.FIXTURE
+    session: AsyncSession, domain: str, *, source: MetricSource
 ) -> Diagnosis | None:
     """Разбор одного проекта независимо от его группы.
 

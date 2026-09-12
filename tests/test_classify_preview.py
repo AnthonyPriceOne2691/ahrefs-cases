@@ -57,9 +57,7 @@ async def _project(session: AsyncSession, domain: str) -> Project:
         "fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
     )
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
-    return (
-        (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
-    )
+    return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
 
 async def _series(session: AsyncSession, project: Project, growth: float) -> None:
@@ -100,7 +98,7 @@ async def _classified(session: AsyncSession, domain: str, growth: float) -> Proj
     project = await _project(session, domain)
     await _series(session, project, growth)
     await seed_thresholds(session)
-    await classify_all(session)
+    await classify_all(session, source=MetricSource.FIXTURE)
     return project
 
 
@@ -112,16 +110,12 @@ async def test_preview_writes_nothing(db_session: AsyncSession) -> None:
     """
     project = await _classified(db_session, "quiet.example.com", growth=1.5)
     softer = await _ruleset(db_session, "2026-09-P1", medium_growth_pct=5.0)
-    before_rows = (
-        await db_session.execute(select(func.count()).select_from(Verdict))
-    ).scalar_one()
+    before_rows = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()
     before_status = project.status
 
-    report = await preview(db_session, softer.version)
+    report = await preview(db_session, softer.version, source=MetricSource.FIXTURE)
 
-    after_rows = (
-        await db_session.execute(select(func.count()).select_from(Verdict))
-    ).scalar_one()
+    after_rows = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()
     assert after_rows == before_rows, "предпросмотр не создал ни одной строки"
     assert project.status is before_status, "статус проекта не тронут"
     assert report.total == 1
@@ -138,11 +132,11 @@ async def test_preview_matches_what_recalc_will_do(db_session: AsyncSession) -> 
     await _classified(db_session, "same1.example.com", growth=1.5)
     project2 = await _project(db_session, "same2.example.com")
     await _series(db_session, project2, growth=1.05)
-    await classify_all(db_session)
+    await classify_all(db_session, source=MetricSource.FIXTURE)
     version = await _ruleset(db_session, "2026-09-P2", medium_growth_pct=20.0)
 
-    shown = await preview(db_session, version.version)
-    await recalc(db_session, version.version)
+    shown = await preview(db_session, version.version, source=MetricSource.FIXTURE)
+    await recalc(db_session, version.version, source=MetricSource.FIXTURE)
 
     stored = {
         row.domain: row.group
@@ -169,7 +163,7 @@ async def test_no_changes_is_said_in_words(db_session: AsyncSession) -> None:
     await _classified(db_session, "stable.example.com", growth=1.5)
     same = await _ruleset(db_session, "2026-09-P3")
 
-    report = await preview(db_session, same.version)
+    report = await preview(db_session, same.version, source=MetricSource.FIXTURE)
 
     assert report.changes == ()
     assert report.unchanged == 1
@@ -187,7 +181,7 @@ async def test_project_without_verdict_is_shown_not_hidden(db_session: AsyncSess
     await _series(db_session, fresh, growth=1.5)
     version = await _ruleset(db_session, "2026-09-P4")
 
-    report = await preview(db_session, version.version)
+    report = await preview(db_session, version.version, source=MetricSource.FIXTURE)
 
     assert report.changes == ()
     assert [change.domain for change in report.first_time] == ["fresh.example.com"]
@@ -205,7 +199,7 @@ async def test_missing_data_is_shown_apart_from_unchanged(db_session: AsyncSessi
     await _classified(db_session, "gap.example.com", growth=1.5)
     demanding = await _ruleset(db_session, "2026-09-P5", baseline_months=3)
 
-    report = await preview(db_session, demanding.version)
+    report = await preview(db_session, demanding.version, source=MetricSource.FIXTURE)
 
     assert report.changes == ()
     assert report.unchanged == 0, "проект с нехваткой не считается неизменившимся"
@@ -225,11 +219,11 @@ async def test_directions_count_projects_and_are_stable(db_session: AsyncSession
         project = await _project(db_session, f"move{index}.example.com")
         await _series(db_session, project, growth=1.5)
     await seed_thresholds(db_session)
-    await classify_all(db_session)
+    await classify_all(db_session, source=MetricSource.FIXTURE)
     strict = await _ruleset(db_session, "2026-09-P6", medium_growth_pct=200.0)
 
-    first = await preview(db_session, strict.version)
-    second = await preview(db_session, strict.version)
+    first = await preview(db_session, strict.version, source=MetricSource.FIXTURE)
+    second = await preview(db_session, strict.version, source=MetricSource.FIXTURE)
 
     assert sum(first.directions().values()) == len(first.changes)
     assert list(first.directions()) == list(second.directions())
@@ -250,7 +244,7 @@ async def test_status_of_projects_stays_untouched(db_session: AsyncSession) -> N
     version = await _ruleset(db_session, "2026-09-P7")
     before = project.status
 
-    await preview(db_session, version.version)
+    await preview(db_session, version.version, source=MetricSource.FIXTURE)
 
     assert project.status is before, "статус остался тем, каким был до предпросмотра"
     assert project.status is not ProjectStatus.CLASSIFIED
@@ -265,12 +259,12 @@ async def test_preview_after_recalc_reports_no_changes(db_session: AsyncSession)
     """
     await _classified(db_session, "applied.example.com", growth=1.5)
     version = await _ruleset(db_session, "2026-09-P8", medium_growth_pct=20.0)
-    await recalc(db_session, version.version)
+    await recalc(db_session, version.version, source=MetricSource.FIXTURE)
     for ruleset in (await db_session.execute(select(Ruleset))).scalars().all():
         ruleset.is_active = ruleset.id == version.id
     await db_session.flush()
 
-    report = await preview(db_session, version.version)
+    report = await preview(db_session, version.version, source=MetricSource.FIXTURE)
 
     assert report.changes == ()
     assert report.first_time == ()

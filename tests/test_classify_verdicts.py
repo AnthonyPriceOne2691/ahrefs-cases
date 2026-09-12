@@ -26,7 +26,7 @@ from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import parse_csv_text
-from ahrefs_cases.storage._enums import Group, ProjectStatus
+from ahrefs_cases.storage._enums import Group, MetricSource, ProjectStatus
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -103,7 +103,7 @@ async def test_without_stage_two_there_are_no_good_projects(db_session: AsyncSes
     projects = await _prepare(db_session, ["d0.example.com"], stage2=False)
     ruleset = await seed_thresholds(db_session)
 
-    decision = await classify_project(db_session, projects[0], ruleset)
+    decision = await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
 
     assert decision.group is Group.MEDIUM
     supporting = next(r for r in decision.reasons if r.subject == "good.supporting_required")
@@ -155,7 +155,7 @@ async def test_verdict_keeps_the_ruleset_version(db_session: AsyncSession) -> No
     projects = await _prepare(db_session, ["d0.example.com"])
     ruleset = await seed_thresholds(db_session)
 
-    decision = await classify_project(db_session, projects[0], ruleset)
+    decision = await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
     await db_session.flush()
 
     verdict = (await db_session.execute(select(Verdict))).scalars().one()
@@ -185,8 +185,12 @@ async def test_other_version_gives_its_own_verdict(db_session: AsyncSession) -> 
     db_session.add(strict)
     await db_session.flush()
 
-    lenient_decision = await classify_project(db_session, projects[0], lenient)
-    strict_decision = await classify_project(db_session, projects[0], strict)
+    lenient_decision = await classify_project(
+        db_session, projects[0], lenient, source=MetricSource.FIXTURE
+    )
+    strict_decision = await classify_project(
+        db_session, projects[0], strict, source=MetricSource.FIXTURE
+    )
     await db_session.flush()
 
     verdicts = (await db_session.execute(select(Verdict))).scalars().all()
@@ -200,7 +204,7 @@ async def test_classify_all_reports_distribution(db_session: AsyncSession) -> No
     await _prepare(db_session, ["d0.example.com", "d2.example.com", "d4.example.com"])
     await seed_thresholds(db_session)
 
-    report = await classify_all(db_session)
+    report = await classify_all(db_session, source=MetricSource.FIXTURE)
 
     assert report.total == 3
     assert sum(report.by_group.values()) == 3
@@ -212,7 +216,7 @@ async def test_classified_project_changes_status(db_session: AsyncSession) -> No
     projects = await _prepare(db_session, ["d0.example.com"])
     ruleset = await seed_thresholds(db_session)
 
-    await classify_project(db_session, projects[0], ruleset)
+    await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
     await db_session.flush()
 
     assert projects[0].status is ProjectStatus.CLASSIFIED
@@ -227,8 +231,8 @@ async def test_reclassification_updates_not_duplicates(db_session: AsyncSession)
     projects = await _prepare(db_session, ["d0.example.com"])
     ruleset = await seed_thresholds(db_session)
 
-    await classify_project(db_session, projects[0], ruleset)
-    await classify_project(db_session, projects[0], ruleset)
+    await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
+    await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
     await db_session.flush()
 
     count = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()

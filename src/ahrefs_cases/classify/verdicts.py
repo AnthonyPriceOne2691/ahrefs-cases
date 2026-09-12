@@ -68,7 +68,7 @@ async def compute_verdict(
     project: Project,
     ruleset: Ruleset,
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> Computed:
     """Посчитать вердикт и **не** записывать. Ahrefs не трогается.
 
@@ -121,7 +121,7 @@ async def evaluate(
     projects: Sequence[Project],
     ruleset: Ruleset,
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> list[Evaluated]:
     """Посчитать вердикты по версии порогов и проверить покрытие. Без записи."""
     windows = thresholds_of(ruleset).windows
@@ -148,7 +148,7 @@ async def classify_project(
     project: Project,
     ruleset: Ruleset,
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> Decision:
     """Вердикт одного проекта — посчитать и записать."""
     computed = await compute_verdict(session, project, ruleset, source=source)
@@ -160,7 +160,7 @@ async def classify_projects(
     session: AsyncSession,
     projects: Sequence[Project],
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> ClassifyReport:
     """Классифицировать список проектов по действующей версии порогов."""
     ruleset = await active_ruleset(session)
@@ -172,9 +172,7 @@ async def classify_projects(
     return ClassifyReport(ruleset_version=ruleset.version, total=len(projects), by_group=by_group)
 
 
-async def classify_all(
-    session: AsyncSession, *, source: MetricSource = MetricSource.FIXTURE
-) -> ClassifyReport:
+async def classify_all(session: AsyncSession, *, source: MetricSource) -> ClassifyReport:
     projects = list((await session.execute(select(Project))).scalars().all())
     return await classify_projects(session, projects, source=source)
 

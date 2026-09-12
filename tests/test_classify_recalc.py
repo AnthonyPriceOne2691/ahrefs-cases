@@ -63,9 +63,7 @@ async def _project(session: AsyncSession, domain: str) -> Project:
         "fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
     )
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
-    return (
-        await session.execute(select(Project).where(Project.domain == domain))
-    ).scalars().one()
+    return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
 
 async def _series(session: AsyncSession, project: Project, values: dict[date, float]) -> None:
@@ -109,14 +107,16 @@ async def test_recalc_keeps_the_previous_verdict(db_session: AsyncSession) -> No
     project = await _project(db_session, "keeps.example.com")
     await _series(db_session, project, _growing())
     await seed_thresholds(db_session)
-    await classify_all(db_session)
+    await classify_all(db_session, source=MetricSource.FIXTURE)
     first = await _ruleset(db_session, "2026-09-B", point_a_months=3)
 
-    report = await recalc(db_session, first.version)
+    report = await recalc(db_session, first.version, source=MetricSource.FIXTURE)
 
     verdicts = (
-        await db_session.execute(select(Verdict).where(Verdict.project_id == project.id))
-    ).scalars().all()
+        (await db_session.execute(select(Verdict).where(Verdict.project_id == project.id)))
+        .scalars()
+        .all()
+    )
     assert report.recalculated == 1
     assert len({verdict.ruleset_id for verdict in verdicts}) == 2, "две версии, два вердикта"
 
@@ -126,7 +126,7 @@ async def test_activation_leaves_exactly_one_active(db_session: AsyncSession) ->
     project = await _project(db_session, "activate.example.com")
     await _series(db_session, project, _growing())
     seeded = await seed_thresholds(db_session)
-    await classify_all(db_session)
+    await classify_all(db_session, source=MetricSource.FIXTURE)
     before = (
         await db_session.execute(
             select(func.count()).select_from(Verdict).where(Verdict.ruleset_id == seeded.id)
@@ -137,8 +137,10 @@ async def test_activation_leaves_exactly_one_active(db_session: AsyncSession) ->
     activated = await activate(db_session, other.version)
 
     active = (
-        await db_session.execute(select(Ruleset).where(Ruleset.is_active.is_(True)))
-    ).scalars().all()
+        (await db_session.execute(select(Ruleset).where(Ruleset.is_active.is_(True))))
+        .scalars()
+        .all()
+    )
     after = (
         await db_session.execute(
             select(func.count()).select_from(Verdict).where(Verdict.ruleset_id == seeded.id)
@@ -154,8 +156,8 @@ async def test_repeated_recalc_updates_instead_of_duplicating(db_session: AsyncS
     await _series(db_session, project, _growing())
     ruleset = await _ruleset(db_session, "2026-09-D")
 
-    await recalc(db_session, ruleset.version)
-    await recalc(db_session, ruleset.version)
+    await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
+    await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
     count = (
         await db_session.execute(
@@ -176,7 +178,7 @@ async def test_recalc_touches_no_network(db_session: AsyncSession) -> None:
         await _series(db_session, project, _growing())
     ruleset = await _ruleset(db_session, "2026-09-E")
 
-    report = await recalc(db_session, ruleset.version)
+    report = await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
     assert report.total == 10
     assert report.recalculated == 10
@@ -210,7 +212,7 @@ async def test_version_asking_unbought_months_is_skipped(db_session: AsyncSessio
     await _series(db_session, project, _growing())
     ruleset = await _ruleset(db_session, "2026-09-G", pre_start_baseline_months=3)
 
-    report = await recalc(db_session, ruleset.version)
+    report = await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
     assert report.recalculated == 0
     assert [item.domain for item in report.skipped] == ["baseline.example.com"]
@@ -235,7 +237,7 @@ async def test_wider_window_inside_bought_history_is_silent(db_session: AsyncSes
     await _series(db_session, project, _growing())
     ruleset = await _ruleset(db_session, "2026-09-H", point_a_months=6, point_b_months=6)
 
-    report = await recalc(db_session, ruleset.version)
+    report = await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
     assert report.skipped == []
     assert report.recalculated == 1
@@ -249,10 +251,10 @@ async def test_empty_history_gets_a_verdict_not_a_skip(db_session: AsyncSession)
     будет». Первое чинится деньгами, второе — решением человека о проекте.
     Слить их значит показать заказчику ложную причину.
     """
-    project = await _project(db_session, "silent.example.com")
+    await _project(db_session, "silent.example.com")
     ruleset = await _ruleset(db_session, "2026-09-I", pre_start_baseline_months=3)
 
-    report = await recalc(db_session, ruleset.version)
+    report = await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
     assert report.skipped == []
     assert report.by_group.get(Group.INSUFFICIENT_DATA) == 1

@@ -103,7 +103,7 @@ async def preview(
     version: str,
     projects: Sequence[Project] | None = None,
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> PreviewReport:
     """Что даст эта версия порогов. **Ничего не пишет** — ни вердиктов, ни статусов.
 

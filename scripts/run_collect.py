@@ -148,7 +148,7 @@ async def _classify() -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await classify_all(session)
+        report = await classify_all(session, source=config_source())
         await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.total else 1
@@ -235,7 +235,7 @@ async def _explain(domain: str) -> int:
             print(f"проект не найден: {domain}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
         ruleset = await active_ruleset(session)
-        decision = await classify_project(session, project, ruleset)
+        decision = await classify_project(session, project, ruleset, source=config_source())
         await session.commit()
 
     print(

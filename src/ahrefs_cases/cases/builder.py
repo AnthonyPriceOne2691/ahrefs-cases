@@ -238,7 +238,7 @@ async def build_cases(
     *,
     domain: str | None = None,
     version: str | None = None,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> CaseReport:
     """Собрать кейсы по вердиктам версии порогов — по умолчанию действующей.
 

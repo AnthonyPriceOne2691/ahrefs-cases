@@ -235,7 +235,7 @@ async def test_four_outcomes_are_counted_separately(db_session: AsyncSession) ->
         await _stored_verdict(db_session, project, ruleset, group)
     await _stored_project(db_session, "fresh.example")
 
-    report = await build_cases(db_session)
+    report = await build_cases(db_session, source=MetricSource.FIXTURE)
 
     assert len(report.by_outcome(CaseOutcome.BUILT)) == 2
     assert [item.domain for item in report.by_outcome(CaseOutcome.NOT_ELIGIBLE)] == ["poor.example"]
@@ -266,8 +266,8 @@ async def test_case_follows_the_verdict_version_not_the_active_one(
     )
     await db_session.flush()
 
-    by_active = await build_cases(db_session)
-    by_old = await build_cases(db_session, version="2026-08-A")
+    by_active = await build_cases(db_session, source=MetricSource.FIXTURE)
+    by_old = await build_cases(db_session, version="2026-08-A", source=MetricSource.FIXTURE)
 
     assert by_active.by_outcome(CaseOutcome.NO_VERDICT)[0].domain == "good.example"
     built = by_old.by_outcome(CaseOutcome.BUILT)

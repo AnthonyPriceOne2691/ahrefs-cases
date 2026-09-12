@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from ahrefs_cases.api.deps import SessionDep, require_right
+from ahrefs_cases.api.routers.projects import configured_source
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
     PreviewChange,
@@ -120,7 +121,9 @@ async def save_ruleset(
 async def preview_ruleset(version: str, session: SessionDep, _: ReadDep = None) -> PreviewView:
     """Кто сменит группу при этой версии. Ничего не записывает."""
     try:
-        report = await preview_report(session, version)
+        # Источник называется явно: умолчание `FIXTURE` в бою показало бы
+        # «никто не сменит группу» по пустым рядам (третье повторение L53).
+        report = await preview_report(session, version, source=configured_source())
     except ThresholdsError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return PreviewView(
@@ -155,7 +158,7 @@ async def activate_ruleset(version: str, session: SessionDep, _: EditDep = None)
 async def recalc_ruleset(version: str, session: SessionDep, _: EditDep = None) -> dict[str, object]:
     """Пересчитать вердикты по версии. Ahrefs не трогается — это бесплатно."""
     try:
-        report = await recalc(session, version)
+        report = await recalc(session, version, source=configured_source())
     except ThresholdsError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return {"version": version, "lines": report.as_lines()}

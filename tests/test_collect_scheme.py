@@ -332,6 +332,6 @@ async def test_breakdown_counts_projects_not_tasks(
     assert breakdown.units_if_history == 198 + 55
     assert breakdown.units_if_auto == 100 + 55
     assert "экономия 98" in "\n".join(breakdown.as_lines())
-    assert all(
-        share.endpoint == "metrics-history" for share in breakdown.shares
-    ), "на шаге 1 endpoint один, и разрез по нему вырождается в прежний"
+    assert all(share.endpoint == "metrics-history" for share in breakdown.shares), (
+        "на шаге 1 endpoint один, и разрез по нему вырождается в прежний"
+    )

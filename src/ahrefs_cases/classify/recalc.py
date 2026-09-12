@@ -108,7 +108,7 @@ async def recalc(
     version: str,
     projects: Sequence[Project] | None = None,
     *,
-    source: MetricSource = MetricSource.FIXTURE,
+    source: MetricSource,
 ) -> RecalcReport:
     """Пересчитать вердикты по версии порогов. Ahrefs не трогается.
 

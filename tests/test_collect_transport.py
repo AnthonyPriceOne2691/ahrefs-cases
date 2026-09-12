@@ -163,7 +163,9 @@ async def test_live_sends_minimal_select() -> None:
         await AhrefsLive(AhrefsTransport(client)).fetch_history(METRICS_HISTORY, REQUEST)
 
     assert seen["select"] == "date,org_traffic"
-    assert "org_cost" not in seen["select"], "второе поле удваивает цену строки, а читателя не имеет"
+    assert "org_cost" not in seen["select"], (
+        "второе поле удваивает цену строки, а читателя не имеет"
+    )
     assert "paid_traffic" not in seen["select"]
     assert seen["history_grouping"] == "monthly"
     assert seen["mode"] == "subdomains"
