@@ -45,6 +45,7 @@ from ahrefs_cases.collect.quota import QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
     add_item,
     count_outcome,
+    failure_reason,
     finish_run,
     open_run,
     reject_run,
@@ -476,7 +477,7 @@ async def _fail_run(session: AsyncSession, run: Run, exc: Exception) -> None:
     """
     try:
         await session.rollback()
-        await finish_run(session, run, error=f"{type(exc).__name__}: {exc}")
+        await finish_run(session, run, error=failure_reason(exc))
         await session.commit()
     except SQLAlchemyError:
         # База недоступна совсем: статус сохранить нечем. Прогон останется в

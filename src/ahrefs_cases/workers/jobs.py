@@ -19,6 +19,7 @@ import logging
 from sqlalchemy import select
 
 from ahrefs_cases.classify.windows import point_windows
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.collect.runner import collect_projects
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
@@ -87,7 +88,7 @@ async def _run_guarded(run_id: int, work: object) -> None:
         await _finish(run_id, RunStatus.DONE, str(summary), only_if_open=True)
     except Exception as exc:
         logger.exception("job_failed", extra={"run_id": run_id})
-        await _finish(run_id, RunStatus.FAILED, f"{type(exc).__name__}: {exc}")
+        await _finish(run_id, RunStatus.FAILED, failure_reason(exc))
         raise
     finally:
         await dispose_engine()

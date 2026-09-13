@@ -42,6 +42,7 @@ from ahrefs_cases.intake.accept import (
     read_source,
 )
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError
+from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
 from ahrefs_cases.storage._enums import Group, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -75,12 +76,24 @@ async def _intake(reference: str) -> int:
     return 0 if report.accepted else 1
 
 
+class OnlyNotADomainError(ValueError):
+    """В `--only` названо то, что доменом не является."""
+
+
 def _only(raw: str | None) -> list[str] | None:
     """Список доменов из `--only`: перечисление через запятую или файл со списком.
 
     Файл — потому что боевой список приходит файлом, и перепечатывать сотню
     доменов в командную строку никто не станет. Пусто — значит все проекты
     базы, и это отдельное решение человека, а не умолчание «на всякий случай».
+
+    **Имена приводятся к канону тем же вызовом, что и приём.** В базе лежит
+    канонический хост: `ПРОВЕРКА-Рост.example` приём превратил в
+    `xn----7sbfmzvfbjddnn.example`, а фильтр сравнивал строку как её набрали — и
+    отвечал «в базе нет проектов» на проект, созданный минуту назад из того же
+    файла. Канон домена знает `intake.normalize`, значит тот, кто называет
+    домен снаружи, обязан позвать его же: двух правил соответствия имён быть
+    не должно.
     """
     if not raw:
         return None
@@ -89,7 +102,26 @@ def _only(raw: str | None) -> list[str] | None:
         names = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
     else:
         names = [name.strip() for name in raw.split(",")]
-    return [name for name in names if name]
+    return [_canonical(name) for name in names if name]
+
+
+def _canonical(name: str) -> str:
+    """Имя из `--only` → канонический хост, или отказ с причиной.
+
+    Отказ здесь — исключение, а не значение (в отличие от приёма): в списке на
+    сотню доменов одна плохая строка пропускается с пометкой, а в `--only`
+    человек называет ровно то, что хочет собрать. Пропустить названное молча
+    значит собрать не то, о чём просили.
+    """
+    canonical = normalize_domain(name)
+    if isinstance(canonical, DomainRejected):
+        message = f"{name}: не домен ({canonical.reason.value})"
+        raise OnlyNotADomainError(message)
+    if canonical != name:
+        # Превращение показывается, иначе человек не поймёт, почему в отчёте
+        # прогона другое имя, чем он набрал.
+        print(f"домен приведён к канону: {name} → {canonical}")
+    return canonical
 
 
 async def _collect(*, refresh: bool = False, only: list[str] | None = None) -> int:
@@ -312,6 +344,13 @@ async def _main(args: argparse.Namespace) -> int:
             return await _explain(args.domain)
         code = await _intake(args.source)
         return code or await _collect(refresh=args.refresh)
+    except OnlyNotADomainError as exc:
+        # Отдельный код возврата: «в --only не домен» чинится правкой команды,
+        # а не повтором прогона. Общий обработчик ниже назвал бы это «прогон
+        # не завершён» — то есть отправил бы человека смотреть журнал прогона,
+        # которого не было.
+        print(f"--only: {exc}", file=sys.stderr)
+        return _EXIT_BAD_SOURCE
     except KeyboardInterrupt:
         # Не ошибка: человек остановил прогон сам. Уже собранное сохранено
         # чекпойнтами, следующий запуск догрузит остаток.

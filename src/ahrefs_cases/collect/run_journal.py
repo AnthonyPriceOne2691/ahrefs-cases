@@ -133,6 +133,38 @@ async def count_outcome(session: AsyncSession, run_id: int, outcome: RunItemOutc
     return int((await session.execute(stmt)).scalar_one())
 
 
+_REASON_LIMIT = 400
+"""Сколько символов отчёта об отказе показывать. `Run.error` — колонка `Text`,
+ограничение не от базы: строку читают глазами в таблице прогонов, и трактат
+там не читается."""
+
+
+def failure_reason(exc: BaseException) -> str:
+    """Отказ одной строкой — с первопричиной, а не только с последней ошибкой.
+
+    Python хранит всю цепочку (`__cause__` / `__context__`), а в журнал до сих
+    пор попадало одно исключение — то, которое поймали последним. Живой прогон
+    13.09.2026 показал цену: задача упала `AttributeError` (у воркера в памяти
+    был старый модуль конфига), запись причины упала следом `MissingGreenlet`,
+    и в журнале осталась **вторая**. Оператор читает таблицу прогонов, видит
+    ошибку про greenlet и чинит событийный цикл вместо перезапуска воркера.
+
+    Правило: ошибка, случившаяся при обработке другой, почти всегда следствие.
+    Называем обе — последнюю (она ближе к месту) и первую (она объясняет).
+    """
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in chain:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+
+    last = f"{type(chain[0]).__name__}: {chain[0]}"
+    if len(chain) == 1:
+        return last[:_REASON_LIMIT]
+    root = chain[-1]
+    return f"{last} (первопричина — {type(root).__name__}: {root})"[:_REASON_LIMIT]
+
+
 async def finish_run(session: AsyncSession, run: Run, *, error: str = "") -> Run:
     """Закрыть прогон, посчитав итоги по его же записям.
 

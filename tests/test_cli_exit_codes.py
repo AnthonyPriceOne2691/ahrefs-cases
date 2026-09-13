@@ -17,6 +17,22 @@ _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_collect.py"
 _EXIT_BAD_SOURCE = 2
 
 
+def _cli_module() -> object:
+    """CLI как модуль: `--only` разбирается до всякой сети и базы.
+
+    Импорт по пути — скрипт не пакет; `sys.modules` заполняется до
+    `exec_module`, иначе `@dataclass` внутри не находит собственный модуль.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("run_collect", _SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(_SCRIPT), *args],
@@ -54,3 +70,29 @@ def test_help_works_without_database() -> None:
 
     assert result.returncode == 0
     assert "stage2" in result.stdout
+
+
+def test_only_accepts_the_domain_as_a_human_typed_it() -> None:
+    """E1/E2: `--only` приводит имя к канону тем же вызовом, что и приём.
+
+    В базе лежит канонический хост, а человек набирает то, что видит в своём
+    файле: `ПРОВЕРКА-Рост.example`, `WWW.Example.COM/path`. Прежде фильтр
+    сравнивал строку как набрана и отвечал «в базе нет проектов» на проект,
+    созданный минуту назад из того же файла.
+    """
+    module = _cli_module()
+
+    assert module._only("WWW.Example.COM/path") == ["example.com"]
+    assert module._only("Пример.Рф, example.org") == ["xn--e1afmkfd.xn--p1ai", "example.org"]
+
+
+def test_only_refuses_what_is_not_a_domain() -> None:
+    """E3: не-домен — отказ с причиной нормализатора, а не «в базе нет».
+
+    Разница в том, что чинить: «не домен» чинится правкой команды, «в базе
+    нет» — загрузкой списка. Один ответ на оба случая отправляет не туда.
+    """
+    module = _cli_module()
+
+    with pytest.raises(module.OnlyNotADomainError, match="invalid_domain"):
+        module._only("не домен вовсе")
