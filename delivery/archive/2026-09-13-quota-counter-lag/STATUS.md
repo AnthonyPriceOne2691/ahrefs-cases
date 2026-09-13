@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_quota.py::test_spend_the_counter_has_not_seen_is_subtracted
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («сделать всё до калибровочных кейсов»; дефект найден живым прогоном того же дня и стоит перед боевым прогоном)
