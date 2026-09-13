@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_classify_coverage_agreement.py::test_classification_and_preview_agree
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («протестировать всё в сервисе… чтобы осталась только калибровка» — дефект найден этой проверкой и блокирует её)
