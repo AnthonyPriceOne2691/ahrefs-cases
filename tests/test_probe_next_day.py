@@ -132,3 +132,98 @@ def test_fixture_mode_refuses_to_answer(tmp_path: Path) -> None:
     assert result.returncode == _EXIT_NOT_LIVE
     assert "не live" in result.stderr
     assert not list(tmp_path.glob("*.json"))
+
+
+def _quota(used: int) -> dict[str, int]:
+    return {"units_limit_api_key": 2_000_000, "units_usage_api_key": used}
+
+
+def _with_quota(used: int) -> dict[str, Any]:
+    return {"taken_at": "2026-09-12T10:00:00+00:00", "quota": _quota(used), "traffic": {}}
+
+
+def test_absolute_counter_is_not_an_answer(capsys: pytest.CaptureFixture[str]) -> None:
+    """Первый снимок: счётчик ненулевой — и это ничего не значит.
+
+    Первая редакция пробника считала ответом «счётчик больше потраченного» и на
+    живом ключе напечатала «✓ обновился», хотя у ключа заказчика израсходовано
+    полмиллиона независимо от наших запросов. Ошибка нашлась первым же живым
+    запуском 13.09.2026.
+    """
+    probe._report_counter(_quota(532_476), None, 2_262)
+
+    printed = capsys.readouterr().out
+    assert "✓" not in printed
+    assert "второй снимок" in printed
+
+
+def test_motionless_counter_disarms_preflight(capsys: pytest.CaptureFixture[str]) -> None:
+    """Счётчик не сдвинулся, а по журналу тратили — остаток из API верить нельзя."""
+    probe._report_counter(_quota(530_812), _with_quota(530_812), 2_262)
+
+    printed = capsys.readouterr().out
+    assert "✗" in printed
+    assert "не уменьшается" in printed
+
+
+def test_moving_counter_names_the_gap_with_our_estimate(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Сдвинулся — запросы тарифицируются; расхождение со сметой называется числом."""
+    probe._report_counter(_quota(532_476), _with_quota(530_812), 2_262)
+
+    printed = capsys.readouterr().out
+    assert "✓" in printed
+    assert "1664" in printed
+    assert "завышает" in printed
+
+
+def test_idle_period_proves_nothing(capsys: pytest.CaptureFixture[str]) -> None:
+    """Ничего не тратили и ничего не сдвинулось — это не подтверждение."""
+    probe._report_counter(_quota(530_812), _with_quota(530_812), 0)
+
+    printed = capsys.readouterr().out
+    assert "ничего не доказывает" in printed
+    assert "✓" not in printed
+
+
+def _pretend_live(monkeypatch: pytest.MonkeyPatch, snapshot: dict[str, Any]) -> None:
+    """Пройти дальше отказа фикстуры, не трогая сеть: шов `_refuse_reason`."""
+
+    async def _collect(*_args: object, **_kwargs: object) -> dict[str, Any]:
+        return snapshot
+
+    monkeypatch.setattr(probe, "_refuse_reason", lambda: None)
+    monkeypatch.setattr(probe, "_collect", _collect)
+
+
+def test_quota_only_does_not_overwrite_the_day_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Дешёвая проверка не имеет права испортить дорогую.
+
+    `--quota-only` не запрашивает месяцы. Запиши он снимок — он затёр бы полный
+    снимок того же дня, и завтрашнее сравнение по H2 сравнивало бы пустоту.
+    """
+    full = tmp_path / f"{probe._SNAPSHOT_PREFIX}2026-09-13.json"
+    full.write_text(json.dumps(_snapshot({"2026-09-01": 4_301_827.0})), encoding="utf-8")
+    _pretend_live(monkeypatch, {"taken_at": "сейчас", "quota": _quota(532_476), "traffic": {}})
+
+    code = probe._main(["ahrefs.com"], 3, tmp_path, quota_only=True)
+
+    assert code == 0
+    assert json.loads(full.read_text(encoding="utf-8"))["traffic"]["ahrefs.com"]
+    assert sorted(p.name for p in tmp_path.glob("*.json")) == [full.name]
+
+
+def test_full_run_writes_the_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Полный запуск снимок записывает — иначе сравнивать завтра будет нечего."""
+    taken = {"taken_at": "сейчас", "quota": _quota(532_476), "traffic": {"ahrefs.com": {}}}
+    _pretend_live(monkeypatch, taken)
+
+    code = probe._main(["ahrefs.com"], 3, tmp_path, quota_only=False)
+
+    assert code == 0
+    written = list(tmp_path.glob("*.json"))
+    assert len(written) == 1
+    assert json.loads(written[0].read_text(encoding="utf-8"))["quota"] == _quota(532_476)

@@ -6,8 +6,8 @@
       "Bash(rm -rf /:*)",
       "Bash(psql:*)",
       "Bash(mysql:*)",
-      "Bash(AHREFS_PROVIDER=live:*)",
       "Read(./.env)",
+      "Bash(AHREFS_PROVIDER=live:*)",
       "Read(./**/.env)"
     ],
     "ask": [
