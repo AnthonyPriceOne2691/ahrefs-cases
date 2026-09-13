@@ -8,6 +8,7 @@
 import { Alert, Text } from '@mantine/core';
 
 import type { RunRow } from '../../api/types';
+import { runWord } from '../status';
 
 export const RUNNING = new Set(['queued', 'running']);
 
@@ -15,7 +16,7 @@ export function RunLine({ run }: { run: RunRow }) {
   return (
     <Alert color={RUNNING.has(run.status) ? 'blue' : 'teal'} variant="light">
       <Text size="sm">
-        Прогон №{run.id}: {run.status}, проектов {run.projects_ok} из {run.projects_total},
+        Прогон №{run.id}: {runWord(run.status)}, проектов {run.projects_ok} из {run.projects_total},
         потрачено units {run.units_actual}.{run.error && ` Причина: ${run.error}`}
       </Text>
     </Alert>

@@ -28,13 +28,21 @@ export function Shell({ children }: { children: ReactNode }) {
       padding="lg"
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Group gap="sm">
+        {/* `wrap="nowrap"` — не косметика: высота шапки задана жёстко (56 px),
+            и перенос второй строки на узком экране наезжал на содержимое.
+            Почта уходит первой: из четырёх элементов она самая длинная и
+            единственная, которую человек про себя и так знает. Группа и выход
+            остаются — одно отвечает «под кем я вижу этот экран», второе нужно
+            на чужом ноутбуке. */}
+        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Title order={3}>Ahrefs Cases</Title>
+            <Title order={3} style={{ whiteSpace: 'nowrap' }}>
+              Ahrefs Cases
+            </Title>
           </Group>
-          <Group gap="sm">
-            <Text size="sm" c="dimmed">
+          <Group gap="sm" wrap="nowrap">
+            <Text size="sm" c="dimmed" visibleFrom="sm" data-shell="email">
               {user?.email}
             </Text>
             <Badge variant="light">{user?.group}</Badge>

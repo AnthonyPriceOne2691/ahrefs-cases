@@ -8,6 +8,7 @@ import { Badge, Table, Text } from '@mantine/core';
 
 import type { RunRow } from '../../api/types';
 import { num } from '../format';
+import { runWord } from '../status';
 
 /** Цвет статуса. Исходов пять, и «частично» — не то же, что «готово». */
 const STATUS_COLOR: Record<string, string> = {
@@ -49,7 +50,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                   color={STATUS_COLOR[run.status] ?? 'gray'}
                   data-status={run.status}
                 >
-                  {run.status}
+                  {runWord(run.status)}
                 </Badge>
               </Table.Td>
               <Table.Td>{moment(run.started_at ?? run.created_at)}</Table.Td>

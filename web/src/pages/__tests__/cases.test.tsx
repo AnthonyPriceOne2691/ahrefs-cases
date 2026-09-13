@@ -260,3 +260,20 @@ describe('пачка', () => {
     expect(screen.getByRole('button', { name: 'Скачать ZIP' })).toBeDisabled();
   });
 });
+
+describe('статусы кейсов', () => {
+  it('E10: статус кейса показан по-русски', async () => {
+    // «BUILT» посреди русского экрана — значение перечисления, а не состояние.
+    server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: [caseRow(1), caseRow(2, { status: 'published' })] },
+      '/api/cases/pack': { status: 200, body: PACK },
+    });
+
+    show();
+
+    expect(await screen.findByText('собран')).toBeInTheDocument();
+    expect(screen.getByText('опубликован')).toBeInTheDocument();
+    expect(screen.queryByText('built')).not.toBeInTheDocument();
+  });
+});

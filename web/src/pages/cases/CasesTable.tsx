@@ -10,6 +10,7 @@
 import { Badge, Button, Table, Text } from '@mantine/core';
 
 import type { CaseRow } from '../../api/types';
+import { caseWord } from '../status';
 
 const STATUS_COLOR: Record<string, string> = {
   draft: 'gray',
@@ -49,8 +50,12 @@ export function CasesTable({ rows, busyId, onDownload }: Props) {
               <Table.Td>{row.version}</Table.Td>
               <Table.Td>{moment(row.created_at)}</Table.Td>
               <Table.Td>
-                <Badge variant="light" color={STATUS_COLOR[row.status] ?? 'gray'}>
-                  {row.status}
+                <Badge
+                  variant="light"
+                  color={STATUS_COLOR[row.status] ?? 'gray'}
+                  data-status={row.status}
+                >
+                  {caseWord(row.status)}
                 </Badge>
               </Table.Td>
               <Table.Td>

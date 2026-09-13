@@ -78,7 +78,7 @@ describe('журнал прогонов', () => {
     const { calls } = server({ '/api/runs': { status: 200, body: [run(2, 'done')] } });
 
     renderApp(<RunsPage />);
-    await screen.findByText('done');
+    await screen.findByText('готов');
     const after = calls.length;
     await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -92,6 +92,27 @@ describe('журнал прогонов', () => {
     renderApp(<RunsPage />);
 
     expect(await screen.findByText(/журнал обновляется сам/)).toBeInTheDocument();
+  });
+
+  it('E13: статус прогона показан по-русски', async () => {
+    // «done» посреди русского экрана — enum, а не исход. Человек читает исход.
+    server({ '/api/runs': { status: 200, body: [run(2, 'done'), run(1, 'rejected')] } });
+
+    renderApp(<RunsPage />);
+
+    expect(await screen.findByText('готов')).toBeInTheDocument();
+    // «Отклонён по квоте» — не «упал»: прогон не начинался и units не потрачены.
+    expect(screen.getByText('отклонён по квоте')).toBeInTheDocument();
+    expect(screen.queryByText('done')).not.toBeInTheDocument();
+  });
+
+  it('E14: незнакомый статус не выдумывается', async () => {
+    // Сервис знает больше экрана: сырое значение честнее придуманного слова.
+    server({ '/api/runs': { status: 200, body: [run(9, 'reaped')] } });
+
+    renderApp(<RunsPage />);
+
+    expect(await screen.findByText('reaped')).toBeInTheDocument();
   });
 
   it('E5: пустой журнал говорит словами и подсказывает, где запустить', async () => {
