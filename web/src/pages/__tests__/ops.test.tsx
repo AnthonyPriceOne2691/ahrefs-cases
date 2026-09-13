@@ -112,7 +112,13 @@ describe('журнал прогонов', () => {
 });
 
 describe('расход units', () => {
-  const USAGE = { spent: 5872, reserved: 2112, remaining: 9500, per_hundred_domains: 21120 };
+  const USAGE = {
+    spent: 5872,
+    reserved: 2112,
+    remaining: 9500,
+    uncounted: 0,
+    per_hundred_domains: 21120,
+  };
 
   it('E6: потрачено, резерв и остаток — три разных числа', async () => {
     server({
@@ -140,6 +146,35 @@ describe('расход units', () => {
     // Ноль читался бы как «квота кончилась» — то есть как запрет запускать.
     expect(await screen.findByText('остаток неизвестен')).toBeInTheDocument();
     expect(screen.getByText(/прогонов не было/)).toBeInTheDocument();
+  });
+
+  it('E11: расход, которого счётчик Ahrefs ещё не видит, назван отдельно', async () => {
+    // Замер 13.09.2026: счётчик отстаёт, а резерв снимается вместе со статусом
+    // прогона. Покажи мы один остаток — оператор увидел бы «хватает» там, где
+    // прогон оборвётся на середине.
+    server({
+      '/api/usage': { status: 200, body: { ...USAGE, uncounted: 2262 } },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    expect(await screen.findByText('остаток 9 500')).toBeInTheDocument();
+    expect(screen.getByText('счётчик Ahrefs ещё не видит 2 262')).toBeInTheDocument();
+    // Число, по которому считается прогон, названо прямо: 9500 − 2262.
+    expect(screen.getByText(/остатку 7 238 units/)).toBeInTheDocument();
+  });
+
+  it('E12: нечего вычитать — лишних чисел на экране нет', async () => {
+    server({
+      '/api/usage': { status: 200, body: USAGE },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    await screen.findByText('остаток 9 500');
+    expect(screen.queryByText(/счётчик Ahrefs ещё не видит/)).not.toBeInTheDocument();
   });
 
   it('E8: степени алертов различаются', async () => {

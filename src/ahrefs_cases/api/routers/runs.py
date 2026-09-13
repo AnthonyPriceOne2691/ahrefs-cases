@@ -24,7 +24,7 @@ from sqlalchemy import func, select, text
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.api.schemas import MAX_PAGE, RunEstimate, RunRow, RunStarted
 from ahrefs_cases.classify.windows import point_windows
-from ahrefs_cases.collect.budget import reserved_units
+from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.plan import build_stage1_plan
 from ahrefs_cases.collect.quota import preflight
@@ -107,7 +107,12 @@ async def estimate_run(
     )
     estimate = plan.estimated_units()
     reserved = await reserved_units(session)
-    state = await preflight(build_quota(), needed=estimate, reserved=reserved)
+    state = await preflight(
+        build_quota(),
+        needed=estimate,
+        reserved=reserved,
+        uncounted=await uncounted_spend(session),
+    )
     return RunEstimate(
         projects=len(projects),
         units_estimated=estimate,

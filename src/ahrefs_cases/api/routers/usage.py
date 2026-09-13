@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import UsageView
-from ahrefs_cases.collect.budget import reserved_units
+from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
 from ahrefs_cases.collect.factory import build_quota
 from ahrefs_cases.storage import LedgerKind
 from ahrefs_cases.storage.models.project import Project
@@ -44,6 +44,7 @@ async def usage(session: SessionDep) -> UsageView:
         or 0
     )
     reserved = await reserved_units(session)
+    uncounted = await uncounted_spend(session)
     projects = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
 
     remaining: int | None = None
@@ -59,5 +60,6 @@ async def usage(session: SessionDep) -> UsageView:
         spent=spent,
         reserved=reserved,
         remaining=remaining,
+        uncounted=uncounted,
         per_hundred_domains=round(spent / projects * _HUNDRED) if projects and spent else None,
     )

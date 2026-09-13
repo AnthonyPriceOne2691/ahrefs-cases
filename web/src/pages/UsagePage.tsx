@@ -1,18 +1,19 @@
 /**
  * Расход units — единственного платного ресурса сервиса.
  *
- * Резерв показан отдельным числом: он удерживает units идущего прогона, и без
- * него остаток выглядит больше, чем есть. Остаток, которого не узнали, — слово,
- * а не ноль: ноль означал бы «квота кончилась» и читался бы как запрет.
+ * Экран отвечает за загрузку, отказ и поводы; сами числа и то, что из них
+ * следует, живут в `usage/UsageTotals.tsx` — там же объяснено, почему их
+ * четыре. Остаток, которого не узнали, — слово, а не ноль: ноль означал бы
+ * «квота кончилась» и читался бы как запрет.
  */
-import { Alert, Badge, Container, Group, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '../api/client';
 import { fetchAlerts, fetchUsage } from '../api/ops';
 
-import { num } from './format';
 import { Alerts } from './usage/Alerts';
+import { UsageTotals } from './usage/UsageTotals';
 
 export function UsagePage() {
   const usage = useQuery({ queryKey: ['usage'], queryFn: fetchUsage });
@@ -35,27 +36,7 @@ export function UsagePage() {
               </Alert>
             )}
 
-            {usage.data && (
-              <>
-                <Group gap="xs">
-                  <Badge size="lg" variant="light" color="grape" data-usage="spent">
-                    потрачено {num(usage.data.spent)}
-                  </Badge>
-                  <Badge size="lg" variant="light" color="gray" data-usage="reserved">
-                    удержано резервом {num(usage.data.reserved)}
-                  </Badge>
-                  <Badge size="lg" variant="light" data-usage="remaining">
-                    остаток{' '}
-                    {usage.data.remaining === null ? 'неизвестен' : num(usage.data.remaining)}
-                  </Badge>
-                </Group>
-                <Text size="sm">
-                  {usage.data.per_hundred_domains === null
-                    ? 'Стоимость запуска на сто доменов пока не из чего вывести: прогонов не было.'
-                    : `Стоимость запуска на сто доменов по факту: ${num(usage.data.per_hundred_domains)} units.`}
-                </Text>
-              </>
-            )}
+            {usage.data && <UsageTotals usage={usage.data} />}
           </Stack>
         </Paper>
 

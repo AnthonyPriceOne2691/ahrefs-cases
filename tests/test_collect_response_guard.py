@@ -103,7 +103,9 @@ async def test_quota_without_keys_is_unknown_not_zero() -> None:
         return httpx.Response(200, json={"limits_and_usage": {"units": 10_000}})
 
     async with _client(handler) as client:
-        state = await preflight(LiveQuota(AhrefsTransport(client)), needed=100)
+        state = await preflight(
+            LiveQuota(AhrefsTransport(client)), needed=100, reserved=0, uncounted=0
+        )
 
     assert state.verdict is QuotaVerdict.UNKNOWN
     assert "units_limit_api_key" in state.reason

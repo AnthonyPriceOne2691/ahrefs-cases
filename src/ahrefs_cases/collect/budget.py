@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,11 @@ from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 
 logger = logging.getLogger(__name__)
+
+_LIVE_PROVIDER = "live"
+"""Значение `params_snapshot['provider']` у прогона, который ходил в настоящий
+Ahrefs. Строкой, а не enum'ом: снимок параметров — это JSON, записанный в тот
+день, и он обязан читаться даже если имена режимов потом поменяются."""
 
 
 def estimate_drift_pct(result: HistoryResult) -> float | None:
@@ -112,6 +118,51 @@ async def reserved_units(session: AsyncSession) -> int:
     )
     total: int | None = (await session.execute(stmt)).scalar_one()
     return total or 0
+
+
+async def live_spend_since(session: AsyncSession, moment: datetime) -> int:
+    """Сколько units потратили **живые** прогоны с этого момента, по журналу.
+
+    Живые — по снимку параметров прогона (`provider`), а не по всем строкам:
+    fixture-прогоны считают условные units по той же формуле, и вычитать их из
+    настоящего остатка Ahrefs значило бы уменьшать чужое число своей игрой.
+
+    Один запрос на весь проект: его же зовёт `scripts/probe_next_day.py`, когда
+    сверяет счётчик Ahrefs с нашим журналом. Две копии разошлись бы ровно тогда,
+    когда сверка начнёт что-то значить.
+    """
+    stmt = (
+        select(func.coalesce(func.sum(UnitsLedger.units_actual), 0))
+        .join(Run, Run.id == UnitsLedger.run_id)
+        .where(
+            UnitsLedger.kind == LedgerKind.SPENT,
+            Run.params_snapshot["provider"].astext == _LIVE_PROVIDER,
+            UnitsLedger.created_at >= moment,
+        )
+    )
+    total: int | None = (await session.execute(stmt)).scalar_one()
+    return total or 0
+
+
+async def uncounted_spend(session: AsyncSession, *, now: datetime | None = None) -> int:
+    """Расход, которого счётчик Ahrefs ещё не видит.
+
+    **Зачем.** Остаток из API — величина вчерашняя: замер 13.09.2026 показал,
+    что 50 units, потраченные минутами раньше, в `units_usage_api_key` не
+    отражены, а за сутки счётчик сдвигается. Резерв прогона эту дыру не
+    закрывает — он живёт только пока прогон в статусе `queued`/`running`
+    (`reserved_units`), то есть снимается раньше, чем счётчик обновляется.
+    В промежутке остаток завышен ровно на стоимость последнего прогона.
+
+    **Ошибка намеренно односторонняя.** Часть этого расхода счётчик может уже
+    учитывать — тогда мы вычтем её дважды и откажем лишний раз. Цена обратной
+    ошибки — прогон, оборванный на середине с половиной собранных проектов.
+
+    `now` параметром, а не `datetime.now()` внутри: иначе поведение проверяется
+    только подкруткой системных часов.
+    """
+    moment = (now or datetime.now(UTC)) - timedelta(hours=config.ahrefs.units_counter_lag_hours)
+    return await live_spend_since(session, moment)
 
 
 async def record_cached(session: AsyncSession, run_id: int, endpoint: str, target: str) -> None:

@@ -68,6 +68,9 @@ class QuotaState:
     """Что известно об остатке."""
 
     left: int | None
+    """Остаток **по ответу Ahrefs**, до вычетов. Резерв и неучтённый счётчиком
+    расход вычитаются при решении, но не здесь: человеку нужны оба числа — то,
+    что говорит провайдер, и то, что из этого следует."""
     verdict: QuotaVerdict
     reason: str = ""
 
@@ -137,11 +140,25 @@ class FixtureQuota:
         return self.left
 
 
-async def preflight(source: QuotaSource, *, needed: int, reserved: int = 0) -> QuotaState:
-    """Хватит ли квоты на прогон стоимостью `needed` при уже занятых `reserved`.
+async def preflight(
+    source: QuotaSource, *, needed: int, reserved: int, uncounted: int
+) -> QuotaState:
+    """Хватит ли квоты на прогон стоимостью `needed`.
 
-    Мягкий стоп по `AHREFS_UNITS_MIN_LEFT` — не украшение: заказчику нужен
-    запас на срочный ручной запрос, и прогон не должен съедать квоту до нуля.
+    Три вычета, и каждый закрывает свой срок:
+
+    - `reserved` — чужие прогоны, которые уже идут. Без него «кнопка неактивна
+      при нехватке» защищает только первого нажавшего из шести;
+    - `uncounted` — наш расход, которого счётчик Ahrefs ещё не видит
+      (`budget.uncounted_spend`). Замер 13.09.2026: счётчик отстаёт, а резерв
+      снимается по статусу прогона — то есть раньше. В этом промежутке остаток
+      из API завышен ровно на стоимость последнего прогона;
+    - `AHREFS_UNITS_MIN_LEFT` — неснижаемый запас на срочный ручной запрос
+      аналитика: прогон не должен съедать квоту до нуля.
+
+    **Умолчаний у вычетов нет** (урок L53). Предохранитель, которому можно не
+    передать аргумент, однажды его не получит — и молча пропустит прогон:
+    именно так `reserved=0` по умолчанию прожил три поставки.
     """
     try:
         left = await source.units_left()
@@ -157,7 +174,7 @@ async def preflight(source: QuotaSource, *, needed: int, reserved: int = 0) -> Q
             ),
         )
 
-    available = left - reserved
+    available = left - reserved - uncounted
     floor = config.ahrefs.units_min_left
     if available - needed < floor:
         return QuotaState(
@@ -165,7 +182,8 @@ async def preflight(source: QuotaSource, *, needed: int, reserved: int = 0) -> Q
             verdict=QuotaVerdict.NOT_ENOUGH,
             reason=(
                 f"не хватает units: остаток {left}, зарезервировано {reserved}, "
-                f"нужно {needed}, неснижаемый запас {floor}. "
+                f"потрачено помимо счётчика {uncounted}, нужно {needed}, "
+                f"неснижаемый запас {floor}. "
                 "Прогон не начат — поднимите лимит или дождитесь других прогонов."
             ),
         )

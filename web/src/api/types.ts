@@ -166,6 +166,8 @@ export interface UsageView {
   reserved: number;
   /** `null` — остаток не узнали. Это не ноль: ноль означал бы «квота кончилась». */
   remaining: number | null;
+  /** Расход, которого счётчик Ahrefs ещё не увидел: прогон считается по разнице. */
+  uncounted: number;
   per_hundred_domains: number | null;
 }
 

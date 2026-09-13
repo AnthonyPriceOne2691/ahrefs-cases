@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+import inspect
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import AhrefsUnavailableError
-from ahrefs_cases.collect.budget import reserved_units
+from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.quota import FixtureQuota, QuotaVerdict, preflight
@@ -22,8 +23,9 @@ from ahrefs_cases.collect.run_journal import open_run, start_run, system_user
 from ahrefs_cases.collect.runner import collect_all
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import parse_csv_text
-from ahrefs_cases.storage._enums import RunStatus
+from ahrefs_cases.storage._enums import LedgerKind, RunStatus
 from ahrefs_cases.storage.models.run import Run
+from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 
 COLUMNS = (
     "domain,period_start,period_end,niche,geo,service_type,"
@@ -181,8 +183,8 @@ async def test_unknown_and_not_enough_are_different_verdicts() -> None:
     «Мало квоты» — ждать или поднимать лимит; «остаток неизвестен» — чинить
     доступ к Ahrefs. Один код на оба заставил бы оператора гадать.
     """
-    not_enough = await preflight(FixtureQuota(left=100), needed=1000)
-    unknown = await preflight(BrokenQuota(), needed=10)
+    not_enough = await preflight(FixtureQuota(left=100), needed=1000, reserved=0, uncounted=0)
+    unknown = await preflight(BrokenQuota(), needed=10, reserved=0, uncounted=0)
 
     assert not_enough.verdict is QuotaVerdict.NOT_ENOUGH
     assert unknown.verdict is QuotaVerdict.UNKNOWN
@@ -196,7 +198,7 @@ async def test_soft_floor_keeps_a_reserve(monkeypatch: pytest.MonkeyPatch) -> No
     """
     monkeypatch.setattr(config.ahrefs, "units_min_left", 5000)
 
-    state = await preflight(FixtureQuota(left=10_000), needed=5_500)
+    state = await preflight(FixtureQuota(left=10_000), needed=5_500, reserved=0, uncounted=0)
 
     assert state.verdict is QuotaVerdict.NOT_ENOUGH
 
@@ -234,3 +236,65 @@ async def test_finished_run_releases_its_reserve(db_session: AsyncSession) -> No
     await collect_all(db_session, AhrefsFixture(), now=NOW)
 
     assert await reserved_units(db_session) == 0
+
+
+async def test_spend_the_counter_has_not_seen_is_subtracted() -> None:
+    """E1: свежий расход вычитается из ответа API.
+
+    Замер 13.09.2026: счётчик `units_usage_api_key` отстаёт — 50 units,
+    потраченные минутами раньше, в нём не видны. Резерв эту дыру не закрывает:
+    он снимается вместе со статусом прогона, то есть раньше. В промежутке
+    остаток завышен ровно на стоимость последнего прогона, и прогон, начатый в
+    это окно, оборвался бы на середине.
+    """
+    hidden = await preflight(FixtureQuota(left=10_000), needed=8_500, reserved=0, uncounted=0)
+    seen = await preflight(FixtureQuota(left=10_000), needed=8_500, reserved=0, uncounted=2_000)
+
+    assert hidden.verdict is QuotaVerdict.OK
+    assert seen.verdict is QuotaVerdict.NOT_ENOUGH
+    assert "помимо счётчика 2000" in seen.reason
+
+
+@pytest.mark.parametrize("guard", ["reserved", "uncounted"])
+def test_preflight_guards_have_no_default(guard: str) -> None:
+    """E4: предохранителю нельзя не передать вычет (урок L53).
+
+    `reserved=0` умолчанием прожил три поставки и означал «прогон видит только
+    свою квоту». Умолчание у вычета — это тихий выбор за вызывающего, а
+    проявляется он только там, где деньги настоящие.
+    """
+    parameter = inspect.signature(preflight).parameters[guard]
+
+    assert parameter.default is inspect.Parameter.empty
+
+
+async def test_uncounted_counts_only_live_runs(db_session: AsyncSession) -> None:
+    """E3: фикстурный прогон из настоящего остатка не вычитается.
+
+    Fixture-режим считает условные units по той же формуле. Вычитать их из
+    ответа Ahrefs значило бы уменьшать чужое число своей игрой — и разработка
+    молча запрещала бы боевые прогоны.
+    """
+    await _load(db_session, 5)
+    await collect_all(db_session, AhrefsFixture(), now=NOW)
+
+    assert await uncounted_spend(db_session) == 0
+
+
+async def test_old_spend_falls_out_of_the_window(db_session: AsyncSession) -> None:
+    """E2: расход старше окна отставания не вычитается второй раз.
+
+    Счётчик Ahrefs к этому времени его уже учёл. Не выпусти мы его из окна,
+    один и тот же прогон вычитался бы вечно, и остаток уезжал бы в ноль.
+    """
+    user = await system_user(db_session)
+    run = await open_run(db_session, started_by=user.id, projects_total=1)
+    run.params_snapshot = {"provider": "live"}
+    db_session.add(
+        UnitsLedger(run_id=run.id, kind=LedgerKind.SPENT, units_estimated=900, units_actual=900)
+    )
+    await db_session.flush()
+
+    fresh = datetime.now(UTC)
+    assert await uncounted_spend(db_session, now=fresh) == 900
+    assert await uncounted_spend(db_session, now=fresh + timedelta(hours=25)) == 0

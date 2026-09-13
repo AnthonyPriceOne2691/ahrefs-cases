@@ -39,16 +39,13 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import AhrefsTransport
+from ahrefs_cases.collect.budget import live_spend_since
 from ahrefs_cases.collect.cache import closed_through
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
-from ahrefs_cases.storage._enums import LedgerKind
-from ahrefs_cases.storage.models.run import Run
-from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 
 _QUOTA_PATH = "/v3/subscription-info/limits-and-usage"
@@ -78,9 +75,9 @@ def _shift_months(anchor: date, months: int) -> date:
 async def _live_spend(since: datetime) -> int | None:
     """Сколько units потратили живые прогоны с этого момента — по нашему журналу.
 
-    Сравнивается со **сдвигом** счётчика Ahrefs за тот же промежуток. Журнал и
-    есть то, чем мы объясняем счёт: разойдётся он со счётчиком провайдера —
-    разойдётся именно здесь.
+    Запрос не свой, а общий (`budget.live_spend_since`): этим же числом
+    `preflight` вычитает из ответа Ahrefs расход, которого счётчик ещё не видел.
+    Две копии разошлись бы ровно тогда, когда сверка начнёт что-то значить.
 
     Пробники в журнал не пишут: они ходят мимо прогона. Значит журнал — нижняя
     граница потраченного, и «счётчик сдвинулся меньше журнала» надо читать
@@ -92,16 +89,7 @@ async def _live_spend(since: datetime) -> int | None:
     try:
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            spent = await session.scalar(
-                select(func.coalesce(func.sum(UnitsLedger.units_actual), 0))
-                .join(Run, Run.id == UnitsLedger.run_id)
-                .where(
-                    UnitsLedger.kind == LedgerKind.SPENT,
-                    Run.params_snapshot["provider"].astext == "live",
-                    UnitsLedger.created_at >= since,
-                )
-            )
-        return int(spent or 0)
+            return await live_spend_since(session, since)
     except (SQLAlchemyError, OSError) as exc:
         print(f"журнал прогонов недоступен ({type(exc).__name__}: {exc}) — сравнить не с чем")
         return None

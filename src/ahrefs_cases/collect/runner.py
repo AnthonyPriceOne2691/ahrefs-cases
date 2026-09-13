@@ -30,6 +30,7 @@ from ahrefs_cases.collect.budget import (
     reserved_units,
     run_saved,
     run_spend,
+    uncounted_spend,
 )
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.fetch import TaskOutcome, fetch_one
@@ -170,6 +171,7 @@ async def _execute_run(
         options.quota or build_quota(),
         needed=estimate,
         reserved=await reserved_units(session),
+        uncounted=await uncounted_spend(session),
     )
     if not state.may_start:
         # Отказ до первого запроса — единственное место, где он что-то стоит.
