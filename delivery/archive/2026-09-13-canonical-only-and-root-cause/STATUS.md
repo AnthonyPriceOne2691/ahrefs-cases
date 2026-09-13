@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_run_failure_reason.py::test_recorded_reason_names_the_root_cause
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («погоняй остальную логику чтобы убедиться что она работает» — обе находки из этого прогона)
