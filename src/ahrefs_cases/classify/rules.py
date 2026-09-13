@@ -17,7 +17,7 @@ from typing import Any
 
 from ahrefs_cases.classify.deltas import Deltas
 from ahrefs_cases.classify.points import Point
-from ahrefs_cases.classify.thresholds import GroupRule, Thresholds
+from ahrefs_cases.classify.thresholds import GroupRule, Thresholds, Windows
 from ahrefs_cases.storage._enums import Group, Metric
 
 _TRAFFIC = Metric.ORG_TRAFFIC
@@ -76,6 +76,26 @@ class Decision:
         return [reason.as_json() for reason in self.reasons]
 
 
+@dataclass(frozen=True, slots=True)
+class Evidence:
+    """Чем считали вердикт: начало истории, границы периода и чего не хватило.
+
+    Собрано в один объект не ради красоты: у `decide` стало девять аргументов, и
+    гейт сложности прав — это не список параметров, а описание одного предмета.
+    Все четыре поля отвечают на один вопрос — «насколько полны данные, по
+    которым посчитан вердикт», и меняются вместе.
+
+    Пустое `Evidence()` — законный случай: правила проверяются и на голых
+    дельтах, без сведений о покрытии.
+    """
+
+    point_a: Point | None = None
+    history_starts_at: date | None = None
+    period_start: date | None = None
+    unbought: str = ""
+    """Месяцы, которых версия порогов просит, а никто не покупал."""
+
+
 def decide(
     deltas: Deltas,
     point_b: Point,
@@ -83,12 +103,34 @@ def decide(
     months_after_start: int,
     max_gap_months: int,
     thresholds: Thresholds,
-    history_starts_at: date | None = None,
-    period_start: date | None = None,
+    evidence: Evidence | None = None,
 ) -> Decision:
-    """Вердикт по проекту. Чистая функция: ни базы, ни сети, ни времени."""
+    """Вердикт по проекту. Чистая функция: ни базы, ни сети, ни времени.
+
+    `evidence` — чем считали: точка А, начало истории, границы периода и
+    непокупленные месяцы (`classify/coverage.py`). Последние делают вердикт
+    невозможным, а не неточным:
+    точка считается по тем месяцам окна, которые есть, и вердикт по половине
+    окна выглядит настоящим. Приходит строкой, потому что правило не про
+    арифметику дельт, а про то, что человеку **делать** — докупить.
+    """
+    facts = evidence or Evidence()
     blockers = _eligibility(deltas, point_b, months_after_start, max_gap_months, thresholds)
-    truncated = _truncated_history(history_starts_at, period_start)
+    short_windows = _short_windows(facts.point_a, point_b, thresholds.windows)
+    if facts.unbought:
+        blockers.append(
+            Reason(
+                subject="unbought_months",
+                fact=None,
+                threshold=None,
+                passed=False,
+                note=f"не куплены месяцы, которые просит версия порогов — {facts.unbought}",
+            )
+        )
+    truncated = [
+        *_truncated_history(facts.history_starts_at, facts.period_start),
+        *short_windows,
+    ]
     if blockers:
         return Decision(group=Group.INSUFFICIENT_DATA, score=0.0, reasons=[*blockers, *truncated])
 
@@ -108,6 +150,42 @@ def decide(
         )
 
     return _decided(Group.POOR, [*good_reasons, *medium_reasons, *truncated], deltas, thresholds)
+
+
+def _short_windows(point_a: Point | None, point_b: Point, windows: Windows) -> list[Reason]:
+    """Точка посчитана не по всему окну — сказать, по скольким месяцам.
+
+    Отсутствующий месяц окна не обнуляет точку, а просто не участвует в среднем
+    (`points._average`). Для дыры в данных Ahrefs это правильно, но человеку
+    нужно знать: «рост 151 %» по одному месяцу из двух и по двум из двух — не
+    одно и то же утверждение.
+
+    Молчания здесь не было заметно, пока о том же случае говорило правило
+    покрытия — оно просто **запрещало** вердикт. Когда 13.09.2026 запрет сняли
+    (месяц внутри периода — свойство данных Ahrefs, а не пробел в покупке),
+    оказалось, что сказать об усечённом окне больше некому:
+    `_truncated_history` молчит при отставании в один месяц, а окно точки как
+    раз два. Запись справочная — группу она не меняет.
+    """
+    reasons: list[Reason] = []
+    for point, asked, name in (
+        (point_a, windows.point_a_months, "point_a_months_used"),
+        (point_b, windows.point_b_months, "point_b_months_used"),
+    ):
+        if point is None or asked <= 0 or point.months_used >= asked or point.months_used == 0:
+            continue
+        reasons.append(
+            Reason(
+                subject=name,
+                fact=float(point.months_used),
+                threshold=float(asked),
+                passed=True,
+                note=f"точка посчитана по {point.months_used} мес. из {asked}: "
+                "остальных месяцев окна нет в данных Ahrefs",
+                decisive=False,
+            )
+        )
+    return reasons
 
 
 def _truncated_history(history_starts_at: date | None, period_start: date | None) -> list[Reason]:

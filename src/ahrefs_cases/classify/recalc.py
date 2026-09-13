@@ -61,10 +61,15 @@ class RecalcReport:
         lines = [
             f"пересчёт по версии {self.version}",
             f"проектов: {self.total} (пересчитано {self.recalculated}, "
-            f"пропущено {len(self.skipped)})",
+            f"из них без купленных месяцев {len(self.skipped)})",
             counts,
         ]
-        lines.extend(f"  пропущен {item.domain}: {item.reason}" for item in self.skipped)
+        # «Пропущен» здесь больше не годится: вердикт записан и ему, просто это
+        # вердикт «данных не хватает». Слово «пропущен» значило бы «ничего не
+        # изменилось», а изменилось: группа стала другой.
+        lines.extend(
+            f"  не хватило купленных месяцев {item.domain}: {item.reason}" for item in self.skipped
+        )
         return lines
 
 
@@ -112,10 +117,15 @@ async def recalc(
 ) -> RecalcReport:
     """Пересчитать вердикты по версии порогов. Ahrefs не трогается.
 
-    Проект, которому не хватает купленных месяцев под окна этой версии, **не
-    получает вердикт** — он попадает в пропуски с названной нехваткой. Причина в
-    `classify/coverage.py`: точка считается по тем месяцам окна, которые есть, и
-    вердикт по половине окна выглядит настоящим.
+    Проект, которому не хватает купленных месяцев под окна этой версии, получает
+    вердикт `insufficient_data` с названной нехваткой — и **тоже записывается**.
+    Прежняя редакция такие проекты пропускала, не записав ничего, и после
+    активации версии у них оставался вердикт предыдущей: карточка показывала
+    группу, посчитанную не теми порогами, а экран порогов — «не хватает
+    данных». Живая проверка 13.09.2026 застала это на девяти проектах из
+    девятнадцати.
+
+    Список нехватки в отчёте остаётся: человеку нужно знать, чего докупить.
     """
     ruleset = await ruleset_by_version(session, version)
     targets = list(projects) if projects is not None else await _all_projects(session)
@@ -124,7 +134,8 @@ async def recalc(
     for item in await verdicts_module.evaluate(session, targets, ruleset, source=source):
         if not item.has_data:
             report.skipped.append(Skipped(domain=item.project.domain, reason=item.gap.describe()))
-            continue
+        # Запись идёт в любом случае: вердикт «данных не хватает» — тоже ответ
+        # этой версии порогов, а молчание оставило бы вердикт предыдущей.
         await verdicts_module.store(session, item.project, ruleset, item.computed)
         group = item.computed.decision.group
         report.by_group[group] = report.by_group.get(group, 0) + 1

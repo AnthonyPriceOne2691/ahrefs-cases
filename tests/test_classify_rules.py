@@ -16,7 +16,7 @@ import pytest
 
 from ahrefs_cases.classify.deltas import between
 from ahrefs_cases.classify.points import point_a, point_b
-from ahrefs_cases.classify.rules import Decision, decide
+from ahrefs_cases.classify.rules import Decision, Evidence, decide
 from ahrefs_cases.classify.series import MetricSeries, max_gap_months, months_covered
 from ahrefs_cases.classify.thresholds import Thresholds, load_seed
 from ahrefs_cases.storage._enums import Group, Metric
@@ -325,8 +325,7 @@ def test_truncated_history_is_reported_not_hidden() -> None:
         months_after_start=len(months),
         max_gap_months=0,
         thresholds=thresholds,
-        history_starts_at=months[0],
-        period_start=date(2024, 1, 1),
+        evidence=Evidence(history_starts_at=months[0], period_start=date(2024, 1, 1)),
     )
 
     truncated = next(r for r in decision.reasons if r.subject == "history_truncated")
@@ -352,8 +351,7 @@ def test_history_matching_the_period_adds_no_noise() -> None:
         months_after_start=len(months),
         max_gap_months=0,
         thresholds=thresholds,
-        history_starts_at=months[0],
-        period_start=months[0],
+        evidence=Evidence(history_starts_at=months[0], period_start=months[0]),
     )
 
     assert all(reason.subject != "history_truncated" for reason in decision.reasons)

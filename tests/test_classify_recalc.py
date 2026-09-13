@@ -13,6 +13,7 @@ E10 (хватило — молчим).
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 
 import httpx
@@ -199,14 +200,21 @@ async def test_unknown_version_lists_the_known_ones(db_session: AsyncSession) ->
     assert "2026-09-F" in str(excinfo.value), "в ошибке перечислены доступные версии"
 
 
-async def test_version_asking_unbought_months_is_skipped(db_session: AsyncSession) -> None:
-    """E9: версия просит месяцы до старта работ, которых никто не покупал.
+async def test_version_asking_unbought_months_says_so_in_the_verdict(
+    db_session: AsyncSession,
+) -> None:
+    """E3: версия просит месяцы до старта работ, которых никто не покупал.
 
     С 11.09.2026 запас до старта берётся ровно тот, что просит версия порогов в
     момент **сбора**. Включить `pre_start_baseline_months` на калибровке —
     значит попросить месяцы, которых нет в базе. Точка усреднила бы то, что
     есть, и вердикт по половине окна выглядел бы настоящим: спорили бы с
     порогом вместо того, чтобы докупить данные.
+
+    Поэтому группа — `insufficient_data`, а месяцы названы. **Вердикт при этом
+    записывается**: прежняя редакция пропускала такой проект молча, и после
+    активации версии у него оставался вердикт предыдущей — карточка показывала
+    группу, посчитанную не теми порогами (найдено живой проверкой 13.09.2026).
     """
     project = await _project(db_session, "baseline.example.com")
     await _series(db_session, project, _growing())
@@ -214,16 +222,18 @@ async def test_version_asking_unbought_months_is_skipped(db_session: AsyncSessio
 
     report = await recalc(db_session, ruleset.version, source=MetricSource.FIXTURE)
 
-    assert report.recalculated == 0
     assert [item.domain for item in report.skipped] == ["baseline.example.com"]
     assert "baseline до старта" in report.skipped[0].reason
     assert "2024-10" in report.skipped[0].reason, "месяцы названы, а не сосчитаны"
+    assert report.by_group.get(Group.INSUFFICIENT_DATA) == 1
     written = (
         await db_session.execute(
-            select(func.count()).select_from(Verdict).where(Verdict.ruleset_id == ruleset.id)
+            select(Verdict).where(Verdict.ruleset_id == ruleset.id)
         )
-    ).scalar_one()
-    assert written == 0, "вердикт по неполному окну не выдаётся вовсе"
+    ).scalars().all()
+    assert len(written) == 1, "вердикт этой версии есть у каждого проекта"
+    assert written[0].group is Group.INSUFFICIENT_DATA
+    assert "не куплены месяцы" in json.dumps(written[0].reasons, ensure_ascii=False)
 
 
 async def test_wider_window_inside_bought_history_is_silent(db_session: AsyncSession) -> None:
@@ -241,7 +251,7 @@ async def test_wider_window_inside_bought_history_is_silent(db_session: AsyncSes
 
     assert report.skipped == []
     assert report.recalculated == 1
-    assert "пропущено 0" in "\n".join(report.as_lines())
+    assert "без купленных месяцев 0" in "\n".join(report.as_lines())
 
 
 async def test_empty_history_gets_a_verdict_not_a_skip(db_session: AsyncSession) -> None:

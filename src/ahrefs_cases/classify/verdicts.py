@@ -18,7 +18,7 @@ from ahrefs_cases.classify import coverage as coverage_module
 from ahrefs_cases.classify import points as points_module
 from ahrefs_cases.classify import series as series_module
 from ahrefs_cases.classify.deltas import between
-from ahrefs_cases.classify.rules import Decision, decide
+from ahrefs_cases.classify.rules import Decision, Evidence, decide
 from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource, ProjectStatus
 from ahrefs_cases.storage.models.project import Project
@@ -53,14 +53,19 @@ class Computed:
     быть одним кодом. Два похожих расчёта разойдутся ровно тогда, когда
     заказчик доверится предпросмотру на калибровке.
 
-    `months` отдаётся наружу, потому что по нему проверяют покрытие: хватило ли
-    купленных месяцев под окна этой версии порогов (`classify/coverage.py`).
+    `months` отдаётся наружу, потому что по нему видно, за какие месяцы считали.
+    Покрытие (`gap`) считается **здесь же**: живая проверка 13.09.2026 показала,
+    что правило, стоящее в обёртке, обходится коротким путём — `classify_all`
+    звал `compute_verdict` напрямую и выдавал группы там, где пересчёт
+    отказывался считать вовсе.
     """
 
     decision: Decision
     point_a: points_module.Point
     point_b: points_module.Point
     months: tuple[date, ...]
+    gap: coverage_module.CoverageGap
+    """Чего не хватает под окна этой версии порогов. Пустой — хватает всего."""
 
 
 async def compute_verdict(
@@ -83,16 +88,28 @@ async def compute_verdict(
     months = series_module.months_covered(series, Metric.ORG_TRAFFIC)
     after_start = [month for month in months if month >= project.period_start]
 
+    gap = coverage_module.gap(
+        months,
+        period_start=project.period_start,
+        period_end=project.period_end,
+        windows=thresholds.windows,
+    )
     decision = decide(
         between(point_a, point_b),
         point_b,
         months_after_start=len(after_start),
         max_gap_months=series_module.max_gap_months(months),
         thresholds=thresholds,
-        history_starts_at=months[0] if months else None,
-        period_start=project.period_start,
+        evidence=Evidence(
+            point_a=point_a,
+            history_starts_at=months[0] if months else None,
+            period_start=project.period_start,
+            unbought=gap.describe(),
+        ),
     )
-    return Computed(decision=decision, point_a=point_a, point_b=point_b, months=tuple(months))
+    return Computed(
+        decision=decision, point_a=point_a, point_b=point_b, months=tuple(months), gap=gap
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,22 +141,12 @@ async def evaluate(
     source: MetricSource,
 ) -> list[Evaluated]:
     """Посчитать вердикты по версии порогов и проверить покрытие. Без записи."""
-    windows = thresholds_of(ruleset).windows
     evaluated: list[Evaluated] = []
     for project in projects:
         computed = await compute_verdict(session, project, ruleset, source=source)
-        evaluated.append(
-            Evaluated(
-                project=project,
-                computed=computed,
-                gap=coverage_module.gap(
-                    computed.months,
-                    period_start=project.period_start,
-                    period_end=project.period_end,
-                    windows=windows,
-                ),
-            )
-        )
+        # Покрытие уже посчитано расчётом вердикта: второй экземпляр той же
+        # проверки разошёлся бы с первым при первой правке окон.
+        evaluated.append(Evaluated(project=project, computed=computed, gap=computed.gap))
     return evaluated
 
 
