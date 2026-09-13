@@ -105,6 +105,17 @@ def _only(raw: str | None) -> list[str] | None:
     return [_canonical(name) for name in names if name]
 
 
+def _named(domain: str | None) -> str | None:
+    """Домен из аргумента команды — к канону, `None` остаётся `None`.
+
+    Отдельная обёртка, потому что у `render`, `explain`, `diagnose` и `cases`
+    домен необязателен: без него команда работает по всем проектам. Приводить
+    `None` нельзя, а забыть привести строку — тот же дефект, что был у `--only`
+    (урок L124): человек набирает домен так, как видит его в своём файле.
+    """
+    return None if domain is None else _canonical(domain)
+
+
 def _canonical(name: str) -> str:
     """Имя из `--only` → канонический хост, или отказ с причиной.
 
@@ -331,17 +342,17 @@ async def _main(args: argparse.Namespace) -> int:
         if args.command == "preview":
             return await _preview(args.version)
         if args.command == "cases":
-            return await show_cases(args.domain, args.version)
+            return await show_cases(_named(args.domain), args.version)
         if args.command == "render":
-            return await render_case(args.domain)
+            return await render_case(_canonical(args.domain))
         if args.command == "pack":
             return await pack_cases()
         if args.command == "useradd":
             return await add_user(args.email, args.group)
         if args.command == "diagnose":
-            return await _diagnose(args.domain)
+            return await _diagnose(_named(args.domain))
         if args.command == "explain":
-            return await _explain(args.domain)
+            return await _explain(_canonical(args.domain))
         code = await _intake(args.source)
         return code or await _collect(refresh=args.refresh)
     except OnlyNotADomainError as exc:

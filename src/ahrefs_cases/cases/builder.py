@@ -41,6 +41,7 @@ from ahrefs_cases.classify.points import KW_TOP10, Point, window_from
 from ahrefs_cases.classify.recalc import ruleset_by_version
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import MetricSeries, load_series
+from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -124,8 +125,12 @@ def _title(project: Project, *, anonymized: bool) -> str:
     Домен не должен попасть в анонимный кейс ни в заголовке, ни в подписи
     графика, ни в имени файла — поэтому решение принимается один раз здесь, а
     рендеры получают готовый заголовок.
+
+    Публичный домен показывается **в человеческом виде**: в базе он канон
+    (`xn--…`), потому что таким его ждёт Ahrefs, но клиент агентства читает
+    кейс, а не документацию IDNA.
     """
-    return f"сайт в нише {project.niche}" if anonymized else project.domain
+    return f"сайт в нише {project.niche}" if anonymized else to_unicode(project.domain)
 
 
 def _changes(verdict: VerdictView) -> tuple[Change, ...]:

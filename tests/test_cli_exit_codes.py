@@ -96,3 +96,20 @@ def test_only_refuses_what_is_not_a_domain() -> None:
 
     with pytest.raises(module.OnlyNotADomainError, match="invalid_domain"):
         module._only("не домен вовсе")
+
+
+def test_every_command_taking_a_domain_canonicalises_it() -> None:
+    """L124 не должен вернуться через другую команду.
+
+    `--only` починили первым, а `render`, `explain`, `diagnose` и `cases`
+    сравнивали сырой ввод с каноном в базе ещё сутки: «проект не найден» на
+    проект, который есть. Оракул смотрит на **текст вызова**, а не на поведение
+    каждой команды: команд с доменом станет больше, и забывчивость повторится
+    ровно в новой.
+    """
+    source = _SCRIPT.read_text(encoding="utf-8")
+    calls = [line.strip() for line in source.splitlines() if "args.domain" in line]
+
+    assert calls, "команды с доменом должны существовать — иначе оракул проверяет пустоту"
+    for call in calls:
+        assert "_canonical(args.domain)" in call or "_named(args.domain)" in call, call

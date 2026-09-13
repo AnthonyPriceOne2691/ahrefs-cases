@@ -274,3 +274,33 @@ async def test_case_follows_the_verdict_version_not_the_active_one(
     assert built[0].case is not None
     assert built[0].case.ruleset_version == "2026-08-A"
     assert (await db_session.execute(select(Verdict))).scalars().all() != []
+
+
+def test_idn_domain_reads_as_a_human_wrote_it() -> None:
+    """E1/E2: в кейсе домен выглядит так, как его пишет человек, а не как ждёт API.
+
+    В базе и в запросах к Ahrefs домен живёт каноном —
+    `xn----7sbfmzvfbjddnn.example`. Сплошная проверка 13.09.2026 нашла этот
+    канон в заголовке PDF и в имени файла, уходящего клиенту агентства: читается
+    как ошибка сервиса. Латинский домен при этом не меняется ни на символ.
+    """
+    verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0})
+
+    idn = build_case(_project(domain="xn----7sbfmzvfbjddnn.example"), verdict, {})
+    ascii_only = build_case(_project(domain="example.com"), verdict, {})
+
+    assert idn.title == "проверка-рост.example"
+    assert ascii_only.title == "example.com"
+
+
+def test_broken_punycode_does_not_break_the_case() -> None:
+    """E4: хост, который обратно не разбирается, показывается как есть.
+
+    Такой приезжает из чужой системы, и уронить на нём сборку кейса хуже, чем
+    показать канон: кейс не соберётся ни для кого, а причина будет неочевидной.
+    """
+    verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0})
+
+    case = build_case(_project(domain="xn--битый.example"), verdict, {})
+
+    assert case.title == "xn--битый.example"

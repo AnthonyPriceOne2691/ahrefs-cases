@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
+from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain, to_unicode
 from ahrefs_cases.intake.rejections import RejectReason
 
 ACCEPTED = [
@@ -78,3 +78,25 @@ def test_table_can_fail() -> None:
         normalize_domain("HTTPS://WWW.Example.com/path?utm=1")
         != "https://www.example.com/path?utm=1"
     )
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("xn----7sbfmzvfbjddnn.example", "проверка-рост.example"),
+        ("example.com", "example.com"),
+        ("xn--e1afmkfd.xn--p1ai", "пример.рф"),
+        ("xn--битый.example", "xn--битый.example"),
+    ],
+)
+def test_canonical_host_reads_back_as_a_human_wrote_it(stored: str, expected: str) -> None:
+    """Канон для Ahrefs и имя для человека — разные вещи.
+
+    В базе домен живёт каноном: таким его ждёт API и по нему сходятся записи.
+    В кейсе, который уходит клиенту агентства, punycode читается как ошибка
+    сервиса — найдено сплошной проверкой 13.09.2026 в собранном архиве.
+
+    Битый punycode возвращается как есть: показать канон некрасиво, уронить
+    сборку кейса — хуже.
+    """
+    assert to_unicode(stored) == expected

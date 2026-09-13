@@ -85,6 +85,30 @@ def _is_ip(host: str) -> bool:
     return True
 
 
+def to_unicode(host: str) -> str:
+    """Канонический хост → вид, в котором его пишет человек.
+
+    Обратная сторона `_to_ascii`. В базе и в запросах к Ahrefs домен живёт
+    каноном (`xn----7sbfmzvfbjddnn.example`) — так его ждёт API и так сходятся
+    записи. Но в кейсе, который уходит клиенту агентства, и в имени файла
+    punycode читается как ошибка сервиса: найдено сплошной проверкой
+    13.09.2026 в собранном архиве.
+
+    Хост, который обратно не разбирается (битый punycode, пришедший из чужой
+    системы), возвращается как есть: показать канон некрасиво, уронить сборку
+    кейса — хуже.
+    """
+    if "xn--" not in host:
+        return host
+    labels: list[str] = []
+    for label in host.split("."):
+        try:
+            labels.append(label.encode("ascii").decode("idna"))
+        except (UnicodeError, UnicodeDecodeError):
+            return host
+    return ".".join(labels)
+
+
 def _to_ascii(host: str) -> str | None:
     """IDN → punycode по меткам. `None`, если хост непредставим в ASCII."""
     if host.isascii():
