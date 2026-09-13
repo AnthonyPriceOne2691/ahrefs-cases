@@ -6,6 +6,7 @@
  * неизвестен», который нельзя показывать нулём.
  */
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken, rememberToken } from '../../api/client';
@@ -22,6 +23,7 @@ function run(id: number, status: string, extra: Record<string, unknown> = {}) {
     started_at: '2026-09-11T10:00:05Z',
     finished_at: status === 'running' || status === 'queued' ? null : '2026-09-11T11:30:00Z',
     projects_total: 10,
+    projects_skipped: 0,
     projects_ok: 10,
     projects_failed: 0,
     units_estimated: 2112,
@@ -129,6 +131,50 @@ describe('журнал прогонов', () => {
     renderApp(<RunsPage />);
 
     expect(await screen.findByText(/нет права read/)).toBeInTheDocument();
+  });
+});
+
+describe('пропуски прогона', () => {
+  it('E1: «пропущено 2» раскрывается в домены с причинами', async () => {
+    // ТЗ требует «сколько обработано, сколько пропущено и почему». До этой
+    // поставки экран показывал «8 из 10» и молчал о двух.
+    const card = {
+      ...run(7, 'partial', { projects_ok: 8, projects_skipped: 2 }),
+      fates: [
+        {
+          domain: 'молодой.example',
+          outcome: 'skipped_no_data',
+          reason: 'у домена нет истории: два пустых ответа подряд',
+          units_actual: 0,
+        },
+      ],
+    };
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [run(7, 'partial', { projects_ok: 8, projects_skipped: 2 })],
+      },
+      '/api/runs/7': { status: 200, body: card },
+    });
+
+    renderApp(<RunsPage />);
+    const why = await screen.findByText('почему');
+    await userEvent.click(why);
+
+    expect(await screen.findByText('молодой.example')).toBeInTheDocument();
+    // Исход — словом, а не значением перечисления.
+    expect(screen.getByText('пропущен: нет данных')).toBeInTheDocument();
+    expect(screen.getByText(/нет истории/)).toBeInTheDocument();
+  });
+
+  it('E3: у прогона без пропусков лишнего на экране нет', async () => {
+    server({ '/api/runs': { status: 200, body: [run(8, 'done')] } });
+
+    renderApp(<RunsPage />);
+
+    await screen.findByText('готов');
+    expect(screen.queryByText('почему')).not.toBeInTheDocument();
+    expect(screen.queryByText(/пропущено/)).not.toBeInTheDocument();
   });
 });
 

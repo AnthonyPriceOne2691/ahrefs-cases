@@ -2,13 +2,17 @@
  * Журнал прогонов: что происходило и чем кончилось.
  *
  * Причина падения показывается строкой, а не значком: «упал» без причины
- * отправляет человека в логи, которых у него нет.
+ * отправляет человека в логи, которых у него нет. По той же причине рядом с
+ * «17 из 19» живёт «пропущено 2» с раскрытием: пропуск — штатный исход, и
+ * человеку важно, кого именно не собрали (требование ТЗ к логам прогона).
  */
 import { Badge, Table, Text } from '@mantine/core';
 
 import type { RunRow } from '../../api/types';
 import { num } from '../format';
 import { runWord } from '../status';
+
+import { RunFates } from './RunFates';
 
 /** Цвет статуса. Исходов пять, и «частично» — не то же, что «готово». */
 const STATUS_COLOR: Record<string, string> = {
@@ -62,6 +66,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                     упало {run.projects_failed}
                   </Text>
                 )}
+                <RunFates runId={run.id} skipped={run.projects_skipped} />
               </Table.Td>
               <Table.Td>
                 {num(run.units_estimated)} → {num(run.units_actual)}

@@ -64,9 +64,24 @@ export interface RunRow {
   projects_total: number;
   projects_ok: number;
   projects_failed: number;
+  /** Проекты, по которым данных не появилось: ни собраны, ни упали. */
+  projects_skipped: number;
   units_estimated: number;
   units_actual: number;
   error: string;
+}
+
+/** Судьба одного проекта в прогоне: что с ним стало и почему. */
+export interface RunItemView {
+  domain: string;
+  outcome: string;
+  reason: string;
+  units_actual: number;
+}
+
+/** Прогон со списком судеб — то, что открывают, когда «17 из 19» мало. */
+export interface RunCard extends RunRow {
+  fates: RunItemView[];
 }
 
 export interface ProjectRow {

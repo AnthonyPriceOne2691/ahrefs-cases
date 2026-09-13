@@ -151,9 +151,37 @@ class RunRow(BaseModel):
     projects_total: int
     projects_ok: int
     projects_failed: int
+    projects_skipped: int = 0
+    """Проекты, по которым данных не появилось: ни собраны, ни упали.
+
+    Считается вычитанием, а не отдельной колонкой: колонка была бы третьим
+    счётчиком рядом с двумя, а источник у всех один — `run_items`. Разошлась бы
+    она с записями молча и обнаружилась бы на экране, где объяснять уже поздно
+    (тот же довод, что у `run_spend`, считающего расход по журналу)."""
+
     units_estimated: int
     units_actual: int
     error: str = ""
+
+
+class RunItemView(BaseModel):
+    """Судьба одного проекта в прогоне: что с ним стало и почему."""
+
+    domain: str
+    outcome: str
+    reason: str = ""
+    units_actual: int = 0
+
+
+class RunCard(RunRow):
+    """Прогон со списком судеб — то, что открывают, когда «17 из 19» мало.
+
+    Наследник `RunRow`, а не новая модель: экран опрашивает ту же строку, и
+    вложенность сломала бы существующего читателя ради поля, которое ему не
+    нужно.
+    """
+
+    fates: list[RunItemView] = []
 
 
 class RunStarted(BaseModel):

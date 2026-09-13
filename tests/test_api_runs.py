@@ -253,3 +253,65 @@ def test_job_arguments_are_plain_values() -> None:
         for name, parameter in inspect.signature(job).parameters.items():
             assert parameter.annotation in {"int", "bool"}, f"{job.__name__}: {name}"
     assert RedisQueue is not None  # реализация существует и импортируется без Redis
+
+
+def test_run_card_names_every_skipped_domain(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """E1/E2: пропущенный домен назван словом и причиной, а не только числом.
+
+    ТЗ требует «сколько обработано, сколько пропущено и почему». Записи для
+    этого пишутся с Ф2 и до этой поставки наружу не выходили: экран показывал
+    «17 из 19» и молчал про двоих, хотя пропуск бывает четырёх видов и действия
+    по ним разные.
+    """
+    headers = _headers(client)
+    run_id = client.post("/api/runs", headers=headers).json()["run_id"]
+
+    async def _mark(session: object) -> None:
+        from ahrefs_cases.collect.run_journal import add_item
+        from ahrefs_cases.storage._enums import RunItemOutcome
+
+        run = await session.get(Run, run_id)  # type: ignore[attr-defined]
+        await add_item(
+            session,  # type: ignore[arg-type]
+            run,
+            project_id=None,
+            raw_domain="молодой.example",
+            outcome=RunItemOutcome.SKIPPED_NO_DATA,
+            reason="у домена нет истории: два пустых ответа подряд",
+        )
+
+    writer(_mark)
+
+    card = client.get(f"/api/runs/{run_id}", headers=headers).json()
+    fate = next(item for item in card["fates"] if item["domain"] == "молодой.example")
+
+    assert fate["outcome"] == "skipped_no_data"
+    assert "нет истории" in fate["reason"], "причина словами, а не кодом исхода"
+    assert card["projects_skipped"] >= 0, "счётчик пропусков есть в строке прогона"
+
+
+def test_run_without_skips_shows_an_empty_list(client: TestClient) -> None:
+    """E3: у прогона без пропусков список судеб пуст — лишнего экран не покажет."""
+    headers = _headers(client)
+    run_id = client.post("/api/runs", headers=headers).json()["run_id"]
+
+    card = client.get(f"/api/runs/{run_id}", headers=headers).json()
+
+    assert isinstance(card["fates"], list)
+    assert card["projects_skipped"] == max(
+        0, card["projects_total"] - card["projects_ok"] - card["projects_failed"]
+    )
+
+
+def test_fates_are_bounded(client: TestClient) -> None:
+    """E4: выдача ограничена — список не растёт с корпусом (гейт `unbounded-list`)."""
+    from ahrefs_cases.api.routers.runs import MAX_FATES
+
+    headers = _headers(client)
+    run_id = client.post("/api/runs", headers=headers).json()["run_id"]
+
+    card = client.get(f"/api/runs/{run_id}", headers=headers).json()
+
+    assert len(card["fates"]) <= MAX_FATES

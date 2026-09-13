@@ -30,6 +30,17 @@ export const CASE_STATUS_LABELS: Record<string, string> = {
   published: 'опубликован',
 };
 
+/** Исходы проекта в прогоне. Пропуск — штатный исход, а не ошибка, и видов
+ *  у него четыре: по каждому человек делает разное. */
+export const RUN_ITEM_LABELS: Record<string, string> = {
+  ok: 'собран',
+  skipped_no_data: 'пропущен: нет данных',
+  skipped_invalid: 'пропущен: строка не принята',
+  skipped_quota: 'пропущен: не хватило units',
+  skipped_aborted: 'не выполнен: прогон остановлен',
+  failed: 'упал',
+};
+
 /** Незнакомое значение показываем как есть: выдумывать ему слово опаснее, чем
  *  показать сырое — по нему хотя бы понятно, что сервис знает больше экрана. */
 function word(labels: Record<string, string>, status: string): string {
@@ -42,4 +53,8 @@ export function runWord(status: string): string {
 
 export function caseWord(status: string): string {
   return word(CASE_STATUS_LABELS, status);
+}
+
+export function fateWord(outcome: string): string {
+  return word(RUN_ITEM_LABELS, outcome);
 }

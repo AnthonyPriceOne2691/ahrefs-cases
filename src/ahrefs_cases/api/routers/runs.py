@@ -22,12 +22,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, text
 
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
-from ahrefs_cases.api.schemas import MAX_PAGE, RunEstimate, RunRow, RunStarted
+from ahrefs_cases.api.schemas import (
+    MAX_PAGE,
+    RunCard,
+    RunEstimate,
+    RunItemView,
+    RunRow,
+    RunStarted,
+)
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.plan import build_stage1_plan
 from ahrefs_cases.collect.quota import preflight
+from ahrefs_cases.collect.run_journal import fates as run_fates
 from ahrefs_cases.collect.run_journal import open_run
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
@@ -39,6 +47,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 ACTIVE_STATUSES = (RunStatus.QUEUED, RunStatus.RUNNING)
+MAX_FATES = 200
+"""Потолок списка судеб: сто проектов прогона плюс запас. Граница нужна не от
+жадности — у прогона столько проектов, сколько в списке заказчика, и выдача без
+границы ломается ровно на большом прогоне (гейт `unbounded-list`)."""
+
 _START_LOCK_KEY = 4_242_001
 """Ключ блокировки Postgres на время постановки прогона.
 
@@ -127,17 +140,34 @@ async def estimate_run(
     )
 
 
-@router.get("/{run_id}", response_model=RunRow)
+@router.get("/{run_id}", response_model=RunCard)
 async def run_status(
     run_id: int,
     session: SessionDep,
     _: Annotated[object, Depends(require_right("read"))] = None,
-) -> RunRow:
-    """Статус одного прогона — то, что опрашивает экран."""
+) -> RunCard:
+    """Статус одного прогона и судьба каждого домена в нём.
+
+    Судьбы здесь, а не отдельным адресом: «17 из 19» без остальных двух — это
+    вопрос, который человек всё равно задаст следующим действием, и второй
+    запрос ради него лишний.
+    """
     run = await session.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
-    return _row(run)
+    fates = await run_fates(session, run_id, limit=MAX_FATES)
+    return RunCard(
+        **_row(run).model_dump(),
+        fates=[
+            RunItemView(
+                domain=fate.domain,
+                outcome=fate.outcome.value,
+                reason=fate.reason,
+                units_actual=fate.units_actual,
+            )
+            for fate in fates
+        ],
+    )
 
 
 async def _enqueue(
@@ -183,6 +213,7 @@ def _row(run: Run) -> RunRow:
         projects_total=run.projects_total,
         projects_ok=run.projects_ok,
         projects_failed=run.projects_failed,
+        projects_skipped=max(0, run.projects_total - run.projects_ok - run.projects_failed),
         units_estimated=run.units_estimated,
         units_actual=run.units_actual,
         error=run.error,

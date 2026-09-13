@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -185,6 +186,51 @@ async def finish_run(session: AsyncSession, run: Run, *, error: str = "") -> Run
     run.status = _verdict(run, error=error, aborted=aborted)
     await session.flush()
     return run
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFate:
+    """Что случилось с одним проектом в прогоне — в человеческом виде."""
+
+    domain: str
+    outcome: RunItemOutcome
+    reason: str
+    units_actual: int
+
+
+async def fates(session: AsyncSession, run_id: int, *, limit: int) -> list[ProjectFate]:
+    """Судьбы проектов прогона: по одной на проект, а не на запрос.
+
+    ТЗ требует «сколько обработано, сколько пропущено и почему». Записи для
+    этого пишутся с Ф2, но наружу не отдавались: экран показывал «17 из 19» и
+    молчал о двух — а пропуск бывает четырёх видов, и действия по ним разные
+    (докупить историю, поправить строку списка, поднять лимит, перезапустить).
+
+    Свёртка та же, что у итогов прогона (`_fold_by_project`): на шаге 2 у одного
+    проекта четыре запроса, и счёт по задачам дал бы «проектов 3, пропущено 12»
+    — число, которое человеку показать нельзя (урок L13). Причина берётся у той
+    записи, которая исход и определила.
+
+    `limit` обязателен: у прогона сотня проектов сегодня и неизвестно сколько
+    завтра.
+    """
+    stmt = select(RunItem).where(RunItem.run_id == run_id).order_by(RunItem.id)
+    items = (await session.execute(stmt)).scalars().all()
+    decided = _fold_by_project(items)
+
+    seen: dict[int | None, ProjectFate] = {}
+    for item in items:
+        outcome = decided.get(item.project_id)
+        if outcome is None or item.outcome is not outcome:
+            continue
+        previous = seen.get(item.project_id)
+        seen[item.project_id] = ProjectFate(
+            domain=item.raw_domain,
+            outcome=outcome,
+            reason=item.reason or (previous.reason if previous else ""),
+            units_actual=(previous.units_actual if previous else 0) + item.units_actual,
+        )
+    return list(seen.values())[:limit]
 
 
 def _fold_by_project(items: Sequence[RunItem]) -> dict[int | None, RunItemOutcome]:
