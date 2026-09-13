@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** web/src/app/__tests__/shell.test.tsx
 - **diagnosis:** n/a reason=оба дефекта видны глазами и воспроизводятся разметкой
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («хвост Ф7 + два дефекта» — выбрано в списке работ до калибровки)
