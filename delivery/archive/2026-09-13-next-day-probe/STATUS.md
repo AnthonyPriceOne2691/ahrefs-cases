@@ -7,7 +7,7 @@
 - **kind:** tooling
 - **repro_test:** n/a reason=не дефект; инструмент замера, который проверяется собственным запуском
 - **diagnosis:** n/a reason=не дефект, а инструмент замера
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («сделать всё до калибровочных кейсов»; хвост Ф7 назван первым)
