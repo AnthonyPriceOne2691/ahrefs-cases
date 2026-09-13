@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cases_builder.py::test_idn_domain_reads_as_a_human_wrote_it
 - **diagnosis:** n/a reason=дефект виден глазами в готовом PDF, воспроизводится одним доменом
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («протестировать всё в сервисе, даже корректное формирование графиков, выгрузку»)
