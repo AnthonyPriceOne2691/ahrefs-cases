@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_api_runs.py::test_run_card_names_every_skipped_domain
 - **diagnosis:** n/a reason=не дефект кода: данные пишутся, но наружу не отдаются
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («протестировать всё в сервисе… остальное должно работать безукоризненно»)
