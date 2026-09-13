@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,7 +17,21 @@ class Ruleset(Base, TimestampMixin):
     """
 
     __tablename__ = "rulesets"
-    __table_args__ = (UniqueConstraint("version", name="uq_ruleset_version"),)
+    __table_args__ = (
+        UniqueConstraint("version", name="uq_ruleset_version"),
+        # «Активна одна» — инвариант, а не дисциплина вызывающих. Держался тем,
+        # что `recalc.activate` гасит остальные; любой другой путь (правка
+        # флага руками, наполовину прошедшая транзакция) оставлял две активные,
+        # и `active_ruleset` молча брал новейшую по id — то есть вердикты
+        # считались версией, которую никто не утверждал. Частичный уникальный
+        # индекс делает такое состояние невозможным.
+        Index(
+            "uq_ruleset_single_active",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     version: Mapped[str] = mapped_column(String(40), nullable=False)

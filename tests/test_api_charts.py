@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
 
 import pytest
+from tests.owned_rows import active_versions, make_active, restore_active
 from fastapi.testclient import TestClient
 
 from ahrefs_cases.api import security
@@ -55,6 +56,26 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
         loop.run_until_complete(engine.dispose())
         loop.run_until_complete(asyncio.sleep(0))
         loop.close()
+
+
+def _remember_stand(write: Callable[[Callable[..., object]], None]) -> list[str]:
+    """Что было активно на стенде до теста."""
+    found: list[str] = []
+
+    async def _read(session: object) -> None:
+        found.extend(await active_versions(session))  # type: ignore[arg-type]
+
+    write(_read)
+    return found
+
+
+def _restore_stand(write: Callable[[Callable[..., object]], None], versions: list[str]) -> None:
+    """Вернуть стенду его действующую версию порогов."""
+
+    async def _write(session: object) -> None:
+        await restore_active(session, versions)  # type: ignore[arg-type]
+
+    write(_write)
 
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
@@ -106,13 +127,19 @@ def _points(project_id: int, source: MetricSource) -> list[MetricPoint]:
 
 @pytest.fixture
 def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -> Iterator[None]:
+    was_active = _remember_stand(writer)
     _cleanup(writer)
 
     async def _seed(session: object) -> None:
         from ahrefs_cases.classify.rulesets import seed_thresholds
 
         ruleset = await seed_thresholds(session)  # type: ignore[arg-type]
-        ruleset.is_active = True
+        # Версия теста должна быть **единственной** действующей: вердикт
+        # карточки ищется по действующей, а на общем стенде активна может быть
+        # чужая — тогда тест находит `verdict: null` и падает по причине
+        # окружения, а не кода (найдено 13.09.2026). Прежняя активность
+        # запомнена и возвращается в уборке.
+        await make_active(session, ruleset.version)  # type: ignore[arg-type]
         projects = [
             Project(
                 domain=domain,
@@ -171,6 +198,7 @@ def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -
     writer(_seed)
     yield
     _cleanup(writer)
+    _restore_stand(writer, was_active)
 
 
 @pytest.fixture

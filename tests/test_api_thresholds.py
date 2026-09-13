@@ -17,7 +17,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.owned_rows import delete_owned
+from tests.owned_rows import active_versions, delete_owned, make_active, restore_active
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -76,15 +76,36 @@ def jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config.auth, "jwt_secret", "тестовый-секрет-подписи")
 
 
+def _remember_stand(write: Callable[[Callable[..., object]], None]) -> list[str]:
+    """Что было активно на стенде до теста."""
+    found: list[str] = []
+
+    async def _read(session: object) -> None:
+        found.extend(await active_versions(session))  # type: ignore[arg-type]
+
+    write(_read)
+    return found
+
+
+def _restore_stand(write: Callable[[Callable[..., object]], None], versions: list[str]) -> None:
+    """Вернуть стенду его действующую версию порогов."""
+
+    async def _write(session: object) -> None:
+        await restore_active(session, versions)  # type: ignore[arg-type]
+
+    write(_write)
+
+
 @pytest.fixture
 def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -> Iterator[None]:
+    was_active = _remember_stand(writer)
     _cleanup(writer)
 
     async def _seed(session: object) -> None:
         from ahrefs_cases.classify.rulesets import seed_thresholds
 
         ruleset = await seed_thresholds(session)  # type: ignore[arg-type]
-        ruleset.is_active = True
+        await make_active(session, ruleset.version)  # type: ignore[arg-type]
         session.add_all(  # type: ignore[attr-defined]
             [
                 *(
@@ -114,6 +135,7 @@ def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -
     writer(_seed)
     yield
     _cleanup(writer)
+    _restore_stand(writer, was_active)
 
 
 @pytest.fixture
@@ -273,3 +295,20 @@ def test_no_reasons_means_empty_list(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+def test_stand_keeps_its_active_version(
+    seeded: None, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """E1: тест не уносит с собой действующую версию порогов стенда.
+
+    Тесты и дев-стенд делят базу, и правило уборки — «свои строки». Активация
+    версии под это правило не подходит: она меняет флаг у чужой строки. Здесь
+    проверяется сам механизм возврата — на строке, которую тест создал сам.
+    """
+    versions = _remember_stand(writer)
+
+    assert versions, "после сида действующая версия обязана существовать"
+    _restore_stand(writer, versions)
+
+    assert _remember_stand(writer) == versions, "возврат не меняет того, что вернул"

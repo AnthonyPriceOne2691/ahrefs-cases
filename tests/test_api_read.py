@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.owned_rows import delete_owned
+from tests.owned_rows import active_versions, delete_owned, make_active, restore_active
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -66,6 +66,26 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
         loop.close()
 
 
+def _remember_stand(write: Callable[[Callable[..., object]], None]) -> list[str]:
+    """Что было активно на стенде до теста."""
+    found: list[str] = []
+
+    async def _read(session: object) -> None:
+        found.extend(await active_versions(session))  # type: ignore[arg-type]
+
+    write(_read)
+    return found
+
+
+def _restore_stand(write: Callable[[Callable[..., object]], None], versions: list[str]) -> None:
+    """Вернуть стенду его действующую версию порогов."""
+
+    async def _write(session: object) -> None:
+        await restore_active(session, versions)  # type: ignore[arg-type]
+
+    write(_write)
+
+
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
         await delete_owned(session, domains=DOMAINS, emails=(EMAIL,))  # type: ignore[arg-type]
@@ -87,6 +107,7 @@ def seeded(
     writer: Callable[[Callable[..., object]], None],
 ) -> Iterator[dict[str, int]]:
     """Два проекта: у первого вердикт `good` и кейс, у второго вердикта нет."""
+    was_active = _remember_stand(writer)
     _cleanup(writer)
     ids: dict[str, int] = {}
     artifact_path = tmp_path / "alpha.example — Кейс.pdf"
@@ -98,8 +119,12 @@ def seeded(
         # Берём засеянную версию, а не свою: выключать чужую активность значит
         # оставить дев-базу без активных порогов следующему модулю (урок L8).
         ruleset = await seed_thresholds(session)  # type: ignore[arg-type]
-        # Дев-база живёт между прогонами: активность могли выключить раньше.
-        ruleset.is_active = True
+        # Версия теста должна быть **единственной** действующей: вердикт
+        # карточки ищется по действующей, а на общем стенде активна может быть
+        # чужая — тогда тест находит `verdict: null` и падает по причине
+        # окружения, а не кода (найдено 13.09.2026). Прежняя активность
+        # запомнена и возвращается в уборке.
+        await make_active(session, ruleset.version)  # type: ignore[arg-type]
         user = User(
             email=EMAIL,
             full_name="Читатель",
@@ -187,6 +212,7 @@ def seeded(
     writer(_seed)
     yield ids
     _cleanup(writer)
+    _restore_stand(writer, was_active)
 
 
 @pytest.fixture

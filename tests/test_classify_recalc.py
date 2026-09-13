@@ -19,6 +19,7 @@ from datetime import UTC, date, datetime
 import httpx
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.classify import coverage as coverage_module
@@ -287,3 +288,25 @@ def test_hole_inside_history_is_not_a_coverage_gap() -> None:
     )
 
     assert gap.is_empty
+
+
+async def test_two_active_versions_are_impossible(db_session: AsyncSession) -> None:
+    """Инвариант «активная версия одна» держит база, а не дисциплина вызывающих.
+
+    `activate` гасит остальные версии — но любой другой путь (правка флага
+    руками, наполовину прошедшая транзакция, тест на общем стенде) оставлял две
+    активные, и `active_ruleset` молча брал новейшую по id: вердикты считались
+    порогами, которых никто не утверждал. Найдено 13.09.2026 на стенде.
+    """
+    first = await _ruleset(db_session, "2026-09-Я1")
+    second = await _ruleset(db_session, "2026-09-Я2")
+    await activate(db_session, first.version)
+
+    # Точка сохранения, а не голый flush: нарушение ограничения обрывает
+    # транзакцию целиком, а тестовая транзакция здесь внешняя — на ней держится
+    # изоляция от данных стенда. Без savepoint падение утащило бы за собой
+    # уборку фикстуры и следующие тесты (поймано прогоном: 33 ошибки).
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            second.is_active = True
+            await db_session.flush()

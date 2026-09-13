@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.classify import verdicts as verdicts_module
@@ -100,10 +100,20 @@ async def activate(session: AsyncSession, version: str) -> Ruleset:
     Активация **не** переписывает прошлые вердикты: она говорит, по какой версии
     считать следующие. Переписывать — значит потерять историю решений, ради
     которой вердикт и хранит `ruleset_id`.
+
+    **Порядок обязателен: сначала погасить все, потом зажечь одну.** Инвариант
+    «активная одна» держит частичный уникальный индекс
+    (`uq_ruleset_single_active`), а он проверяется на каждом statement'е и
+    отложенным быть не может. Прежний цикл по объектам оставлял порядок записи
+    на усмотрение ORM, и переключение падало бы нарушением ограничения через
+    раз — причём только на базе, где активная версия уже есть.
     """
     target = await ruleset_by_version(session, version)
-    for ruleset in (await session.execute(select(Ruleset))).scalars().all():
-        ruleset.is_active = ruleset.id == target.id
+    await session.execute(
+        update(Ruleset).where(Ruleset.is_active.is_(True)).values(is_active=False)
+    )
+    await session.flush()
+    target.is_active = True
     await session.flush()
     return target
 
