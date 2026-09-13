@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_classify_recalc.py::test_two_active_versions_are_impossible
 - **diagnosis:** n/a reason=не дефект продукта: тесты меняют чужую строку на общем стенде
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («всё должно работать безукоризненно»)
