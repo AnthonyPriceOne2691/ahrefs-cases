@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** tests/test_units_profile.py::test_documents_carry_the_number_the_model_computes
 - **diagnosis:** n/a reason=не дефект кода: код считает по замеренным ценам, устарели документы
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («плюс пересчёт сметы под боевой список» — выбрано в списке работ до калибровки)
