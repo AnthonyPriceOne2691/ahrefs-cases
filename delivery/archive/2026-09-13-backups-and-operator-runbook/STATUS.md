@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_backup_covers_state.py
 - **diagnosis:** n/a reason=не дефект: подготовка Ф9 в части, которой не нужен сервер
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-13 by=human:anthony («плюс подготовка Ф9 без сервера» — выбрано в списке работ до калибровки)
