@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_funnel.py::test_funnel_measures_growth_like_classification
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony (калибровочный прогон по просьбе владельца; дефект найден им и искажает калибровку)
