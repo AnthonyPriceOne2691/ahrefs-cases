@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/conftest.py::stand_verdicts_survive_the_suite
 - **diagnosis:** n/a reason=причина найдена замером и записана как Z12: тест пересчитывает действующую версию порогов, то есть чужие вердикты
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026 — «давай z12 и так далее»)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («давай z12 и так далее»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
