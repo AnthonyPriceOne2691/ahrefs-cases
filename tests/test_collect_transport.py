@@ -9,11 +9,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
 
+from ahrefs_cases import config
 from ahrefs_cases.collect.ahrefs_transport import (
     AhrefsHTTPError,
     AhrefsTransport,
@@ -195,3 +196,122 @@ def test_cost_model_is_one_place() -> None:
 
 async def _no_sleep(_seconds: float) -> None:
     """Backoff в тестах не ждёт: проверяем число попыток, а не терпение."""
+
+
+def _sleeper(recorded: list[float]) -> object:
+    """Подменённый сон, который запоминает, сколько его просили спать."""
+
+    async def _sleep(seconds: float) -> None:
+        recorded.append(seconds)
+
+    return _sleep
+
+
+async def test_retry_after_is_obeyed_instead_of_our_ladder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E1: пауза берётся из ответа Ahrefs, а не из нашей лесенки.
+
+    Лесенка (1, 5, 30 с) — догадка; `Retry-After` — условие, при котором
+    следующий запрос вообще обслужат. Догадка короче условия означала три
+    попытки внутри окна запрета, домен в `failed` и остановленный
+    предохранителем прогон (Z14).
+    """
+    slept: list[float] = []
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _sleeper(slept))
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"})
+        return httpx.Response(200, json=PAYLOAD)
+
+    async with _client(handler) as client:
+        await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    assert slept == [7.0], "ждали лесенку вместо того, что просил Ahrefs"
+
+
+async def test_retry_after_as_http_date_is_counted_from_now(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E2: вторая форма заголовка по RFC 9110 — дата, а не секунды.
+
+    Живые API присылают обе, и разобрать только числовую значит услышать
+    половину отказов: дата молча провалилась бы в прежнюю лесенку.
+    """
+    from email.utils import format_datetime
+
+    slept: list[float] = []
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _sleeper(slept))
+    until = format_datetime(datetime.now(UTC) + timedelta(seconds=42))
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(503, headers={"Retry-After": until})
+        return httpx.Response(200, json=PAYLOAD)
+
+    async with _client(handler) as client:
+        await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    # E5 заодно: 503 с заголовком слушается так же, как 429.
+    assert slept and 40.0 <= slept[0] <= 42.0
+
+
+# Значения ASCII: заголовок с кириллицей httpx не соберёт, и такого ответа не
+# бывает — HTTP-заголовки латиницей. Мусор в реальности выглядит как "soon".
+@pytest.mark.parametrize("header", [None, "", "soon", "-5"])
+async def test_unreadable_retry_after_falls_back_to_the_ladder(
+    monkeypatch: pytest.MonkeyPatch, header: str | None
+) -> None:
+    """E3: негодный заголовок — это не «ждать ноль».
+
+    Ноль означал бы немедленный повтор внутри окна запрета, то есть ровно то,
+    что заголовок запрещает. «Нет значения» и «значение не разобралось» ведут к
+    одному действию — прежней лесенке (класс урока L23).
+    """
+    slept: list[float] = []
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _sleeper(slept))
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            headers = {"Retry-After": header} if header is not None else {}
+            return httpx.Response(429, headers=headers)
+        return httpx.Response(200, json=PAYLOAD)
+
+    async with _client(handler) as client:
+        await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    expected = 0.0 if header == "-5" else config.ahrefs.retry_backoff_sec[0]
+    assert slept == [expected]
+
+
+async def test_wait_longer_than_the_ceiling_is_refused_not_slept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """E4: просят дольше потолка — отказ сразу, с названной величиной.
+
+    Запрос, уснувший на час, выглядит как зависший прогон: оператор не знает,
+    ждать ему или перезапускать, а таймаут прогона оборвёт работу посреди неё.
+    Отказ называет число, поэтому решение принимает человек, а не тишина.
+    """
+    slept: list[float] = []
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _sleeper(slept))
+    monkeypatch.setattr(config.ahrefs, "retry_after_max_sec", 300.0)
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429, headers={"Retry-After": "3600"})
+
+    async with _client(handler) as client:
+        with pytest.raises(AhrefsUnavailableError, match="3600"):
+            await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    assert slept == [], "уснули вместо того, чтобы отказать"
+    assert calls["n"] == 1, "повторили запрос, зная, что окно запрета не истекло"

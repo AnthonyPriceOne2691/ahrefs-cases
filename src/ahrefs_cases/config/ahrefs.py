@@ -29,6 +29,14 @@ class AhrefsSettings(Settings):
     retry_backoff_sec: tuple[float, ...] = Field(
         (1.0, 5.0, 30.0), validation_alias="AHREFS_RETRY_BACKOFF_SEC"
     )
+    retry_after_max_sec: float = Field(300.0, ge=0, validation_alias="AHREFS_RETRY_AFTER_MAX_SEC")
+    """Потолок ожидания по `Retry-After`. Больше — отказ вместо сна.
+
+    Лесенка выше — наша догадка о паузе, заголовок — условие Ahrefs, и слушаем
+    мы заголовок (Z14). Но слушать его без границы нельзя: `Retry-After: 3600`
+    подвесил бы запрос на час, а прогон выглядел бы зависшим — и был бы оборван
+    `COLLECT_RUN_TIMEOUT_SEC` посреди работы. Пять минут: дольше любого
+    разумного окна ограничителя частоты и заметно меньше таймаута прогона."""
 
     # --- fixture-режим (docs/IMPLEMENTATION_V3.md §1a) ---
     fixtures_dir: str = Field("data/fixtures", validation_alias="AHREFS_FIXTURES_DIR")
