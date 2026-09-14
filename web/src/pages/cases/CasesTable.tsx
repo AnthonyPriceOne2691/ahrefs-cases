@@ -35,21 +35,24 @@ export function CasesTable({ rows, busyId, onDownload }: Props) {
       <Table striped>
         <Table.Thead>
           <Table.Tr>
+            {/* Домен слева, остальное по центру: домен — имя строки, его
+                читают сверху вниз, и рваный левый край мешал бы искать
+                глазами. Прочие колонки короткие и одной природы. */}
             <Table.Th>Домен</Table.Th>
-            <Table.Th>Версия</Table.Th>
-            <Table.Th>Собран</Table.Th>
-            <Table.Th>Статус</Table.Th>
-            <Table.Th>Публикация</Table.Th>
-            <Table.Th>Файл</Table.Th>
+            <Table.Th ta="center">Версия</Table.Th>
+            <Table.Th ta="center">Собран</Table.Th>
+            <Table.Th ta="center">Статус</Table.Th>
+            <Table.Th ta="center">Публикация</Table.Th>
+            <Table.Th ta="center">Файл</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {rows.map((row) => (
             <Table.Tr key={row.id} data-case={row.id}>
               <Table.Td>{row.domain}</Table.Td>
-              <Table.Td>{row.version}</Table.Td>
-              <Table.Td>{moment(row.created_at)}</Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">{row.version}</Table.Td>
+              <Table.Td ta="center">{moment(row.created_at)}</Table.Td>
+              <Table.Td ta="center">
                 <Badge
                   variant="light"
                   color={STATUS_COLOR[row.status] ?? 'gray'}
@@ -58,7 +61,7 @@ export function CasesTable({ rows, busyId, onDownload }: Props) {
                   {caseWord(row.status)}
                 </Badge>
               </Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 {/* Метка говорит следствие, а не флаг: «anonymized: true» верно
                     и бесполезно тому, кто решает, что отправить клиенту. */}
                 {row.anonymized ? (
@@ -71,7 +74,7 @@ export function CasesTable({ rows, busyId, onDownload }: Props) {
                   </Badge>
                 )}
               </Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 {row.filename ? (
                   <Button
                     size="compact-sm"

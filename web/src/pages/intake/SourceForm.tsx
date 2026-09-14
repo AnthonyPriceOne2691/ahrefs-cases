@@ -7,6 +7,8 @@
 import { Alert, Button, FileInput, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useState } from 'react';
 
+const BUTTON_WIDTH = 210;
+
 interface Props {
   busy: boolean;
   error: string | null;
@@ -33,7 +35,15 @@ export function SourceForm({ busy, error, onSubmit }: Props) {
           onChange={setFile}
           flex="1 1 16rem"
         />
-        <Button onClick={() => file && onSubmit(file)} disabled={!file || busy} loading={busy}>
+        {/* Ширина кнопок задана одинаковой нарочно: иначе её задаёт длина
+            надписи, и поля над ними получаются разной длины — «Загрузить по
+            ссылке» на два символа длиннее «Загрузить файл». */}
+        <Button
+          onClick={() => file && onSubmit(file)}
+          disabled={!file || busy}
+          loading={busy}
+          w={BUTTON_WIDTH}
+        >
           Загрузить файл
         </Button>
       </Group>
@@ -50,6 +60,7 @@ export function SourceForm({ busy, error, onSubmit }: Props) {
           variant="light"
           onClick={() => link.trim() && onSubmit(link.trim())}
           disabled={!link.trim() || busy}
+          w={BUTTON_WIDTH}
         >
           Загрузить по ссылке
         </Button>

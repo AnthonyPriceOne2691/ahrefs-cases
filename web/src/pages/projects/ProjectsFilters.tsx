@@ -30,11 +30,14 @@ interface Props {
 export function ProjectsFilters({ group, query, onGroup, onQuery }: Props) {
   return (
     <Stack gap="sm">
+      {/* Ширина по содержимому, а не по экрану: в поле вводят домен, и строка
+          на полторы тысячи пикселей обещает ввод, которого не бывает. */}
       <TextInput
         label="Поиск по домену"
         placeholder="example.com"
         value={query}
         onChange={(event) => onQuery(event.currentTarget.value)}
+        maw={360}
       />
       <Stack gap={4}>
         <Text size="sm" fw={500}>

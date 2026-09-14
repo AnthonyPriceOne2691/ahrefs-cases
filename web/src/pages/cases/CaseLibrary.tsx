@@ -10,19 +10,44 @@ import { useState } from 'react';
 
 import { downloadCase, fetchCases } from '../../api/cases';
 import type { CaseRow } from '../../api/types';
+import { Pager } from '../../components/Pager';
 
 import { CasesTable } from './CasesTable';
 import { failureText } from './failure';
 import { saveFile } from './save';
 
+const PAGE_SIZE = 20;
+/** Столько строк видно без прокрутки. Библиотека росла до полусотни и
+ *  обрывалась молча: сервер отдавал первые пятьдесят, а человек видел в них
+ *  всю выдачу. */
+
+/** Листалка показывается, только когда есть что листать: на одной неполной
+ *  странице две серые кнопки — шум, который человек учится не замечать. */
+function LibraryPager({
+  rows,
+  page,
+  onChange,
+}: {
+  rows: CaseRow[] | undefined;
+  page: number;
+  onChange: (value: number) => void;
+}) {
+  const full = rows?.length === PAGE_SIZE;
+  if (!rows || (page === 0 && !full)) {
+    return null;
+  }
+  return <Pager page={page} full={full} onChange={onChange} />;
+}
+
 export function CaseLibrary() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [allVersions, setAllVersions] = useState(false);
+  const [page, setPage] = useState(0);
 
   const cases = useQuery({
-    queryKey: ['cases', 'library', allVersions],
-    queryFn: () => fetchCases(50, allVersions),
+    queryKey: ['cases', 'library', allVersions, page],
+    queryFn: () => fetchCases(PAGE_SIZE, allVersions, page * PAGE_SIZE),
   });
 
   const take = useMutation({
@@ -44,11 +69,17 @@ export function CaseLibrary() {
         <Text size="sm" c="dimmed">
           {allVersions ? 'Все собранные версии' : 'Свежий кейс каждого проекта'}
         </Text>
+        {/* Смена тумблера возвращает на первую страницу: список становится
+            другой длины, и третья страница прежнего в новом может не
+            существовать вовсе. */}
         <Switch
           size="sm"
           label="показать все версии"
           checked={allVersions}
-          onChange={(event) => setAllVersions(event.currentTarget.checked)}
+          onChange={(event) => {
+            setAllVersions(event.currentTarget.checked);
+            setPage(0);
+          }}
         />
       </Group>
 
@@ -72,6 +103,8 @@ export function CaseLibrary() {
       {cases.data && cases.data.length > 0 && (
         <CasesTable rows={cases.data} busyId={busyId} onDownload={(row) => take.mutate(row)} />
       )}
+
+      <LibraryPager rows={cases.data} page={page} onChange={setPage} />
 
       {error && (
         <Alert color="red" variant="light">

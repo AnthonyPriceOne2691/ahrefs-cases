@@ -135,7 +135,10 @@ describe('экран проектов: фильтры и страницы', () =
 
   it('E9: полная страница даёт листание, первая страница — без «назад»', async () => {
     rememberToken('токен');
-    const full = Array.from({ length: 50 }, (_, index) =>
+    // Двадцать — размер страницы экрана: полная страница и есть признак
+    // «возможно, есть ещё». Число здесь не круглое из головы, а то же, что в
+    // `ProjectsPage`; разойдясь с ним, тест перестанет проверять листание.
+    const full = Array.from({ length: 20 }, (_, index) =>
       project(index + 1, `p${index}.example`, 'good', 100),
     );
     const { urls } = server({ status: 200, body: full });
@@ -147,7 +150,7 @@ describe('экран проектов: фильтры и страницы', () =
     await userEvent.click(screen.getByRole('button', { name: 'Вперёд' }));
 
     expect(await screen.findByText('Страница 2')).toBeInTheDocument();
-    await waitFor(() => expect(urls.some((url) => url.includes('offset=50'))).toBe(true));
+    await waitFor(() => expect(urls.some((url) => url.includes('offset=20'))).toBe(true));
   });
 });
 

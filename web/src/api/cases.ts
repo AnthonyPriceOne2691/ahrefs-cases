@@ -11,9 +11,14 @@ import { download, request } from './client';
 import type { CaseRow, PackView, RunStarted } from './types';
 
 /** Библиотека. По умолчанию — свежий кейс каждого проекта: пересборка добавляет
- *  версию, и без этого один проект занимает десяток строк. */
-export function fetchCases(limit = 50, allVersions = false): Promise<CaseRow[]> {
-  return request<CaseRow[]>(`/api/cases?limit=${limit}&all_versions=${allVersions}`);
+ *  версию, и без этого один проект занимает десяток строк.
+ *
+ *  `offset` был у сервера с самого начала, а фронт его не спрашивал — и
+ *  показывал первые пятьдесят строк как всю библиотеку. */
+export function fetchCases(limit = 50, allVersions = false, offset = 0): Promise<CaseRow[]> {
+  return request<CaseRow[]>(
+    `/api/cases?limit=${limit}&offset=${offset}&all_versions=${allVersions}`,
+  );
 }
 
 export function fetchPack(): Promise<PackView> {

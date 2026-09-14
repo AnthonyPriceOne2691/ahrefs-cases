@@ -9,13 +9,16 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { Pager } from '../components/Pager';
 import { fetchProjects } from '../api/projects';
 
-import { Pager } from './projects/Pager';
 import { ProjectsBody } from './projects/ProjectsBody';
 import { ProjectsFilters } from './projects/ProjectsFilters';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
+/** Двадцать строк — столько видно на экране без прокрутки таблицы. Пятьдесят
+ *  прокручивались, и листалка внизу оказывалась за краем: человек про неё
+ *  узнавал, только домотав до конца. */
 
 export function ProjectsPage() {
   const navigate = useNavigate();

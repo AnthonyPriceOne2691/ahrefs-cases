@@ -200,11 +200,38 @@ describe('библиотека кейсов', () => {
     show();
     await userEvent.click(await screen.findByLabelText('показать все версии'));
 
-    // Именно запросом: страница отдаёт 50 строк, и фильтрация уже полученного
-    // показала бы историю двух проектов вместо истории всех.
+    // Именно запросом: страница отдаёт двадцать строк, и фильтрация уже
+    // полученного показала бы историю двух проектов вместо истории всех.
     await waitFor(() =>
       expect(calls.some((call) => call.url.includes('all_versions=true'))).toBe(true),
     );
+  });
+});
+
+describe('листание библиотеки', () => {
+  it('листает по двадцать строк и не теряет тумблер версий', async () => {
+    // Библиотека росла до полусотни и обрывалась молча: сервер отдавал первые
+    // строки, а человек видел в них всю выдачу. `offset` у сервера был с
+    // самого начала — фронт его не спрашивал.
+    const full = Array.from({ length: 20 }, (_, index) => caseRow(index + 1));
+    const { calls } = server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: full },
+      '/api/cases/pack': { status: 200, body: PACK },
+    });
+
+    show();
+    await screen.findByText('Страница 1');
+    expect(screen.getByRole('button', { name: 'Назад' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Вперёд' }));
+
+    expect(await screen.findByText('Страница 2')).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((call) => call.url.includes('offset=20'))).toBe(true));
+
+    // Тумблер версий меняет длину списка, поэтому возвращает на первую
+    // страницу: третьей страницы нового списка может не быть вовсе.
+    await userEvent.click(screen.getByLabelText('показать все версии'));
+    expect(await screen.findByText('Страница 1')).toBeInTheDocument();
   });
 });
 

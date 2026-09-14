@@ -3,6 +3,11 @@
  *
  * Строка ведёт на карточку: вердикт с объяснением и кривые живут там, а в
  * таблице стоит ориентир — группа и счёт.
+ *
+ * **Домен слева, остальное по центру.** Домен — имя строки, его читают сверху
+ * вниз, и рваный левый край превратил бы поиск глазами в работу. У остальных
+ * колонок значения короткие и одинаковой природы (гео, период, группа), и по
+ * центру столбец читается как столбец, а не как обрывки слева.
  */
 import { Table, Text } from '@mantine/core';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
@@ -63,8 +68,8 @@ export function ProjectsTable({
         <Table.Thead>
           {table.getHeaderGroups().map((group) => (
             <Table.Tr key={group.id}>
-              {group.headers.map((header) => (
-                <Table.Th key={header.id}>
+              {group.headers.map((header, index) => (
+                <Table.Th key={header.id} ta={index === 0 ? 'left' : 'center'}>
                   {flexRender(header.column.columnDef.header, header.getContext())}
                 </Table.Th>
               ))}
@@ -78,8 +83,8 @@ export function ProjectsTable({
               onClick={() => onOpen(row.original)}
               style={{ cursor: 'pointer' }}
             >
-              {row.getVisibleCells().map((cell) => (
-                <Table.Td key={cell.id}>
+              {row.getVisibleCells().map((cell, index) => (
+                <Table.Td key={cell.id} ta={index === 0 ? 'left' : 'center'}>
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </Table.Td>
               ))}
