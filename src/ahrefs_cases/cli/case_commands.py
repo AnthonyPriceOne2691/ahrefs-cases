@@ -27,14 +27,29 @@ EXIT_CONTENT_BLOCKED = 4
 нему другое: править входной файл, а не искать поломку в логах."""
 
 
-def _source() -> MetricSource:
-    """Откуда брать серии. Совпадает с выбором провайдера в конфиге."""
+def _source(chosen: MetricSource | None = None) -> MetricSource:
+    """Откуда брать серии: названо вызывающим или, если не названо, как у провайдера.
+
+    Разные вопросы разведены нарочно. Провайдер отвечает «откуда **покупать**»,
+    источник — «что **читать**». Чтение базы не делает ни одного запроса к
+    Ahrefs, и требовать ради него живого режима значит снимать запрет,
+    защищающий деньги заказчика, ради операции, которая ключом не пользуется
+    (замечено 14.09.2026 при сборке кейсов по калибровочному набору).
+
+    Умолчание осталось только у **режима провайдера**, а не у источника: кто
+    назвал источник, тот его и выбрал; кто не назвал — получает режим, в
+    котором работает сервис, и видит это в выводе команды.
+    """
+    if chosen is not None:
+        return chosen
     from ahrefs_cases import config
 
     return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
 
 
-async def show_cases(domain: str | None, version: str | None) -> int:
+async def show_cases(
+    domain: str | None, version: str | None, source: MetricSource | None = None
+) -> int:
     """Показать, что соберётся в кейсы. Ничего не пишет, Ahrefs не трогает.
 
     Печатает **все четыре исхода**, включая нулевые: отсутствие строки человек
@@ -43,7 +58,9 @@ async def show_cases(domain: str | None, version: str | None) -> int:
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
         try:
-            report = await build_cases(session, domain=domain, version=version, source=_source())
+            report = await build_cases(
+                session, domain=domain, version=version, source=_source(source)
+            )
         except ThresholdsError as exc:
             print(f"кейсы не собраны: {exc}", file=sys.stderr)
             return EXIT_BAD_SOURCE
@@ -81,7 +98,7 @@ def _change_line(change: Change) -> str:
     return f"{change.label:32} {change.before:>10.0f} → {change.after:>10.0f}  ({growth})"
 
 
-async def render_case(domain: str) -> int:
+async def render_case(domain: str, source: MetricSource | None = None) -> int:
     """Собрать кейс одного проекта и положить PDF на диск.
 
     Отдельный код возврата у контент-запрета (4), потому что действие по нему
@@ -91,7 +108,7 @@ async def render_case(domain: str) -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await build_cases(session, domain=domain, source=_source())
+        report = await build_cases(session, domain=domain, source=_source(source))
 
         if not report.attempts:
             print(f"проект не найден: {domain}", file=sys.stderr)
@@ -127,7 +144,7 @@ async def render_case(domain: str) -> int:
     return 0
 
 
-async def pack_cases() -> int:
+async def pack_cases(source: MetricSource | None = None) -> int:
     """Собрать кейсы всех «хороших» и «средних» в один архив.
 
     Отчёт печатает четыре исхода сборки и отдельно — кто не попал в архив по
@@ -136,7 +153,7 @@ async def pack_cases() -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await build_cases(session, source=_source())
+        report = await build_cases(session, source=_source(source))
         built = [item for item in report.by_outcome(CaseOutcome.BUILT) if item.case is not None]
         print("\n".join(report.as_lines()))
 
