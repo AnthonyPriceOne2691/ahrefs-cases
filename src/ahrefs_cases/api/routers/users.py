@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -35,6 +36,7 @@ from ahrefs_cases.api.deps import (
 from ahrefs_cases.api.schemas import MAX_PAGE
 from ahrefs_cases.api.security import generate_password, hash_password
 from ahrefs_cases.storage import UserGroup
+from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -99,8 +101,18 @@ async def list_users(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[UserRow]:
-    """Кто заведён. Выданное точечно право видно строкой, а не выводится из роли."""
-    stmt = select(User).order_by(User.email).limit(limit).offset(offset)
+    """Кто заведён. Выданное точечно право видно строкой, а не выводится из роли.
+
+    Удалённых в списке нет: человек, которого удалили, из сервиса ушёл.
+    Строка его может остаться ради журнала прогонов, но это дело журнала.
+    """
+    stmt = (
+        select(User)
+        .where(User.deleted_at.is_(None))
+        .order_by(User.email)
+        .limit(limit)
+        .offset(offset)
+    )
     return [_row(user) for user in (await session.execute(stmt)).scalars().all()]
 
 
@@ -169,6 +181,46 @@ async def patch_user(
     return _row(user)
 
 
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(user_id: int, session: SessionDep, actor: UserDep) -> None:
+    """Удалить пользователя, не тронув журнал прогонов.
+
+    Удаления долго не было, и это было решением: `runs.started_by` стоит с
+    `ON DELETE RESTRICT`, а журнал отвечает на вопрос «кто это запускал» — ответ
+    обязан переживать увольнение.
+
+    Поэтому удаления **два, и человек видит одно**. За учёткой есть прогоны —
+    строка остаётся помеченной, из списка человек пропадает, войти не может, а
+    в журнале стоит с пометкой «(удалён)». Прогонов нет — строка удаляется
+    по-настоящему, и почта освобождается: учётку с опечаткой иначе пришлось бы
+    обходить вечно.
+    """
+    user = await _get_or_404(session, user_id)
+    if user.id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="нельзя удалить свою учётную запись: удалять станет некому",
+        )
+    await _refuse_last_admin(session, user, action="удалить его")
+
+    runs = int(
+        await session.scalar(select(func.count()).select_from(Run).where(Run.started_by == user.id))
+        or 0
+    )
+    if runs:
+        # Строка остаётся ради журнала: он отвечает «кто это запускал», и ответ
+        # обязан переживать увольнение. Из списка человек пропадает, войти не
+        # может, а в журнале стоит с пометкой «(удалён)».
+        user.deleted_at = datetime.now(UTC)
+        user.is_active = False
+    else:
+        # Терять нечего — удаляем по-настоящему: почта освобождается, и завести
+        # её заново можно сразу. Учётку с опечаткой иначе пришлось бы обходить.
+        await session.delete(user)
+    await session.flush()
+    logger.info("user_deleted", extra={"user_id": user_id, "runs_kept": runs})
+
+
 @router.post("/{user_id}/password", response_model=UserWithPassword)
 async def reset_password(user_id: int, session: SessionDep) -> UserWithPassword:
     """Перевыпустить пароль. Старый перестаёт работать сразу."""
@@ -181,7 +233,17 @@ async def reset_password(user_id: int, session: SessionDep) -> UserWithPassword:
 
 
 async def _get_or_404(session: SessionDep, user_id: int) -> User:
-    user = await session.get(User, user_id)
+    """Живой пользователь по id. Удалённый — это «нет такого».
+
+    Иначе правка добралась бы до того, кого в списке нет: включить вход
+    удалённому, сменить ему группу, перевыпустить пароль. Строка живёт ради
+    журнала, а не ради управления.
+    """
+    user = (
+        (await session.execute(select(User).where(User.id == user_id, User.deleted_at.is_(None))))
+        .scalars()
+        .first()
+    )
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"пользователя {user_id} нет"
@@ -198,11 +260,16 @@ async def _refuse_taken_email(session: SessionDep, email: str) -> None:
         )
 
 
-async def _refuse_last_admin(session: SessionDep, user: User) -> None:
-    """Последнего администратора не разжаловать: управлять станет некому.
+async def _refuse_last_admin(
+    session: SessionDep, user: User, *, action: str = "снять группу с него"
+) -> None:
+    """Последнего администратора не разжаловать и не удалить: управлять станет некому.
 
     Защита перенесена из CRM агентства вместе с причиной — там она появилась
     после того, как система однажды осталась без администратора.
+
+    `action` — что именно запрещено. Текст отказа называет действие человека, а
+    не внутреннее правило: «снять группу» и «удалить» чинятся по-разному.
     """
     if user.group is not UserGroup.ADMIN:
         return
@@ -217,7 +284,7 @@ async def _refuse_last_admin(session: SessionDep, user: User) -> None:
     if admins <= 1:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="это последний администратор: снять группу с него нельзя",
+            detail=f"это последний администратор: {action} нельзя",
         )
 
 

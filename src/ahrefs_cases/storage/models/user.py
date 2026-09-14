@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Enum, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,6 +23,19 @@ class User(Base, TimestampMixin):
         Enum(UserGroup, name="user_group"), nullable=False, default=UserGroup.USER
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    """Когда учётку удалили. `NULL` — живая.
+
+    Строка остаётся, потому что на неё ссылается журнал прогонов
+    (`runs.started_by`), а журнал отвечает на вопрос «кто это запускал» — и
+    ответ обязан переживать увольнение. Удалённый человек исчезает из списка,
+    войти не может, а в журнале остаётся с пометкой «(удалён)».
+
+    Учётка, за которой не числится ни одного прогона, удаляется по-настоящему:
+    терять нечего, а почта освобождается для повторного заведения."""
 
     permissions: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, default=dict)
     """Личные права поверх группы: `{"edit_thresholds": true}` даёт право, а

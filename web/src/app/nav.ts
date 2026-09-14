@@ -28,7 +28,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   // её решает заказчик, а не мы. Открытый предпросмотр остаётся: он доступен
   // по API тому, кто спросит, и им пользуется тот, кто утверждает пороги.
   { path: '/thresholds', label: 'Пороги', right: 'edit_thresholds' },
-  { path: '/users', label: 'Люди', right: 'manage_users' },
+  { path: '/users', label: 'Пользователи', right: 'manage_users' },
 ];
 
 export function visibleSections(rights: readonly string[]): NavSection[] {

@@ -344,3 +344,54 @@ describe('раскрытие человека', () => {
     ).toBeChecked();
   });
 });
+
+describe('удаление пользователя', () => {
+  it('спрашивает подтверждение и называет, что будет с журналом', async () => {
+    // Удаление необратимо, а кнопка стоит рядом с переключателями прав, по
+    // которым кликают часто. Подтверждение называет последствие, а не
+    // действие: человек решает, что будет с журналом, а не «нажать ли».
+    const { calls } = server({ ...BASE, 'DELETE /api/users/2': { status: 204, body: null } });
+
+    show();
+    await choose(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить пользователя' }));
+
+    expect(screen.getByText(/останутся в журнале/)).toBeInTheDocument();
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Да, удалить' }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE')).toBe(true));
+  });
+
+  it('отмена не удаляет', async () => {
+    const { calls } = server({ ...BASE, 'DELETE /api/users/2': { status: 204, body: null } });
+
+    show();
+    await choose(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить пользователя' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+
+    expect(screen.queryByText(/останутся в журнале/)).toBeNull();
+    expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+  });
+
+  it('отказ сервера показан его словами', async () => {
+    // Последний администратор и «удалять станет некому» — разные запреты с
+    // разными причинами, и придумывать за сервер текст нельзя.
+    server({
+      ...BASE,
+      'DELETE /api/users/2': {
+        status: 409,
+        body: { detail: 'это последний администратор: удалить его нельзя' },
+      },
+    });
+
+    show();
+    await choose(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить пользователя' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Да, удалить' }));
+
+    expect(await screen.findByText(/последний администратор/)).toBeInTheDocument();
+  });
+});

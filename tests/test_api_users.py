@@ -26,6 +26,7 @@ PASSWORD = "очень-длинный-пароль"
 ADMIN = "chief@test.local"
 CLERK = "clerk2@test.local"
 MADE = "made@test.local"
+SECOND_ADMIN = "second-admin@test.local"
 
 
 @pytest.fixture(scope="module")
@@ -56,9 +57,18 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, select
 
-        await session.execute(delete(User).where(User.email.in_((ADMIN, CLERK, MADE))))  # type: ignore[attr-defined]
+        # Прогоны своих людей — прежде самих людей: `runs.started_by` стоит с
+        # `ON DELETE RESTRICT`, и уборка упала бы на учётке, за которой тест
+        # оставил прогон. Чужих прогонов это не трогает: только свои почты.
+        from ahrefs_cases.storage.models.run import Run as _Run
+
+        mine = select(User.id).where(User.email.in_((ADMIN, CLERK, MADE, SECOND_ADMIN)))
+        await session.execute(delete(_Run).where(_Run.started_by.in_(mine)))  # type: ignore[attr-defined]
+        await session.execute(  # type: ignore[attr-defined]
+            delete(User).where(User.email.in_((ADMIN, CLERK, MADE, SECOND_ADMIN)))
+        )
 
     write(_delete)
 
@@ -92,7 +102,7 @@ def _park_foreign_admins(write: Callable[[Callable[..., object]], None]) -> list
         stmt = _select(User).where(
             User.group == UserGroup.ADMIN,
             User.is_active.is_(True),
-            User.email.notin_((ADMIN, CLERK, MADE)),
+            User.email.notin_((ADMIN, CLERK, MADE, SECOND_ADMIN)),
         )
         for user in (await session.execute(stmt)).scalars().all():  # type: ignore[attr-defined]
             user.is_active = False
@@ -329,3 +339,131 @@ def test_own_password_change_needs_the_current_one(client: TestClient) -> None:
         ).status_code
         == 200
     )
+
+
+def _user_id(client: TestClient, email: str) -> int:
+    rows = client.get("/api/users", headers=_headers(client, ADMIN)).json()
+    found = next((row for row in rows if row["email"] == email), None)
+    assert found is not None, f"в списке нет {email}"
+    return int(found["id"])
+
+
+def test_user_without_runs_is_deleted_for_real(client: TestClient) -> None:
+    """Учётку, за которой ничего не числится, удаляем по-настоящему.
+
+    Терять нечего, а почта освобождается: заведённую с опечаткой иначе
+    пришлось бы обходить вечно.
+    """
+    boss = _headers(client, ADMIN)
+    made = client.post(
+        "/api/users",
+        json={"email": MADE, "full_name": "Ошибка в почте", "group": "user"},
+        headers=boss,
+    )
+    assert made.status_code == 201, made.text
+    user_id = made.json()["user"]["id"]
+
+    dropped = client.delete(f"/api/users/{user_id}", headers=boss)
+
+    assert dropped.status_code == 204, dropped.text
+    assert all(row["email"] != MADE for row in client.get("/api/users", headers=boss).json())
+    # Почта свободна — тот же адрес заводится снова.
+    again = client.post("/api/users", json={"email": MADE, "group": "user"}, headers=boss)
+    assert again.status_code == 201, again.text
+
+
+def test_user_with_runs_is_not_deleted_but_named(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """За учёткой есть прогоны — строка остаётся, а в журнале стоит «(удалён)».
+
+    Журнал отвечает на вопрос «кто это запускал», и ответ обязан переживать
+    увольнение. Поэтому из списка человек пропадает и войти не может, но
+    прогоны остаются на месте и по-прежнему названы его именем.
+    """
+    boss = _headers(client, ADMIN)
+    clerk_id = _user_id(client, CLERK)
+
+    async def _run(session: object) -> None:
+        from ahrefs_cases.storage.models.run import Run
+
+        session.add(  # type: ignore[attr-defined]
+            Run(
+                started_by=clerk_id,
+                status="QUEUED",
+                projects_total=1,
+                projects_ok=0,
+                projects_failed=0,
+                units_estimated=0,
+                units_actual=0,
+                params_snapshot={},
+                error="",
+            )
+        )
+
+    writer(_run)
+
+    dropped = client.delete(f"/api/users/{clerk_id}", headers=boss)
+
+    assert dropped.status_code == 204, dropped.text
+    assert all(row["email"] != CLERK for row in client.get("/api/users", headers=boss).json())
+    # Вход закрыт: удалённый не входит даже с прежним паролем.
+    denied = client.post("/api/auth/login", json={"email": CLERK, "password": PASSWORD})
+    assert denied.status_code == 401
+    # А журнал по-прежнему называет автора — с пометкой.
+    runs = client.get("/api/runs", headers=boss).json()
+    mine = next((row for row in runs if row["started_by"] == clerk_id), None)
+    assert mine is not None, "прогон исчез вместе с учёткой"
+    assert mine["started_by_name"] == "Сотрудник"
+    assert mine["started_by_deleted"] is True
+
+
+def test_self_deletion_is_refused(client: TestClient) -> None:
+    """Себя не удалить: удалять станет некому — та же причина, что у выключения."""
+    boss = _headers(client, ADMIN)
+
+    refused = client.delete(f"/api/users/{_user_id(client, ADMIN)}", headers=boss)
+
+    assert refused.status_code == 409
+    assert "удалять станет некому" in refused.json()["detail"]
+
+
+def test_last_admin_is_not_deleted(client: TestClient) -> None:
+    """Последнего администратора не удалить — управлять станет некому.
+
+    Удаляет **третий**, а не сам админ: свою учётку он не удалит и по первому
+    правилу («удалять станет некому»), а проверить нужно второе. Третьим здесь
+    работает обычный сотрудник, которому лично выдали управление людьми — это и
+    есть случай, ради которого личные права существуют.
+    """
+    boss = _headers(client, ADMIN)
+    second = client.post("/api/users", json={"email": SECOND_ADMIN, "group": "admin"}, headers=boss)
+    assert second.status_code == 201, second.text
+    second_headers = _headers(client, SECOND_ADMIN, second.json()["password"])
+    clerk_id = _user_id(client, CLERK)
+    client.patch(
+        f"/api/users/{clerk_id}", json={"personal_rights": {"manage_users": True}}, headers=boss
+    )
+    # Первого админа выключает второй: себя выключить нельзя тем же правилом.
+    admin_id = _user_id(client, ADMIN)
+    parked = client.patch(
+        f"/api/users/{admin_id}", json={"is_active": False}, headers=second_headers
+    )
+    assert parked.status_code == 200, parked.text
+
+    refused = client.delete(
+        f"/api/users/{second.json()['user']['id']}", headers=_headers(client, CLERK)
+    )
+
+    assert refused.status_code == 409
+    assert "последний администратор" in refused.json()["detail"]
+    client.patch(f"/api/users/{admin_id}", json={"is_active": True}, headers=second_headers)
+
+
+def test_deleting_needs_the_right(client: TestClient) -> None:
+    """Удаление — под тем же правом, что и всё управление людьми (админ и инженер)."""
+    refused = client.delete(
+        f"/api/users/{_user_id(client, ADMIN)}", headers=_headers(client, CLERK)
+    )
+
+    assert refused.status_code == 403

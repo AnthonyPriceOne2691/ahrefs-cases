@@ -17,14 +17,14 @@ describe('разделы по правам', () => {
 
     expect(seen).toContain('Проекты');
     expect(seen).not.toContain('Пороги');
-    expect(seen).not.toContain('Люди');
+    expect(seen).not.toContain('Пользователи');
   });
 
   it('E5: администратор видит оба раздела', () => {
     const seen = labels(['read', 'run', 'edit_thresholds', 'manage_users']);
 
     expect(seen).toContain('Пороги');
-    expect(seen).toContain('Люди');
+    expect(seen).toContain('Пользователи');
   });
 
   it('E1 и E2 (web-intake): «Загрузка» стоит первой и закрыта правом `run`', () => {
@@ -37,7 +37,7 @@ describe('разделы по правам', () => {
   it('E6: право, выданное лично, открывает раздел без смены группы', () => {
     // Ровно тот случай, ради которого меню строится по правам: группа у
     // человека прежняя, право выдано точечно.
-    expect(labels(['read', 'manage_users'])).toContain('Люди');
+    expect(labels(['read', 'manage_users'])).toContain('Пользователи');
     expect(labels(['read', 'manage_users'])).not.toContain('Пороги');
   });
 });

@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date
 from typing import Annotated
 
@@ -40,6 +40,7 @@ from ahrefs_cases.collect.run_journal import open_run
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
+from ahrefs_cases.storage.models.user import User
 from ahrefs_cases.workers.jobs import cases_job, collect_job
 from ahrefs_cases.workers.queue import build_queue
 
@@ -89,9 +90,27 @@ async def list_runs(
     _: Annotated[object, Depends(require_right("read"))] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 20,
 ) -> list[RunRow]:
-    """Журнал прогонов: свежие сверху."""
+    """Журнал прогонов: свежие сверху, с именем того, кто запускал.
+
+    Авторы берутся **одним запросом** на страницу, а не по строке: двадцать
+    прогонов дали бы двадцать походов в базу за тем же десятком людей.
+    """
     stmt = select(Run).order_by(Run.id.desc()).limit(limit)
-    return [_row(run) for run in (await session.execute(stmt)).scalars().all()]
+    runs = list((await session.execute(stmt)).scalars().all())
+    return [_row(run, await _authors(session, runs)) for run in runs]
+
+
+async def _authors(session: SessionDep, runs: Sequence[Run]) -> dict[int, User]:
+    """Учётки авторов прогонов, включая удалённые.
+
+    Удалённые нужны именно здесь: строка учётки живёт ради этого журнала, и
+    прятать её тут значило бы стереть ответ на вопрос «кто запускал».
+    """
+    ids = {run.started_by for run in runs}
+    if not ids:
+        return {}
+    found = (await session.execute(select(User).where(User.id.in_(ids)))).scalars().all()
+    return {user.id: user for user in found}
 
 
 @router.get("/estimate", response_model=RunEstimate)
@@ -202,11 +221,16 @@ async def _enqueue(
     return RunStarted(run_id=run.id, queued_as=queued_as)
 
 
-def _row(run: Run) -> RunRow:
+def _row(run: Run, authors: Mapping[int, User] | None = None) -> RunRow:
+    author = (authors or {}).get(run.started_by)
     return RunRow(
         id=run.id,
         status=run.status.value,
         started_by=run.started_by,
+        # Имя, а если его не заполняли — почта: «Прогон из командной строки»
+        # человеку говорит больше, чем `cli@local`, но пустая строка — ничего.
+        started_by_name=(author.full_name or author.email) if author else "",
+        started_by_deleted=bool(author and author.deleted_at is not None),
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,

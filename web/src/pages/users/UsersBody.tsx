@@ -112,7 +112,15 @@ export function UsersBody() {
         <Collapse in={chosen === selected.id} transitionDuration={FOLD_MS}>
           <Stack gap="md">
             <Divider />
-            <ManageUser user={selected} catalog={rights} onChanged={refresh} />
+            <ManageUser
+              user={selected}
+              catalog={rights}
+              onChanged={refresh}
+              onDeleted={() => {
+                setChosen(null);
+                refresh();
+              }}
+            />
           </Stack>
         </Collapse>
       )}

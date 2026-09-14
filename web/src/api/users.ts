@@ -32,3 +32,11 @@ export function patchUser(userId: number, patch: UserPatch): Promise<UserRow> {
 export function resetPassword(userId: number): Promise<UserWithPassword> {
   return request<UserWithPassword>(`/api/users/${userId}/password`, { method: 'POST' });
 }
+
+/** Удалить пользователя. За кем числятся прогоны — тот остаётся в журнале с
+ *  пометкой «(удалён)»: решает это сервер, фронт про два пути не знает. */
+export async function deleteUser(id: number): Promise<void> {
+  // Ответ пустой (204), и тип запроса это отражает: `request<void>` линтер
+  // справедливо не принимает — `void` не значение, а отсутствие возврата.
+  await request<null>(`/api/users/${id}`, { method: 'DELETE' });
+}

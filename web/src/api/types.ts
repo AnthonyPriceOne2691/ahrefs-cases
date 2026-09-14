@@ -58,6 +58,10 @@ export interface RunRow {
   id: number;
   status: string;
   started_by: number;
+  /** Кто запустил — именем. Пусто, если учётки уже нет вовсе. */
+  started_by_name: string;
+  /** Учётку автора удалили: в журнале он остаётся с пометкой «(удалён)». */
+  started_by_deleted: boolean;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

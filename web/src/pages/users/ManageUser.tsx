@@ -22,6 +22,7 @@ import type { RightsCatalog, UserRow, UserWithPassword } from '../../api/types';
 import { patchUser, resetPassword } from '../../api/users';
 import { failureText } from '../cases/failure';
 
+import { DeleteUser } from './DeleteUser';
 import { PasswordOnce } from './PasswordOnce';
 import { byLabel, rightLabel } from './rights';
 
@@ -95,9 +96,11 @@ interface Props {
   user: UserRow;
   catalog: RightsCatalog;
   onChanged: () => void;
+  /** Человека удалили: панель закрывается — показывать нечего. */
+  onDeleted: () => void;
 }
 
-export function ManageUser({ user, catalog, onChanged }: Props) {
+export function ManageUser({ user, catalog, onChanged, onDeleted }: Props) {
   // Набор группы — то, от чего считается «да» по умолчанию. Берётся из
   // справочника сервера, а не из второй таблицы прав на фронте (урок L101).
   const fromGroup = catalog.groups[user.group] ?? [];
@@ -164,6 +167,8 @@ export function ManageUser({ user, catalog, onChanged }: Props) {
           Выпустить новый пароль
         </Button>
       </Group>
+
+      <DeleteUser user={user} onDeleted={onDeleted} />
 
       {error && (
         <Alert color="red" variant="light">

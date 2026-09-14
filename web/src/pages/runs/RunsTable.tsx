@@ -32,23 +32,24 @@ function moment(iso: string | null): string {
 
 export function RunsTable({ rows }: { rows: RunRow[] }) {
   return (
-    <Table.ScrollContainer minWidth={760}>
+    <Table.ScrollContainer minWidth={900}>
       <Table striped>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>№</Table.Th>
-            <Table.Th>Статус</Table.Th>
-            <Table.Th>Начат</Table.Th>
-            <Table.Th>Завершён</Table.Th>
-            <Table.Th>Проекты</Table.Th>
-            <Table.Th>Units: смета → факт</Table.Th>
+            <Table.Th ta="center">Статус</Table.Th>
+            <Table.Th ta="center">Кто запустил</Table.Th>
+            <Table.Th ta="center">Начат</Table.Th>
+            <Table.Th ta="center">Завершён</Table.Th>
+            <Table.Th ta="center">Проекты</Table.Th>
+            <Table.Th ta="center">Units: смета → факт</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {rows.map((run) => (
             <Table.Tr key={run.id} data-run={run.id}>
               <Table.Td>{run.id}</Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 <Badge
                   variant="light"
                   color={STATUS_COLOR[run.status] ?? 'gray'}
@@ -57,9 +58,20 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                   {runWord(run.status)}
                 </Badge>
               </Table.Td>
-              <Table.Td>{moment(run.started_at ?? run.created_at)}</Table.Td>
-              <Table.Td>{moment(run.finished_at)}</Table.Td>
-              <Table.Td>
+              {/* Журнал существует ради вопроса «кто это запускал», и ответ
+                  обязан переживать увольнение: учётку удалили — человек
+                  остаётся здесь с пометкой. */}
+              <Table.Td ta="center" data-author={run.started_by}>
+                <Text size="sm">{run.started_by_name || `#${run.started_by}`}</Text>
+                {run.started_by_deleted && (
+                  <Text size="xs" c="dimmed" data-author-deleted="yes">
+                    (удалён)
+                  </Text>
+                )}
+              </Table.Td>
+              <Table.Td ta="center">{moment(run.started_at ?? run.created_at)}</Table.Td>
+              <Table.Td ta="center">{moment(run.finished_at)}</Table.Td>
+              <Table.Td ta="center">
                 {run.projects_ok} из {run.projects_total}
                 {run.projects_failed > 0 && (
                   <Text size="xs" c="red">
@@ -68,7 +80,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                 )}
                 <RunFates runId={run.id} skipped={run.projects_skipped} />
               </Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 {num(run.units_estimated)} → {num(run.units_actual)}
                 {run.error && (
                   <Text size="xs" c="dimmed">

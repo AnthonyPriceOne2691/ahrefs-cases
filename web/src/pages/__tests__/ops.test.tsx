@@ -19,6 +19,8 @@ function run(id: number, status: string, extra: Record<string, unknown> = {}) {
     id,
     status,
     started_by: 1,
+    started_by_name: 'Сотрудник PR',
+    started_by_deleted: false,
     created_at: '2026-09-11T10:00:00Z',
     started_at: '2026-09-11T10:00:05Z',
     finished_at: status === 'running' || status === 'queued' ? null : '2026-09-11T11:30:00Z',
@@ -274,5 +276,30 @@ describe('расход units', () => {
     renderApp(<UsagePage />);
 
     expect(await screen.findByText(/Поводов нет/)).toBeInTheDocument();
+  });
+});
+
+describe('кто запускал прогон', () => {
+  it('имя автора в журнале, а удалённый — с пометкой', async () => {
+    // Журнал существует ради этого вопроса. Раньше он отвечал на него числом:
+    // экран не показывал автора вовсе, а в ответе сервера лежал только id.
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [
+          run(7, 'done'),
+          run(6, 'done', { started_by: 2, started_by_name: 'Уволенный', started_by_deleted: true }),
+        ],
+      },
+    });
+
+    renderApp(<RunsPage />);
+
+    expect(await screen.findByText('Сотрудник PR')).toBeInTheDocument();
+    expect(screen.getByText('Уволенный')).toBeInTheDocument();
+    // Пометка стоит у того, кого удалили, и только у него.
+    const marks = document.querySelectorAll('[data-author-deleted="yes"]');
+    expect(marks).toHaveLength(1);
+    expect(marks[0]?.closest('td')).toHaveTextContent('Уволенный');
   });
 });
