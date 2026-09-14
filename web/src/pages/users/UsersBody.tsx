@@ -5,9 +5,9 @@
  * пусто, отказ — и вместе с заголовком и обвязкой они складываются в один
  * компонент, который гейт длины ловит справедливо (урок L91).
  */
-import { Alert, Divider, Stack, Text } from '@mantine/core';
+import { Alert, Collapse, Divider, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { fetchRights, fetchUsers } from '../../api/users';
 import { failureText } from '../cases/failure';
@@ -28,9 +28,43 @@ function Empty() {
   );
 }
 
+const FOLD_MS = 220;
+/** Длительность сворачивания. Столько же ждёт открытие следующего человека:
+ *  две панели, едущие навстречу друг другу, читаются как рывок. */
+
 export function UsersBody() {
   const queryClient = useQueryClient();
   const [chosen, setChosen] = useState<number | null>(null);
+  // Панель остаётся на экране, пока едет вниз: убери её сразу — и сворачивать
+  // будет нечего, вместо анимации получится мгновенное исчезновение.
+  const [shown, setShown] = useState<number | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Нажатие на человека. Три случая, и они разные:
+   *
+   * - тот же самый — свернуть (нажатие повторяет вопрос, ответ — закрыть);
+   * - никого не открыто — открыть сразу;
+   * - открыт другой — сначала свернуть его, потом открыть нового, иначе
+   *   содержимое подменяется под открытой панелью и выглядит как подмена.
+   */
+  function choose(id: number) {
+    if (timer.current) clearTimeout(timer.current);
+    if (chosen === id) {
+      setChosen(null);
+      return;
+    }
+    if (chosen === null) {
+      setShown(id);
+      setChosen(id);
+      return;
+    }
+    setChosen(null);
+    timer.current = setTimeout(() => {
+      setShown(id);
+      setChosen(id);
+    }, FOLD_MS);
+  }
   const users = useQuery({ queryKey: ['users'], queryFn: () => fetchUsers() });
   const catalog = useQuery({ queryKey: ['users', 'rights'], queryFn: fetchRights });
 
@@ -63,7 +97,7 @@ export function UsersBody() {
     );
   }
 
-  const selected = rows.find((row) => row.id === chosen) ?? null;
+  const selected = rows.find((row) => row.id === shown) ?? null;
 
   return (
     <Stack gap="md">
@@ -71,14 +105,16 @@ export function UsersBody() {
         rows={rows}
         catalog={rights}
         selected={chosen}
-        onSelect={(user) => setChosen(user.id)}
+        onSelect={(user) => choose(user.id)}
       />
 
       {selected && (
-        <>
-          <Divider />
-          <ManageUser user={selected} catalog={rights} onChanged={refresh} />
-        </>
+        <Collapse in={chosen === selected.id} transitionDuration={FOLD_MS}>
+          <Stack gap="md">
+            <Divider />
+            <ManageUser user={selected} catalog={rights} onChanged={refresh} />
+          </Stack>
+        </Collapse>
       )}
 
       <Divider />

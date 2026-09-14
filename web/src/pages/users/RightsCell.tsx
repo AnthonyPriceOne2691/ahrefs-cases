@@ -26,7 +26,7 @@ export function RightsCell({ states }: { states: RightState[] }) {
     );
   }
   return (
-    <Group gap={4}>
+    <Group gap={4} justify="center">
       {states.map((state) => (
         <Badge
           key={state.right}

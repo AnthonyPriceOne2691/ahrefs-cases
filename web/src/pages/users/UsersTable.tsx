@@ -31,14 +31,21 @@ export function UsersTable({ rows, catalog, selected, onSelect }: Props) {
       <Table striped>
         <Table.Thead>
           <Table.Tr>
+            {/* Почта слева, остальное по центру: почта — имя строки, её
+                читают сверху вниз, и рваный левый край мешал бы искать
+                глазами. То же правило у проектов и кейсов. */}
             <Table.Th>Почта</Table.Th>
-            <Table.Th>Имя</Table.Th>
+            <Table.Th ta="center">Имя</Table.Th>
             {/* Ширина задана: без неё таблица сжимала колонки под текст соседей,
                 и Mantine обрезал бейдж многоточием — «ПОЛЬЗО…» вместо группы.
                 Найдено прогоном живого экрана. */}
-            <Table.Th style={{ minWidth: 150 }}>Группа</Table.Th>
-            <Table.Th style={{ minWidth: 170 }}>Вход</Table.Th>
-            <Table.Th>Что можно</Table.Th>
+            <Table.Th ta="center" style={{ minWidth: 150 }}>
+              Группа
+            </Table.Th>
+            <Table.Th ta="center" style={{ minWidth: 170 }}>
+              Вход
+            </Table.Th>
+            <Table.Th ta="center">Что можно</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -51,15 +58,15 @@ export function UsersTable({ rows, catalog, selected, onSelect }: Props) {
               style={{ cursor: 'pointer' }}
             >
               <Table.Td>{user.email}</Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 <Text size="sm">{user.full_name || '—'}</Text>
               </Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 <Badge variant="light" data-group={user.group} style={{ maxWidth: 'none' }}>
                   {GROUP_LABELS[user.group] ?? user.group}
                 </Badge>
               </Table.Td>
-              <Table.Td>
+              <Table.Td ta="center">
                 {user.is_active ? (
                   <Text size="xs" c="dimmed">
                     может войти
@@ -75,8 +82,8 @@ export function UsersTable({ rows, catalog, selected, onSelect }: Props) {
                   </Badge>
                 )}
               </Table.Td>
-              <Table.Td>
-                <Stack gap={4}>
+              <Table.Td ta="center">
+                <Stack gap={4} align="center">
                   <RightsCell
                     states={rightStates(user.personal_rights, catalog.groups[user.group] ?? [])}
                   />

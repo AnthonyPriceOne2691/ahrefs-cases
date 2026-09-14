@@ -2,7 +2,8 @@
  * Заведение людей и правка прав. Примеры приёмки E1–E9.
  *
  * Главное здесь — **пароль, который показывается один раз**, и три состояния
- * личного права: «как в группе» это отсутствие решения, а не «нельзя».
+ * личного права: решение, совпавшее с группой, не записывается вовсе — право
+ * продолжает ехать за группой.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -93,9 +94,17 @@ function show() {
   );
 }
 
-/** Выбрать человека: правка идёт по выбранной строке. */
+/** Выбрать человека: правка идёт по выбранной **строке таблицы**.
+ *
+ * Именно по строке, а не по почте текстом: открытая панель показывает ту же
+ * почту заголовком, и поиск по тексту находил бы два элемента — то есть
+ * ломался бы ровно тогда, когда панель открыта. */
 async function choose(id: number) {
-  const row = await screen.findByText(`human-${id}@test.local`);
+  const row = await waitFor(() => {
+    const found = document.querySelector(`[data-user="${id}"]`);
+    if (!found) throw new Error(`строки человека ${id} нет`);
+    return found;
+  });
   await userEvent.click(row);
 }
 
@@ -156,24 +165,6 @@ describe('правка', () => {
     expect(patch?.body).toEqual({ is_active: false });
   });
 
-  it('E4 и E5: «как в группе» — это отсутствие ключа, а не «нельзя»', async () => {
-    const { calls } = server({
-      ...BASE,
-      'PATCH /api/users/2': { status: 200, body: user(2, 'user') },
-    });
-
-    show();
-    await choose(2);
-    // Ищем переключатель **нужного права**, а не первый в списке: порядок прав
-    // — вопрос сортировки и меняется, а «править пороги» остаётся собой (L48).
-    const пороги = screen.getByLabelText('править пороги');
-    await userEvent.click(within(пороги).getByRole('radio', { name: 'выдать' }));
-
-    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
-    const patch = calls.find((call) => call.method === 'PATCH');
-    expect(patch?.body).toEqual({ personal_rights: { edit_thresholds: true } });
-  });
-
   it('E6: последнего администратора не разжаловать — словами сервера', async () => {
     server({
       ...BASE,
@@ -209,5 +200,124 @@ describe('правка', () => {
 
     expect(await screen.findByText('новый-длинный-пароль')).toBeInTheDocument();
     expect(screen.getByText(/Второго показа не будет/)).toBeInTheDocument();
+  });
+});
+
+describe('личные права поверх группы', () => {
+  it('E4: «да» поверх группы записывается личным правом', async () => {
+    const { calls } = server({
+      ...BASE,
+      'PATCH /api/users/2': { status: 200, body: user(2, 'user') },
+    });
+
+    show();
+    await choose(2);
+    // Ищем переключатель **нужного права**, а не первый в списке: порядок прав
+    // — вопрос сортировки и меняется, а «править пороги» остаётся собой (L48).
+    const пороги = screen.getByLabelText('править пороги');
+    await userEvent.click(within(пороги).getByRole('radio', { name: 'Да' }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+    const patch = calls.find((call) => call.method === 'PATCH');
+    expect(patch?.body).toEqual({ personal_rights: { edit_thresholds: true } });
+  });
+
+  it('E5: «нет» у права, которое даёт группа, записывается личным', async () => {
+    const { calls } = server({
+      ...BASE,
+      'PATCH /api/users/2': { status: 200, body: user(2, 'user', { read: false }) },
+    });
+
+    show();
+    await choose(2);
+    await userEvent.click(
+      within(screen.getByLabelText('смотреть данные')).getByRole('radio', { name: 'Нет' }),
+    );
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+    expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({
+      personal_rights: { read: false },
+    });
+  });
+
+  it('E5: возврат к тому, что даёт группа, стирает личное решение', async () => {
+    // Иначе право приколачивается к человеку намертво: перевод в другую группу
+    // его бы не тронул, а руководитель нажимал «да», а не «навсегда».
+    const { calls } = server({
+      ...BASE,
+      'GET /api/users': { status: 200, body: [user(1, 'admin'), user(2, 'user', { read: false })] },
+      'PATCH /api/users/2': { status: 200, body: user(2, 'user') },
+    });
+
+    show();
+    await choose(2);
+    await userEvent.click(
+      within(screen.getByLabelText('смотреть данные')).getByRole('radio', { name: 'Да' }),
+    );
+
+    await waitFor(() => expect(calls.some((call) => call.method === 'PATCH')).toBe(true));
+    expect(calls.find((call) => call.method === 'PATCH')?.body).toEqual({ personal_rights: {} });
+  });
+
+  it('переключатель сам встаёт по группе, а не по личным правам', async () => {
+    // «Править пороги» группа `user` не даёт, а `admin` даёт — и экран обязан
+    // показывать это без всякого личного решения.
+    server({
+      ...BASE,
+      'GET /api/users': { status: 200, body: [user(1, 'admin'), user(2, 'user')] },
+    });
+
+    show();
+    await choose(2);
+    expect(
+      within(screen.getByLabelText('править пороги')).getByRole('radio', { name: 'Нет' }),
+    ).toBeChecked();
+    expect(
+      within(screen.getByLabelText('смотреть данные')).getByRole('radio', { name: 'Да' }),
+    ).toBeChecked();
+
+    await choose(2);
+    await choose(1);
+    expect(
+      within(await screen.findByLabelText('править пороги')).getByRole('radio', { name: 'Да' }),
+    ).toBeChecked();
+  });
+});
+
+describe('раскрытие человека', () => {
+  it('повторное нажатие сворачивает, чужое — переключает', async () => {
+    // Само движение проверить нечем: в jsdom нет ни разметки, ни переходов, и
+    // `Collapse` держит содержимое в DOM даже свёрнутым. Проверяется решение,
+    // которое движением показывают: кто сейчас раскрыт.
+    server(BASE);
+
+    show();
+    await choose(2);
+    expect(document.querySelector('[data-user="2"]')).toHaveAttribute('data-selected', 'yes');
+
+    // То же нажатие — свернуть: нажатие повторяет вопрос, ответ — закрыть.
+    await choose(2);
+    await waitFor(() =>
+      expect(document.querySelector('[data-user="2"]')).toHaveAttribute('data-selected', 'no'),
+    );
+
+    // Чужое нажатие при открытой панели: текущая сворачивается, новая
+    // открывается после неё — иначе содержимое подменяется под открытой
+    // панелью и читается как подмена.
+    await choose(2);
+    await choose(1);
+    await waitFor(() =>
+      expect(document.querySelector('[data-user="2"]')).toHaveAttribute('data-selected', 'no'),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('[data-user="1"]')).toHaveAttribute('data-selected', 'yes'),
+    );
+
+    // И панель показывает уже этого человека: у админа «править пороги» — «да».
+    expect(
+      await within(await screen.findByLabelText('править пороги')).findByRole('radio', {
+        name: 'Да',
+      }),
+    ).toBeChecked();
   });
 });

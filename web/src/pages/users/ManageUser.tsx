@@ -1,10 +1,15 @@
 /**
  * Правка выбранного человека: группа, вход, личные права.
  *
- * Личное право — **три состояния**, а не галочка: «как в группе», «выдать»,
- * «отобрать». Третье существует ровно потому, что группа право даёт, а этому
- * человеку оно не нужно, — и галочкой это не выражается: снятая галочка
- * неотличима от «не выдавали».
+ * Право показывается **итогом**: «да» или «нет» — то, что человеку сейчас
+ * можно. Третьей кнопки «как в группе» на экране нет: она называла не право, а
+ * способ его хранения, и требовала от руководителя держать в голове разницу
+ * между «не выдавали» и «отобрали».
+ *
+ * Хранение при этом осталось трёхзначным, и это не хитрость, а смысл: личное
+ * решение, совпавшее с группой, **не записывается**. Значит право продолжает
+ * ехать за группой — переведи человека в инженеры, и «править пороги» станет
+ * «да» само. Записывается только отличие от группы; оно и переживает перевод.
  *
  * Отказы сервера показываются его словами: последний администратор, выключение
  * себя и неизвестное право — разные запреты с разными причинами.
@@ -27,28 +32,34 @@ const GROUPS = [
 ];
 
 const STATES = [
-  { value: 'group', label: 'как в группе' },
-  { value: 'grant', label: 'выдать' },
-  { value: 'revoke', label: 'отобрать' },
+  { value: 'yes', label: 'Да' },
+  { value: 'no', label: 'Нет' },
 ];
 
-/** Личное решение о праве → значение переключателя. Отсутствие ключа и есть
- *  «как в группе»: это не то же, что выданное или отобранное. */
-function stateOf(personal: Record<string, boolean>, right: string): string {
-  if (!(right in personal)) return 'group';
-  return personal[right] ? 'grant' : 'revoke';
+/** Что человеку сейчас можно: личное решение, а если его нет — то, что даёт
+ *  группа. Экран показывает итог, потому что решение принимают про итог. */
+function stateOf(
+  personal: Record<string, boolean>,
+  fromGroup: readonly string[],
+  right: string,
+): string {
+  const allowed = right in personal ? personal[right] : fromGroup.includes(right);
+  return allowed ? 'yes' : 'no';
 }
 
 function nextPersonal(
   personal: Record<string, boolean>,
+  fromGroup: readonly string[],
   right: string,
   state: string,
 ): Record<string, boolean> {
-  // «Как в группе» — это **отсутствие** ключа, а не `false`: `false` означает
-  // «отобрано» и переживёт смену группы. Поэтому ключ не удаляется из копии,
-  // а не попадает в неё вовсе.
+  // Совпало с группой — личного решения нет вовсе: ключ не попадает в копию, и
+  // право продолжает ехать за группой. Записать здесь `true` значило бы
+  // приколотить право к человеку намертво, и перевод в другую группу его бы не
+  // тронул — а руководитель нажимал «да», а не «навсегда».
   const next = Object.fromEntries(Object.entries(personal).filter(([key]) => key !== right));
-  if (state !== 'group') next[right] = state === 'grant';
+  const allowed = state === 'yes';
+  if (allowed !== fromGroup.includes(right)) next[right] = allowed;
   return next;
 }
 
@@ -59,6 +70,9 @@ interface Props {
 }
 
 export function ManageUser({ user, catalog, onChanged }: Props) {
+  // Набор группы — то, от чего считается «да» по умолчанию. Берётся из
+  // справочника сервера, а не из второй таблицы прав на фронте (урок L101).
+  const fromGroup = catalog.groups[user.group] ?? [];
   const [password, setPassword] = useState<UserWithPassword | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,18 +109,18 @@ export function ManageUser({ user, catalog, onChanged }: Props) {
         onChange={(event) => change.mutate({ is_active: event.currentTarget.checked })}
       />
 
-      <Text size="sm">Личные права — поверх группы</Text>
+      <Text size="sm">Что человеку можно</Text>
       {byLabel(catalog.rights).map((right) => (
         <Group key={right} justify="space-between" wrap="nowrap">
           <Text size="sm">{rightLabel(right)}</Text>
           <SegmentedControl
             size="xs"
             data={STATES}
-            value={stateOf(user.personal_rights, right)}
+            value={stateOf(user.personal_rights, fromGroup, right)}
             aria-label={rightLabel(right)}
             onChange={(state) =>
               change.mutate({
-                personal_rights: nextPersonal(user.personal_rights, right, state),
+                personal_rights: nextPersonal(user.personal_rights, fromGroup, right, state),
               })
             }
           />
