@@ -3,6 +3,12 @@
 Пример приёмки: C9. Проверяется числом запросов и содержимым базы: сказать
 «шаг 2 только кандидатам» можно и продолжая спрашивать всех, а разница видна
 только в счёте.
+
+**Кандидатов считает классификация** (`classify.candidates.stage2_candidates`) —
+с 14.09.2026. Прежний префильтр в `collect/funnel.py` мерил рост крайними
+точками ряда и на сезонных сайтах расходился с вердиктом вдвое: два домена из
+калибровочного набора остались без подтверждающих метрик, а значит без шанса на
+`good`, — и в объяснении это выглядело как несработавшая метрика.
 """
 
 from __future__ import annotations
@@ -17,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ahrefs_cases import config
 from ahrefs_cases.collect.endpoints import DOMAIN_RATING_HISTORY, PAGES_HISTORY, EndpointSpec
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
-from ahrefs_cases.collect.funnel import preliminary_candidates
+from ahrefs_cases.classify.candidates import stage2_candidates
+from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.collect.plan import stage2_specs
 from ahrefs_cases.collect.provider import HistoryRequest, HistoryResult
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
@@ -63,15 +70,20 @@ async def _ids(session: AsyncSession) -> dict[str, int]:
     return {project.domain: project.id for project in projects}
 
 
+async def _candidates(session: AsyncSession) -> list[int]:
+    """Кандидаты шага 2 по действующим порогам — той же мерой, что вердикт."""
+    await seed_thresholds(session)
+    projects = list((await session.execute(select(Project))).scalars().all())
+    return await stage2_candidates(session, projects, source=MetricSource.FIXTURE)
+
+
 async def test_prefilter_keeps_growth_and_drops_decline(db_session: AsyncSession) -> None:
-    """C9: кандидатами становятся выросшие, а не все подряд."""
+    """C9: кандидатами становятся выросшие, а не все подряд — по мере вердикта."""
     await _load(db_session, GROWING + FALLING)
     await collect_all(db_session, AhrefsFixture(), now=NOW)
     ids = await _ids(db_session)
 
-    candidates = await preliminary_candidates(
-        db_session, list(ids.values()), source=MetricSource.FIXTURE
-    )
+    candidates = await _candidates(db_session)
 
     assert sorted(candidates) == sorted(ids[domain] for domain in GROWING)
 
@@ -85,9 +97,7 @@ async def test_stage2_asks_only_candidates(db_session: AsyncSession) -> None:
     await _load(db_session, GROWING + FALLING)
     await collect_all(db_session, AhrefsFixture(), now=NOW)
     ids = await _ids(db_session)
-    candidates = await preliminary_candidates(
-        db_session, list(ids.values()), source=MetricSource.FIXTURE
-    )
+    candidates = await _candidates(db_session)
     provider = CountingFixture()
 
     report = await collect_stage2(db_session, candidates, provider, now=NOW)
@@ -111,9 +121,7 @@ async def test_declining_projects_have_no_expensive_metrics(db_session: AsyncSes
     await _load(db_session, GROWING + FALLING)
     await collect_all(db_session, AhrefsFixture(), now=NOW)
     ids = await _ids(db_session)
-    candidates = await preliminary_candidates(
-        db_session, list(ids.values()), source=MetricSource.FIXTURE
-    )
+    candidates = await _candidates(db_session)
 
     await collect_stage2(db_session, candidates, AhrefsFixture(), now=NOW)
 
@@ -131,9 +139,7 @@ async def test_project_without_data_is_not_a_candidate(db_session: AsyncSession)
     await collect_all(db_session, AhrefsFixture(), now=NOW)
     ids = await _ids(db_session)
 
-    candidates = await preliminary_candidates(
-        db_session, list(ids.values()), source=MetricSource.FIXTURE
-    )
+    candidates = await _candidates(db_session)
 
     assert candidates == []
 
@@ -157,3 +163,50 @@ def test_dr_moved_from_the_flag_to_the_case_step(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(config.ahrefs, "collect_pages_history", True)
     assert PAGES_HISTORY in stage2_specs()
+
+
+async def test_funnel_measures_growth_like_classification(db_session: AsyncSession) -> None:
+    """Сезонный ряд: отбор и вердикт обязаны сойтись в ответе «вырос ли».
+
+    Форма взята с живого домена калибровочного набора (`wineverygame.com`):
+    декабрьский всплеск в начале периода и ровный рост дальше. Прежний
+    префильтр считал «последняя точка / первая» и получал 0,93× — то есть
+    падение, — тогда как точки А и Б по окнам дают 1,86×. Проект оставался без
+    подтверждающих метрик, а `good` требует хотя бы одной: потолком становился
+    `medium`, и не по результату проекта.
+    """
+    await seed_thresholds(db_session)
+    project = Project(
+        domain="сезонный.example",
+        niche="игры",
+        geo="GB",
+        service_type="seo",
+        period_start=date(2025, 1, 1),
+        period_end=date(2025, 12, 1),
+        client="Acme",
+        owner="i.petrov",
+        publishable=True,
+    )
+    db_session.add(project)
+    await db_session.flush()
+
+    # Всплеск в первом месяце, провал, затем устойчивый рост: крайними точками
+    # ряд падает (50 000 против 60 000), окнами — растёт на 38 %.
+    сезон = [60000, 9000, 10000, 12000, 14000, 17000, 20000, 24000, 29000, 35000, 45000, 50000]
+    for index, value in enumerate(сезон):
+        db_session.add(
+            MetricPoint(
+                project_id=project.id,
+                metric=Metric.ORG_TRAFFIC,
+                point_date=date(2025, index + 1, 1),
+                value=float(value),
+                source=MetricSource.FIXTURE,
+            )
+        )
+    await db_session.flush()
+
+    крайние = сезон[-1] / сезон[0]
+    candidates = await stage2_candidates(db_session, [project], source=MetricSource.FIXTURE)
+
+    assert крайние < 1.0, "крайними точками ряд выглядит падающим — на этом и ловились"
+    assert candidates == [project.id], "по мере вердикта проект вырос и обязан быть кандидатом"

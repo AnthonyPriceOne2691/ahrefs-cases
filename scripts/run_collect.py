@@ -22,8 +22,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sqlalchemy import select
+from sqlalchemy.engine import ScalarResult
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
 from ahrefs_cases.classify.recalc import activate, recalc
@@ -33,7 +36,6 @@ from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.cli.case_commands import pack_cases, render_case, show_cases
 from ahrefs_cases.cli.user_commands import add_user
-from ahrefs_cases.collect.funnel import preliminary_candidates
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
@@ -147,18 +149,24 @@ async def _collect(*, refresh: bool = False, only: list[str] | None = None) -> i
     return 0 if report.projects_ok else 1
 
 
-async def _stage2(*, refresh: bool = False) -> int:
+async def _stage2(*, refresh: bool = False, only: list[str] | None = None) -> int:
     """Шаг 2 воронки по предварительным кандидатам.
 
-    Кандидатов считает `funnel.preliminary_candidates` — грубый префильтр по
-    росту трафика. С Ф3 сюда придёт результат классификации, и команда
-    останется той же.
+    Кандидатов считает **классификация** (`classify.candidates`): кандидат — тот,
+    кого действующие пороги уже не считают «плохим» по данным шага 1. Раньше
+    здесь стоял отдельный префильтр, который мерил рост крайними точками ряда, —
+    и на сезонных сайтах расходился с вердиктом вдвое, отсекая от подтверждающих
+    метрик тех, кто по порогам обязан был их получить (калибровка 14.09.2026).
+
+    `only` сужает до названных доменов — по той же причине, что у `collect`
+    (урок L111): рядом с боевым списком на стенде живут отладочные проекты, и
+    шаг 2 — самая дорогая ступень. Без области действия он платит за всех,
+    кого найдёт в базе.
     """
     async with get_sessionmaker()() as session:
-        projects = (await session.execute(select(Project))).scalars().all()
-        candidates = await preliminary_candidates(
-            session, [project.id for project in projects], source=config_source()
-        )
+        await seed_thresholds(session)
+        projects = list((await _scoped_projects(session, only)).all())
+        candidates = await stage2_candidates(session, projects, source=config_source())
         if not candidates:
             print("кандидатов нет: шаг 2 не нужен — за «плохих» дорогие метрики не платятся")
             return 0
@@ -171,12 +179,26 @@ async def _stage2(*, refresh: bool = False) -> int:
     return 0 if report.projects_ok else 1
 
 
+async def _scoped_projects(session: AsyncSession, only: list[str] | None) -> ScalarResult[Project]:
+    """Проекты прогона: названные или все.
+
+    Область действия — общая забота всех платящих команд, поэтому и вычисляется
+    одинаково. `collect` получил её 12.09.2026 после того, как живой прогон ушёл
+    в Ahrefs за отладочными доменами стенда (урок L111); `stage2` и `case-data`
+    остались без неё, хотя платят больше: шаг 2 — самая дорогая ступень.
+    """
+    stmt = select(Project)
+    if only is not None:
+        stmt = stmt.where(Project.domain.in_(only))
+    return (await session.execute(stmt)).scalars()
+
+
 def config_source() -> MetricSource:
     """Каким источником помечены точки текущего режима."""
     return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
 
 
-async def _case_data(*, refresh: bool = False) -> int:
+async def _case_data(*, refresh: bool = False, only: list[str] | None = None) -> int:
     """Ступень кейса: докупить кривую позиций и стоимость трафика.
 
     Только тем, у кого кейс будет, — проектам с вердиктом `good` или `medium`
@@ -187,8 +209,11 @@ async def _case_data(*, refresh: bool = False) -> int:
         stmt = (
             select(Verdict.project_id)
             .join(Ruleset, Ruleset.id == Verdict.ruleset_id)
+            .join(Project, Project.id == Verdict.project_id)
             .where(Ruleset.is_active.is_(True), Verdict.group.in_([Group.GOOD, Group.MEDIUM]))
         )
+        if only is not None:
+            stmt = stmt.where(Project.domain.in_(only))
         ids = list((await session.execute(stmt)).scalars().all())
         if not ids:
             print("кейсов нет: «хороших» и «средних» по действующим порогам не найдено")
@@ -332,11 +357,11 @@ async def _main(args: argparse.Namespace) -> int:
         if args.command == "collect":
             return await _collect(refresh=args.refresh, only=_only(args.only))
         if args.command == "stage2":
-            return await _stage2(refresh=args.refresh)
+            return await _stage2(refresh=args.refresh, only=_only(args.only))
         if args.command == "classify":
             return await _classify()
         if args.command == "case-data":
-            return await _case_data(refresh=args.refresh)
+            return await _case_data(refresh=args.refresh, only=_only(args.only))
         if args.command == "recalc":
             return await _recalc(args.version, make_active=args.activate)
         if args.command == "preview":
@@ -440,6 +465,16 @@ def main() -> int:
     explain_parser.add_argument("domain", help="канонический домен проекта")
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
+
+    # Область действия — у каждой платящей команды. Забыть её у одной означает
+    # заплатить за всё, что найдётся в базе: ровно так 12.09.2026 живой прогон
+    # ушёл в Ahrefs за отладочными доменами стенда.
+    for paying_parser in (stage2_parser, case_parser):
+        paying_parser.add_argument(
+            "--only",
+            default=None,
+            help="домены через запятую или файл со списком: платить только за них",
+        )
 
     for parser_with_refresh in (collect_parser, stage2_parser, case_parser, all_parser):
         parser_with_refresh.add_argument(

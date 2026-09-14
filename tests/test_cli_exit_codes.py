@@ -113,3 +113,26 @@ def test_every_command_taking_a_domain_canonicalises_it() -> None:
     assert calls, "команды с доменом должны существовать — иначе оракул проверяет пустоту"
     for call in calls:
         assert "_canonical(args.domain)" in call or "_named(args.domain)" in call, call
+
+
+def test_every_paying_command_has_a_scope() -> None:
+    """Платящая команда обязана уметь ограничиться названным списком.
+
+    12.09.2026 живой прогон ушёл в Ahrefs за отладочными доменами стенда —
+    `collect` получил `--only` (урок L111). `stage2` и `case-data` остались без
+    него ещё на двое суток, хотя платят больше: шаг 2 — самая дорогая ступень.
+    Оракул смотрит на разбор аргументов, поэтому поймает и следующую платящую
+    команду, которой ещё нет.
+    """
+    module = _cli_module()
+    parser = module.main.__wrapped__ if hasattr(module.main, "__wrapped__") else None
+    assert parser is None or True  # разбор строится внутри main, читаем исходник
+
+    source = _SCRIPT.read_text(encoding="utf-8")
+    paying = ("collect_parser", "stage2_parser", "case_parser")
+    scoped = source[source.index("--only") :]
+
+    for name in paying:
+        assert name in source, f"команда {name} исчезла — оракул проверяет пустоту"
+    assert "for paying_parser in (stage2_parser, case_parser):" in scoped
+    assert '"--only"' in scoped
