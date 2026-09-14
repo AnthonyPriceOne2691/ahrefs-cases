@@ -63,6 +63,34 @@ function nextPersonal(
   return next;
 }
 
+/** Право и ответ рядом, а не по краям панели: глазу не надо ехать через всю
+ *  ширину, чтобы связать «править пороги» с «да». */
+function RightRow({
+  right,
+  value,
+  onChange,
+}: {
+  right: string;
+  value: string;
+  onChange: (state: string) => void;
+}) {
+  return (
+    <Group gap="sm" wrap="nowrap">
+      <Text size="sm" w={200}>
+        {rightLabel(right)}
+      </Text>
+      <SegmentedControl
+        w="fit-content"
+        size="xs"
+        data={STATES}
+        value={value}
+        aria-label={rightLabel(right)}
+        onChange={onChange}
+      />
+    </Group>
+  );
+}
+
 interface Props {
   user: UserRow;
   catalog: RightsCatalog;
@@ -96,7 +124,10 @@ export function ManageUser({ user, catalog, onChanged }: Props) {
 
       <Stack gap={4}>
         <Text size="sm">Группа</Text>
+        {/* Ширина по содержимому: растянутый на всю панель переключатель из
+            двух слов обещает выбор, которого в нём нет. */}
         <SegmentedControl
+          w="fit-content"
           data={GROUPS}
           value={user.group}
           onChange={(group) => change.mutate({ group })}
@@ -111,20 +142,16 @@ export function ManageUser({ user, catalog, onChanged }: Props) {
 
       <Text size="sm">Что человеку можно</Text>
       {byLabel(catalog.rights).map((right) => (
-        <Group key={right} justify="space-between" wrap="nowrap">
-          <Text size="sm">{rightLabel(right)}</Text>
-          <SegmentedControl
-            size="xs"
-            data={STATES}
-            value={stateOf(user.personal_rights, fromGroup, right)}
-            aria-label={rightLabel(right)}
-            onChange={(state) =>
-              change.mutate({
-                personal_rights: nextPersonal(user.personal_rights, fromGroup, right, state),
-              })
-            }
-          />
-        </Group>
+        <RightRow
+          key={right}
+          right={right}
+          value={stateOf(user.personal_rights, fromGroup, right)}
+          onChange={(state) =>
+            change.mutate({
+              personal_rights: nextPersonal(user.personal_rights, fromGroup, right, state),
+            })
+          }
+        />
       ))}
 
       <Group>

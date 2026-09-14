@@ -130,7 +130,7 @@ describe('список людей', () => {
 
     show();
 
-    const право = (await screen.findByText('заводить людей')).closest('[data-origin]');
+    const право = (await screen.findByText('добавлять пользователей')).closest('[data-origin]');
     // Ради этого случая экран и нужен: по названию группы его не видно.
     expect(право).toHaveAttribute('data-origin', 'отобрано лично');
     expect(право).toHaveStyle({ textDecoration: 'line-through' });

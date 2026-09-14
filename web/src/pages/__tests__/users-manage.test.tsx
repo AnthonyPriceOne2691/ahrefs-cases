@@ -94,6 +94,11 @@ function show() {
   );
 }
 
+/** Открыть окно добавления: форма живёт в модалке, а не внизу страницы. */
+async function openCreate() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Добавить пользователя' }));
+}
+
 /** Выбрать человека: правка идёт по выбранной **строке таблицы**.
  *
  * Именно по строке, а не по почте текстом: открытая панель показывает ту же
@@ -126,8 +131,9 @@ describe('заведение', () => {
     });
 
     show();
+    await openCreate();
     await userEvent.type(await screen.findByLabelText('Почта (она же логин)'), 'new@test.local');
-    await userEvent.click(screen.getByRole('button', { name: /Завести и показать пароль/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Добавить и показать пароль/ }));
 
     expect(await screen.findByText('длинный-сгенерированный-пароль')).toBeInTheDocument();
     // Второго показа не будет: сервис хранит только хеш.
@@ -142,10 +148,27 @@ describe('заведение', () => {
     });
 
     show();
+    await openCreate();
     await userEvent.type(await screen.findByLabelText('Почта (она же логин)'), 'new@test.local');
-    await userEvent.click(screen.getByRole('button', { name: /Завести и показать пароль/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Добавить и показать пароль/ }));
 
     expect(await screen.findByText(/уже занята/)).toBeInTheDocument();
+  });
+});
+
+describe('окно добавления', () => {
+  it('форма живёт в окне, а не на странице', async () => {
+    // Форма внизу страницы всегда открыта, всегда пуста и занимает экран у
+    // того, кто пришёл посмотреть права. Добавление — редкое действие, и у
+    // него есть начало и конец.
+    server(BASE);
+
+    show();
+    await screen.findByRole('button', { name: 'Добавить пользователя' });
+    expect(screen.queryByLabelText('Почта (она же логин)')).toBeNull();
+
+    await openCreate();
+    expect(await screen.findByLabelText('Почта (она же логин)')).toBeInTheDocument();
   });
 });
 

@@ -20,7 +20,7 @@ const LABELS: Record<string, string> = {
   read: 'смотреть данные',
   run: 'запускать прогоны',
   edit_thresholds: 'править пороги',
-  manage_users: 'заводить людей',
+  manage_users: 'добавлять пользователей',
   change_technical_settings: 'технические настройки',
 };
 
