@@ -227,3 +227,54 @@ def test_full_run_writes_the_snapshot(tmp_path: Path, monkeypatch: pytest.Monkey
     written = list(tmp_path.glob("*.json"))
     assert len(written) == 1
     assert json.loads(written[0].read_text(encoding="utf-8"))["quota"] == _quota(532_476)
+
+
+def test_noise_level_drift_in_a_closed_month_does_not_refute_the_rule(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Настоящие числа замера 14.09.2026: 4 550 157 → 4 550 154, три визита.
+
+    `org_traffic` — оценка, и сравнивать её на точное равенство значит выносить
+    приговор по шуму. Совет «отодвинуть `closed_through`» по такому расхождению
+    стоил бы 50 units за домен на каждом обновлении, чтобы поправить три визита
+    из четырёх с половиной миллионов (Z13).
+    """
+    closed_month = _months_ago(1)
+    probe._compare(
+        _snapshot({closed_month: 4_550_157.0}),
+        _snapshot({closed_month: 4_550_154.0}),
+    )
+
+    printed = capsys.readouterr().out
+    assert "ОПРОВЕРГНУТА" not in printed
+    assert "ПОДТВЕРЖДЕНА по существу" in printed
+    assert "шум" in printed
+
+
+def test_drift_above_the_tolerance_still_refutes_the_rule(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Допуск не должен превратиться в глухоту: 1 % — это уже пересчёт месяца.
+
+    Граница проверяется с обеих сторон нарочно. Оракул, стерегущий только
+    «шум не пугает», зеленел бы и у пробника, который молчит всегда.
+    """
+    closed_month = _months_ago(1)
+    probe._compare(
+        _snapshot({closed_month: 100_000.0}),
+        _snapshot({closed_month: 101_000.0}),
+    )
+
+    printed = capsys.readouterr().out
+    assert "ОПРОВЕРГНУТА" in printed
+    assert "closed_through" in printed
+
+
+def test_zero_in_a_closed_month_is_always_significant(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ноль, ставший числом, — новость при любом допуске: процента у него нет."""
+    closed_month = _months_ago(1)
+    probe._compare(_snapshot({closed_month: 0.0}), _snapshot({closed_month: 12.0}))
+
+    assert "ОПРОВЕРГНУТА" in capsys.readouterr().out

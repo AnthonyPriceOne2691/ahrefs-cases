@@ -223,34 +223,86 @@ def _previous_snapshot(directory: Path) -> tuple[Path, dict[str, Any]] | None:
     return latest, json.loads(latest.read_text(encoding="utf-8"))
 
 
+NOISE_PCT = 0.01
+"""Ниже этого расхождение считается шумом оценки, а не пересчётом месяца.
+
+`org_traffic` у Ahrefs — **оценка**, и мы сами пишем это в сноске каждого кейса.
+Оракул, сравнивающий оценку на точное равенство, выносит приговор по шуму:
+14.09.2026 закрытые месяцы разошлись на 3 и 2 визита из четырёх с половиной
+миллионов (0,00007 %), пробник объявил H2 опровергнутой, а совет по нему —
+отодвинуть `closed_through` — стоил бы 50 units за домен на каждом обновлении,
+чтобы поправить три визита (Z13 в `docs/FINDINGS.md`).
+
+Одна сотая процента: на шесть порядков ниже любого порога, который решает
+группу, и на три порядка выше замеренного дрейфа. Величина печатается рядом с
+вердиктом — чтобы следующий замер спорил с числом, а не с настройкой.
+"""
+
+
+def _drift_pct(before: float, after: float) -> float:
+    """Насколько значение уехало, в процентах от прежнего.
+
+    База — прежнее значение: «выросло с нуля» процента не имеет, и такой случай
+    считается значимым всегда (ноль в закрытом месяце сам по себе новость).
+    """
+    if before == 0:
+        return float("inf")
+    return abs(after - before) / abs(before) * 100.0
+
+
 def _compare(previous: dict[str, Any], current: dict[str, Any]) -> None:
     """Вердикт по H2: какие месяцы поменялись за время между снимками.
 
-    Различаем три исхода, потому что лечатся они по-разному: поменялся только
-    текущий — правило кэша верно; поменялся закрытый — граница `closed_through`
-    обязана отступить на месяц дальше, иначе неполные данные останутся навсегда;
-    не поменялось ничего — вопрос открыт, а не закрыт (день мог пройти без
-    обновления у самого Ahrefs).
+    Различаем исходы, потому что лечатся они по-разному: поменялся только
+    текущий — правило кэша верно; **значимо** поменялся закрытый — граница
+    `closed_through` обязана отступить на месяц дальше, иначе неполные данные
+    останутся навсегда; не поменялось ничего — вопрос открыт, а не закрыт (день
+    мог пройти без обновления у самого Ahrefs).
+
+    Отдельный исход — дрейф закрытых месяцев в пределах шума: правило кэша
+    остаётся, но молчать об этом нельзя, иначе следующий замер будет сравнивать
+    с «ничего не менялось» и увидит несуществующую поломку.
     """
     print(f"\n=== Что изменилось с {previous.get('taken_at', '?')} ===")
     border = closed_through(_today())
     changed_open: list[str] = []
     changed_closed: list[str] = []
+    drifted: list[float] = []
     for domain, months in current.get("traffic", {}).items():
         was = previous.get("traffic", {}).get(domain, {})
         for month in sorted(months):
             before = was.get(month)
             if before is None or before == months[month]:
                 continue
-            mark = "закрытый" if date.fromisoformat(month) <= border else "текущий"
-            print(f"    {domain} {month} ({mark}): {before:,.0f} → {months[month]:,.0f}")
-            (changed_closed if mark == "закрытый" else changed_open).append(f"{domain} {month}")
+            closed = date.fromisoformat(month) <= border
+            drift = _drift_pct(before, months[month])
+            noise = closed and drift < NOISE_PCT
+            mark = "закрытый" if closed else "текущий"
+            if noise:
+                mark += ", шум"
+            print(
+                f"    {domain} {month} ({mark}): {before:,.0f} → {months[month]:,.0f}"
+                f"  [{drift:.5f} %]"
+            )
+            if noise:
+                drifted.append(drift)
+            elif closed:
+                changed_closed.append(f"{domain} {month}")
+            else:
+                changed_open.append(f"{domain} {month}")
 
     if changed_closed:
         print(
             "  ✗ H2 ОПРОВЕРГНУТА: Ahrefs дописывает месяц, который мы считаем закрытым.\n"
             "    `cache.closed_through` обязан отступить на месяц дальше, иначе повторный\n"
             "    сбор никогда не перезапросит эти точки — и кейс уйдёт клиенту по неполным"
+        )
+    elif drifted:
+        print(
+            f"  ✓ H2 ПОДТВЕРЖДЕНА по существу: закрытые месяцы дрейфуют, но в пределах\n"
+            f"    шума оценки — максимум {max(drifted):.5f} % при допуске {NOISE_PCT} %.\n"
+            "    Правило кэша остаётся: перезакупка поправила бы единицы визитов из\n"
+            "    миллионов и стоила бы 50 units за домен на каждом обновлении"
         )
     elif changed_open:
         print(
