@@ -229,3 +229,77 @@ async def _truncate_all(connection: object) -> None:
 
     tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
     await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))  # type: ignore[attr-defined]
+
+
+def _stand_verdicts() -> dict[tuple[int, int], str] | None:
+    """Вердикты стенда: `(проект, версия порогов) → источник`.
+
+    Читается своим соединением и своим циклом — как у пишущих фикстур (уроки
+    L51, L54): общий движок живёт в цикле pytest-asyncio, а сторожу нужен ответ
+    до первого теста и после последнего.
+
+    `None` — таблицы ещё нет (чистая база CI до первой миграции). Это не
+    «вердиктов ноль»: сравнивать будет не с чем, и сторож честно промолчит.
+    """
+    import asyncio as _asyncio
+
+    from sqlalchemy import text as _text
+    from sqlalchemy.ext.asyncio import create_async_engine as _create
+
+    from ahrefs_cases import config as _config
+
+    async def _read() -> dict[tuple[int, int], str] | None:
+        engine = _create(_config.storage.database_url)
+        try:
+            async with engine.connect() as connection:
+                rows = await connection.execute(
+                    _text("select project_id, ruleset_id, source from verdicts")
+                )
+                return {(row[0], row[1]): str(row[2]) for row in rows}
+        except Exception:  # noqa: BLE001 — сторож не имеет права ронять прогон
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning("сторож вердиктов: таблица недоступна")
+            return None
+        finally:
+            await engine.dispose()
+
+    return _asyncio.run(_read())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def stand_verdicts_survive_the_suite(db_available: bool) -> Iterator[None]:
+    """Тест не переписывает вердикты чужих проектов.
+
+    Тесты и дев-стенд делят базу, и правило уборки — «свои строки». Оно молчит
+    про строки, которые тест не создавал, а **перезаписал**: пересчёт по
+    действующей версии порогов идёт по всем проектам базы, и сорок вердиктов
+    стенда, посчитанных по живым рядам, становились фикстурными (Z12).
+
+    Сторож сравнивает источник вердиктов тех проектов, что были до прогона.
+    Новые строки его не волнуют — их тест создал и за ними уберёт; важно, что
+    старые остались прежними.
+
+    Увидеть это стало можно только 14.09.2026: до того вердикт не хранил
+    источник, и подмена выглядела как те же самые числа. Поле, заведённое ради
+    кейсов, сразу показало чужую поломку.
+    """
+    if not db_available:
+        yield
+        return
+    before = _stand_verdicts()
+    yield
+    after = _stand_verdicts()
+    if before is None or after is None:
+        return
+    changed = {
+        key: (was, after.get(key, "строки нет"))
+        for key, was in before.items()
+        if after.get(key) != was
+    }
+    assert not changed, (
+        "прогон переписал вердикты, которых не создавал — стенд после тестов "
+        f"не тот, что до них: {dict(list(changed.items())[:5])}. "
+        "Тест, пересчитывающий действующую версию порогов, трогает все проекты "
+        "базы; пересчитывайте свою версию и убирайте её вердикты (Z12)"
+    )

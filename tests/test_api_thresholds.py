@@ -61,8 +61,16 @@ def writer() -> Iterator[Callable[[Callable[..., object]], None]]:
 
 def _cleanup(write: Callable[[Callable[..., object]], None]) -> None:
     async def _delete(session: object) -> None:
-        from sqlalchemy import delete
+        from sqlalchemy import delete, select
 
+        from ahrefs_cases.storage.models.verdict import Verdict
+
+        # Вердикты своей версии — прежде самой версии: `verdicts.ruleset_id`
+        # стоит с `ON DELETE RESTRICT`, и удаление версии, по которой что-то
+        # посчитано, упало бы. Они наши: их посчитал тест, пересчитав свою
+        # версию по всем проектам базы.
+        mine = select(Ruleset.id).where(Ruleset.version == NEW_VERSION).scalar_subquery()
+        await session.execute(delete(Verdict).where(Verdict.ruleset_id.in_(mine)))  # type: ignore[attr-defined]
         await session.execute(delete(Ruleset).where(Ruleset.version == NEW_VERSION))  # type: ignore[attr-defined]
         await delete_owned(session, domains=("thr.example",), emails=tuple(USERS))  # type: ignore[arg-type]
 
@@ -237,18 +245,26 @@ def test_activation_needs_the_right(client: TestClient) -> None:
 
 
 def test_recalc_runs_without_touching_ahrefs(client: TestClient) -> None:
-    """E8: смена порогов обязана быть бесплатной — на этом стоит калибровка."""
-    boss = _headers(client, "boss@test.local")
-    version = next(
-        item["version"]
-        for item in client.get("/api/rulesets", headers=boss).json()
-        if item["is_active"]
-    )
+    """E8: смена порогов обязана быть бесплатной — на этом стоит калибровка.
 
-    response = client.post(f"/api/rulesets/{version}/recalc", headers=boss)
+    Пересчитывается **своя** версия, а не действующая. Разница не косметическая:
+    пересчёт идёт по всем проектам базы, и по действующей версии он переписывал
+    бы вердикты стенда — сорок чужих строк, посчитанных по живым рядам,
+    заменялись фикстурными (Z12, замерено 14.09.2026). Правило «убираем свои
+    строки» этого не ловит: строки не создавались, а перезаписывались.
+    """
+    boss = _headers(client, "boss@test.local")
+    saved = client.post(
+        "/api/rulesets",
+        json={"version": NEW_VERSION, "note": "пересчёт по своей версии", "payload": _payload()},
+        headers=boss,
+    )
+    assert saved.status_code == 201, saved.text
+
+    response = client.post(f"/api/rulesets/{NEW_VERSION}/recalc", headers=boss)
 
     assert response.status_code == 200
-    assert response.json()["version"] == version
+    assert response.json()["version"] == NEW_VERSION
 
 
 def test_alerts_report_low_units_and_failed_runs(
