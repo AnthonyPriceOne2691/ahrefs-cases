@@ -395,3 +395,19 @@ describe('удаление пользователя', () => {
     expect(await screen.findByText(/последний администратор/)).toBeInTheDocument();
   });
 });
+
+describe('состояние экрана переживает обновление', () => {
+  it('раскрытый человек берётся из адреса при открытии', async () => {
+    // Руководитель правил права и обновил вкладку. Панель обязана остаться
+    // раскрытой на том же человеке, а не закрыться и отправить искать строку.
+    window.history.replaceState({}, '', '/users?%D1%87%D0%B5%D0%BB%D0%BE%D0%B2%D0%B5%D0%BA=2');
+    server(BASE);
+
+    show();
+
+    expect(await screen.findByText('Что человеку можно')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.querySelector('[data-user="2"]')).toHaveAttribute('data-selected', 'yes'),
+    );
+  });
+});

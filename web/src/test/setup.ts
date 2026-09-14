@@ -6,6 +6,7 @@
  * поведение, а сам рендер — то есть тест краснеет по причине окружения.
  */
 import '@testing-library/jest-dom/vitest';
+import { beforeEach } from 'vitest';
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
@@ -34,3 +35,16 @@ if (!('ResizeObserver' in window)) {
 if (!window.scrollTo) {
   window.scrollTo = () => {};
 }
+
+/**
+ * Каждый тест начинается с чистого адреса.
+ *
+ * Состояние экранов живёт в адресе (`app/screenState.ts`), а `window.location`
+ * в jsdom один на файл: отфильтровавший тест оставлял бы следующему свои
+ * параметры, и тот краснел бы по причине соседа. Так уже случилось на экране
+ * пользователей: раскрытый человек оставался в адресе, следующий тест кликал
+ * по той же строке — и **сворачивал** панель вместо того, чтобы раскрыть.
+ */
+beforeEach(() => {
+  window.history.replaceState({}, '', '/');
+});

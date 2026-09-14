@@ -9,6 +9,7 @@ import { Alert, Collapse, Divider, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 
+import { useScreenState } from '../../app/screenState';
 import { fetchRights, fetchUsers } from '../../api/users';
 import { failureText } from '../cases/failure';
 
@@ -34,10 +35,24 @@ const FOLD_MS = 220;
 
 export function UsersBody() {
   const queryClient = useQueryClient();
-  const [chosen, setChosen] = useState<number | null>(null);
+  // Раскрытый человек — в адресе: обновив вкладку, руководитель остаётся на
+  // том, кого правил, а не закрывает панель и ищет строку заново.
+  //
+  // Источник правды — состояние компонента, адрес получает копию. Наоборот
+  // было бы стройнее, но панель едет вниз по таймеру, и её открытие зависело
+  // бы от того, успел ли маршрутизатор довезти новый адрес.
+  const screen = useScreenState();
+  const [chosen, remember] = useState<number | null>(screen.number('человек', 0) || null);
+  const setChosen = (id: number | null) => {
+    remember(id);
+    screen.set({ человек: id ? String(id) : null });
+  };
   // Панель остаётся на экране, пока едет вниз: убери её сразу — и сворачивать
   // будет нечего, вместо анимации получится мгновенное исчезновение.
-  const [shown, setShown] = useState<number | null>(null);
+  //
+  // Начальное значение берётся из адреса: после F5 в нём уже стоит раскрытый
+  // человек, и `null` здесь оставил бы панель закрытой при открытом адресе.
+  const [shown, setShown] = useState<number | null>(chosen);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**

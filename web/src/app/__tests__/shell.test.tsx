@@ -7,7 +7,7 @@
  * проверяется **механизм**, которым это решено: почта помечена «видна от sm»,
  * а группа и выход такой пометки не имеют.
  */
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,5 +66,26 @@ describe('шапка', () => {
     show();
 
     expect(await screen.findByText('содержимое')).toBeInTheDocument();
+  });
+});
+
+describe('меню помнит, где человек был', () => {
+  it('пункт ведёт на адрес с фильтрами, а не на голый путь', async () => {
+    // Состояние экранов живёт в адресе. Без памяти переход «Проекты → Кейсы →
+    // Проекты» сбрасывал бы фильтры и страницу, хотя человек из раздела
+    // никуда не уходил.
+    window.history.replaceState({}, '', '/projects?group=good&page=2');
+    show();
+
+    const link = await screen.findByRole('link', { name: 'Проекты' });
+
+    await waitFor(() => expect(link).toHaveAttribute('href', '/projects?group=good&page=2'));
+  });
+
+  it('незнакомый раздел ведёт на свой путь', async () => {
+    window.history.replaceState({}, '', '/projects');
+    show();
+
+    expect(await screen.findByRole('link', { name: 'Кейсы' })).toHaveAttribute('href', '/cases');
   });
 });

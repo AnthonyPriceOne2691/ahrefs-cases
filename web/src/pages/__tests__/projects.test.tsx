@@ -184,3 +184,22 @@ describe('экран проектов: пусто и отказ', () => {
     expect(await screen.findByText(/нет права read/)).toBeInTheDocument();
   });
 });
+
+describe('состояние экрана переживает обновление', () => {
+  it('фильтр и страница берутся из адреса при открытии', async () => {
+    // F5 не должен стирать работу: человек отфильтровал, долистал до третьей
+    // страницы и обновил вкладку. Адрес — то, что переживает обновление.
+    rememberToken('токен');
+    window.history.replaceState({}, '', '/projects?group=good&query=exam&page=2');
+    const { urls } = server({ status: 200, body: ROWS });
+
+    renderScreen(<ProjectsPage />);
+    await screen.findByText('good.example');
+
+    const asked = urls.find((url) => url.includes('/api/projects'));
+    expect(asked).toContain('group=good');
+    expect(asked).toContain('query=exam');
+    // Третья страница — это смещение в две страницы по двадцать строк.
+    expect(asked).toContain('offset=40');
+  });
+});

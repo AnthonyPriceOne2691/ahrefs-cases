@@ -304,3 +304,25 @@ describe('статусы кейсов', () => {
     expect(screen.queryByText('built')).not.toBeInTheDocument();
   });
 });
+
+describe('состояние библиотеки переживает обновление', () => {
+  it('страница и тумблер версий берутся из адреса', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/cases?page=1&%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D0%B8=%D0%B4%D0%B0',
+    );
+    const { calls } = server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: [caseRow(1)] },
+      '/api/cases/pack': { status: 200, body: PACK },
+    });
+
+    show();
+    await screen.findByText('Страница 2');
+
+    const asked = calls.find((call) => call.url.includes('/api/cases?'));
+    expect(asked?.url).toContain('offset=20');
+    expect(asked?.url).toContain('all_versions=true');
+  });
+});

@@ -10,6 +10,7 @@ import { useState } from 'react';
 
 import { downloadCase, fetchCases } from '../../api/cases';
 import type { CaseRow } from '../../api/types';
+import { usePagedScreen } from '../../app/screenState';
 import { Pager } from '../../components/Pager';
 
 import { CasesTable } from './CasesTable';
@@ -42,8 +43,10 @@ function LibraryPager({
 export function CaseLibrary() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [allVersions, setAllVersions] = useState(false);
-  const [page, setPage] = useState(0);
+  // Страница и тумблер версий — в адресе: F5 и переход в соседний раздел не
+  // должны возвращать человека в начало списка.
+  const { screen, page, setPage } = usePagedScreen();
+  const [allVersions, setAllVersions] = useState(screen.flag('версии'));
 
   const cases = useQuery({
     queryKey: ['cases', 'library', allVersions, page],
@@ -77,8 +80,13 @@ export function CaseLibrary() {
           label="показать все версии"
           checked={allVersions}
           onChange={(event) => {
-            setAllVersions(event.currentTarget.checked);
+            const all = event.currentTarget.checked;
+            setAllVersions(all);
             setPage(0);
+            // Одной правкой адреса: тумблер меняет длину списка, и страницу
+            // надо сбросить тем же движением, иначе второй вызов перетрёт
+            // первый — он читает параметры такими, какими они были до правки.
+            screen.set({ версии: all ? 'да' : null, page: null });
           }}
         />
       </Group>

@@ -9,17 +9,19 @@
 import { AppShell, Badge, Burger, Button, Group, NavLink, Stack, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 
-import { visibleSections } from './nav';
+import { NAV_SECTIONS, visibleSections } from './nav';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [opened, { toggle }] = useDisclosure();
   const location = useLocation();
   const sections = visibleSections(user?.rights ?? []);
+  const visited = useVisited(location.pathname + location.search);
 
   return (
     <AppShell
@@ -59,7 +61,10 @@ export function Shell({ children }: { children: ReactNode }) {
             <NavLink
               key={section.path}
               component={Link}
-              to={section.path}
+              /* Ведёт туда, где человек в этом разделе был: фильтры и страница
+                 живут в адресе, и голая ссылка сбрасывала бы их при каждом
+                 переходе туда-обратно. */
+              to={visited[section.path] ?? section.path}
               label={section.label}
               active={location.pathname.startsWith(section.path)}
             />
@@ -70,4 +75,26 @@ export function Shell({ children }: { children: ReactNode }) {
       <AppShell.Main>{children}</AppShell.Main>
     </AppShell>
   );
+}
+
+/**
+ * Где человек был в каждом разделе — чтобы меню вернуло его туда же.
+ *
+ * Состояние экранов живёт в адресе (`app/screenState.ts`), а пункт меню ведёт
+ * на голый путь: без памяти переход «Проекты → Кейсы → Проекты» сбрасывал бы
+ * фильтры и страницу, хотя человек никуда из раздела не уходил.
+ *
+ * Помнится только текущая вкладка и только пока она открыта: это удобство, а
+ * не данные. Пережить F5 адресу помогает сам адрес.
+ */
+function useVisited(current: string): Record<string, string> {
+  const [visited, setVisited] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const section = NAV_SECTIONS.find((item) => current.startsWith(item.path));
+    if (!section || visited[section.path] === current) return;
+    setVisited((was) => ({ ...was, [section.path]: current }));
+  }, [current, visited]);
+
+  return visited;
 }
