@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_scheme.py::test_two_campaigns_of_one_domain_ask_for_each_month_once
 - **diagnosis:** n/a reason=причина известна и записана как Z8; соседний дефект Z15 найден живым прогоном этой же поставки
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026 — «давай z12 и так далее, в общем погоняй что осталось»)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («давай z12 и так далее», «выбери новые домены»)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
