@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_probe_next_day.py::test_noise_level_drift_in_a_closed_month_does_not_refute_the_rule
 - **diagnosis:** n/a reason=причина видна из замера и записана как Z13
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026 — «давай z12 и так далее»)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («давай z12 и так далее»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
