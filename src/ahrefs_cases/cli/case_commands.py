@@ -17,6 +17,7 @@ from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.cases.store import store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
+from ahrefs_cases.cli.source import reading_source
 from ahrefs_cases.export.archive import EmptyArchiveError, pack
 from ahrefs_cases.export.pdf_renderer import render_pdf
 from ahrefs_cases.storage._enums import MetricSource
@@ -26,26 +27,6 @@ EXIT_BAD_SOURCE = 2
 EXIT_CONTENT_BLOCKED = 4
 """Коды возврата команд кейсов. У контент-запрета свой, потому что действие по
 нему другое: править входной файл, а не искать поломку в логах."""
-
-
-def _source(chosen: MetricSource | None = None) -> MetricSource:
-    """Откуда брать серии: названо вызывающим или, если не названо, как у провайдера.
-
-    Разные вопросы разведены нарочно. Провайдер отвечает «откуда **покупать**»,
-    источник — «что **читать**». Чтение базы не делает ни одного запроса к
-    Ahrefs, и требовать ради него живого режима значит снимать запрет,
-    защищающий деньги заказчика, ради операции, которая ключом не пользуется
-    (замечено 14.09.2026 при сборке кейсов по калибровочному набору).
-
-    Умолчание осталось только у **режима провайдера**, а не у источника: кто
-    назвал источник, тот его и выбрал; кто не назвал — получает режим, в
-    котором работает сервис, и видит это в выводе команды.
-    """
-    if chosen is not None:
-        return chosen
-    from ahrefs_cases import config
-
-    return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
 
 
 async def show_cases(
@@ -60,7 +41,7 @@ async def show_cases(
         await seed_thresholds(session)
         try:
             report = await build_cases(
-                session, domain=domain, version=version, source=_source(source)
+                session, domain=domain, version=version, source=reading_source(source)
             )
         except ThresholdsError as exc:
             print(f"кейсы не собраны: {exc}", file=sys.stderr)
@@ -121,7 +102,7 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await build_cases(session, domain=domain, source=_source(source))
+        report = await build_cases(session, domain=domain, source=reading_source(source))
 
         if not report.attempts:
             print(f"проект не найден: {domain}", file=sys.stderr)
@@ -167,7 +148,7 @@ async def pack_cases(source: MetricSource | None = None) -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await build_cases(session, source=_source(source))
+        report = await build_cases(session, source=reading_source(source))
         built = [item for item in report.by_outcome(CaseOutcome.BUILT) if item.case is not None]
         print("\n".join(report.as_lines()))
         _print_refusals(report)

@@ -24,11 +24,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from ahrefs_cases import config
 from ahrefs_cases.cli.case_commands import pack_cases, render_case, show_cases
+from ahrefs_cases.cli.source import named as named_source
 from ahrefs_cases.cli.collect_commands import (
     OnlyNotADomainError,
     _canonical,
     _case_data,
-    _chosen_source,
     _classify,
     _collect,
     _diagnose,
@@ -73,25 +73,25 @@ async def _main(args: argparse.Namespace) -> int:
         if args.command == "stage2":
             return await _stage2(refresh=args.refresh, only=_only(args.only))
         if args.command == "classify":
-            return await _classify()
+            return await _classify(named_source(args))
         if args.command == "case-data":
             return await _case_data(refresh=args.refresh, only=_only(args.only))
         if args.command == "recalc":
-            return await _recalc(args.version, make_active=args.activate)
+            return await _recalc(args.version, make_active=args.activate, chosen=named_source(args))
         if args.command == "preview":
-            return await _preview(args.version)
+            return await _preview(args.version, named_source(args))
         if args.command == "cases":
-            return await show_cases(_named(args.domain), args.version, _chosen_source(args))
+            return await show_cases(_named(args.domain), args.version, named_source(args))
         if args.command == "render":
-            return await render_case(_canonical(args.domain), _chosen_source(args))
+            return await render_case(_canonical(args.domain), named_source(args))
         if args.command == "pack":
-            return await pack_cases(_chosen_source(args))
+            return await pack_cases(named_source(args))
         if args.command == "useradd":
             return await add_user(args.email, args.group)
         if args.command == "diagnose":
-            return await _diagnose(_named(args.domain))
+            return await _diagnose(_named(args.domain), named_source(args))
         if args.command == "explain":
-            return await _explain(_canonical(args.domain))
+            return await _explain(_canonical(args.domain), named_source(args))
         code = await _intake(args.source)
         return code or await _collect(refresh=args.refresh)
     except OnlyNotADomainError as exc:
@@ -135,7 +135,9 @@ def main() -> int:
     stage2_parser = sub.add_parser(
         "stage2", help="шаг 2 воронки: дорогие метрики только по кандидатам"
     )
-    sub.add_parser("classify", help="классифицировать проекты по действующим порогам")
+    classify_parser = sub.add_parser(
+        "classify", help="классифицировать проекты по действующим порогам"
+    )
     case_parser = sub.add_parser(
         "case-data", help="докупить данные под кейсы: кривая позиций и стоимость трафика"
     )
@@ -180,10 +182,26 @@ def main() -> int:
     all_parser = sub.add_parser("all", help="принять список и сразу собрать")
     all_parser.add_argument("source", help="путь к .csv/.xlsx или ссылка на Google Sheet")
 
-    # Источник рядов — у каждой читающей команды. Чтение уже купленного не
-    # обязано требовать живого провайдера: это разные вопросы, и смешивать их
-    # значит снимать запрет ради операции, которая ключом не пользуется.
-    for reading_parser in (cases_parser, render_parser, pack_parser):
+    # Источник рядов — у каждой команды, которая только читает. Чтение уже
+    # купленного не обязано требовать живого провайдера: это разные вопросы, и
+    # смешивать их значит снимать запрет ради операции, которая ключом не
+    # пользуется.
+    #
+    # Список именно такой длины не случайно. Сначала флаг получили три команды,
+    # оказавшиеся под рукой (`cases`, `render`, `pack`), а считающие остались на
+    # режиме провайдера — и пересчёт вердиктов по уже купленным живым рядам
+    # снова требовал живого режима (Z11, урок L142). Платящих команд здесь нет
+    # и быть не должно: они читают тем же режимом, которым покупают.
+    for reading_parser in (
+        cases_parser,
+        render_parser,
+        pack_parser,
+        classify_parser,
+        recalc_parser,
+        preview_parser,
+        diagnose_parser,
+        explain_parser,
+    ):
         reading_parser.add_argument(
             "--source",
             choices=("live", "fixture"),

@@ -124,9 +124,10 @@ def test_every_paying_command_has_a_scope() -> None:
     Оракул смотрит на разбор аргументов, поэтому поймает и следующую платящую
     команду, которой ещё нет.
     """
-    module = _cli_module()
-    parser = module.main.__wrapped__ if hasattr(module.main, "__wrapped__") else None
-    assert parser is None or True  # разбор строится внутри main, читаем исходник
+    # Разбор аргументов строится внутри `main`, поэтому читается исходник. Сам
+    # импорт скрипта — тоже проверка: синтаксическая поломка нашлась бы иначе
+    # только в бою.
+    assert _cli_module() is not None
 
     source = _SCRIPT.read_text(encoding="utf-8")
     paying = ("collect_parser", "stage2_parser", "case_parser")
@@ -136,3 +137,58 @@ def test_every_paying_command_has_a_scope() -> None:
         assert name in source, f"команда {name} исчезла — оракул проверяет пустоту"
     assert "for paying_parser in (stage2_parser, case_parser):" in scoped
     assert '"--only"' in scoped
+
+
+def test_every_reading_command_takes_the_source() -> None:
+    """Команда, которая только читает, обязана уметь взять источник флагом.
+
+    Этот оракул был **обещан** поставкой `read-bought-series-without-live` и не
+    написан: в её STATUS он стоит как `repro_test`, а в репозитории его нет.
+    Ценой стал Z11 — флаг получили три команды, оказавшиеся под рукой, а
+    считающие остались на режиме провайдера, и пересчёт вердиктов по уже
+    купленным живым рядам снова требовал поднять живой режим.
+
+    Поэтому проверяется **класс** команд, а не три имени: список читающих
+    парсеров и наличие флага у каждого. Следующая читающая команда, забывшая
+    флаг, покраснеет здесь.
+    """
+    source = _SCRIPT.read_text(encoding="utf-8")
+    reading = (
+        "cases_parser",
+        "render_parser",
+        "pack_parser",
+        "classify_parser",
+        "recalc_parser",
+        "preview_parser",
+        "diagnose_parser",
+        "explain_parser",
+    )
+    block = source[source.index("for reading_parser in (") :]
+    block = block[: block.index('help="какие ряды читать')]
+
+    for name in reading:
+        assert name in block, f"читающая команда {name} осталась без --source (Z11, урок L142)"
+    assert '"--source"' in source
+
+
+def test_paying_commands_do_not_take_a_source() -> None:
+    """У платящей команды выбора источника **нет**, и это не забывчивость.
+
+    Она читает тем же режимом, которым покупает: выбрать фикстурные ряды и
+    купить по ним живые данные значило бы записать точки под чужим именем — то
+    есть сломать то самое различие, ради которого флаг заводили.
+    """
+    # Разбор аргументов строится внутри `main`, поэтому читается исходник. Сам
+    # импорт скрипта — тоже проверка: синтаксическая поломка нашлась бы иначе
+    # только в бою.
+    assert _cli_module() is not None
+
+    source = _SCRIPT.read_text(encoding="utf-8")
+    block = source[source.index("for reading_parser in (") :]
+    block = block[: block.index('help="какие ряды читать')]
+
+    for name in ("collect_parser", "stage2_parser", "case_parser"):
+        assert name in source, f"команда {name} исчезла — оракул проверяет пустоту"
+        assert name not in block, (
+            f"платящая команда {name} получила --source: покупка и пометка точек — один режим"
+        )

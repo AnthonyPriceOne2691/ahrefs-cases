@@ -7,8 +7,10 @@
 
 Правила, которые здесь держатся:
 
-- **источник рядов называет вызывающий** (`config_source`, `_chosen_source`) —
-  умолчание трижды давало молчаливую пустоту в живом режиме (урок L53);
+- **источник рядов называет вызывающий** (`cli.source`) — умолчание трижды
+  давало молчаливую пустоту в живом режиме (урок L53), а правило, применённое
+  к трём командам вместо класса команд, заставило поднимать живой режим ради
+  чтения уже купленного (урок L142);
 - **домен приводится к канону тем же нормализатором, что приём** (`_canonical`):
   человек набирает домен так, как видит его в своём файле (урок L124);
 - **у платящей команды есть область действия** (`_scoped_projects`): без неё
@@ -17,7 +19,6 @@
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -27,7 +28,6 @@ from sqlalchemy import select
 from sqlalchemy.engine import ScalarResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases import config
 from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.diagnose import diagnose_domain, diagnose_poor
 from ahrefs_cases.classify.preview import preview
@@ -36,6 +36,7 @@ from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.classify.windows import point_windows
+from ahrefs_cases.cli.source import provider_source, reading_source
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
@@ -166,7 +167,7 @@ async def _stage2(*, refresh: bool = False, only: list[str] | None = None) -> in
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
         projects = list((await _scoped_projects(session, only)).all())
-        candidates = await stage2_candidates(session, projects, source=config_source())
+        candidates = await stage2_candidates(session, projects, source=provider_source())
         if not candidates:
             print("кандидатов нет: шаг 2 не нужен — за «плохих» дорогие метрики не платятся")
             return 0
@@ -191,24 +192,6 @@ async def _scoped_projects(session: AsyncSession, only: list[str] | None) -> Sca
     if only is not None:
         stmt = stmt.where(Project.domain.in_(only))
     return (await session.execute(stmt)).scalars()
-
-
-def _chosen_source(args: argparse.Namespace) -> MetricSource | None:
-    """Источник рядов, если человек назвал его флагом.
-
-    `None` — не назвал: тогда берётся режим провайдера. Флаг существует потому,
-    что «откуда покупать» и «что читать» — разные вопросы: собрать кейс по уже
-    купленным живым рядам можно, не открывая доступ к живому ключу.
-    """
-    chosen = getattr(args, "source", None)
-    if not chosen:
-        return None
-    return MetricSource.LIVE if chosen == "live" else MetricSource.FIXTURE
-
-
-def config_source() -> MetricSource:
-    """Каким источником помечены точки текущего режима."""
-    return MetricSource.LIVE if config.ahrefs.provider == "live" else MetricSource.FIXTURE
 
 
 async def _case_data(*, refresh: bool = False, only: list[str] | None = None) -> int:
@@ -240,23 +223,26 @@ async def _case_data(*, refresh: bool = False, only: list[str] | None = None) ->
     return 0 if report.projects_ok else 1
 
 
-async def _classify() -> int:
+async def _classify(chosen: MetricSource | None = None) -> int:
     """Классификация по действующей версии порогов.
 
-    Ahrefs не трогается: считаем по тому, что уже куплено. Если активной
-    версии порогов нет — сеем её из `config/thresholds.example.yml`, потому
-    что первый запуск на пустой базе иначе упирается в ошибку там, где
+    Ahrefs не трогается: считаем по тому, что уже куплено — и поэтому источник
+    рядов называет вызывающий, а не режим провайдера. Пересчитать вердикты по
+    уже купленным живым рядам можно, не открывая доступ к живому ключу (Z11).
+
+    Если активной версии порогов нет — сеем её из `config/thresholds.example.yml`,
+    потому что первый запуск на пустой базе иначе упирается в ошибку там, где
     достаточно дефолтов Приложения А.
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await classify_all(session, source=config_source())
+        report = await classify_all(session, source=reading_source(chosen))
         await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.total else 1
 
 
-async def _recalc(version: str, *, make_active: bool) -> int:
+async def _recalc(version: str, *, make_active: bool, chosen: MetricSource | None = None) -> int:
     """Пересчёт по указанной версии порогов. Ahrefs не трогается.
 
     Нужен калибровке: заказчик правит пороги по десяти доменам с экспертной
@@ -268,7 +254,7 @@ async def _recalc(version: str, *, make_active: bool) -> int:
         try:
             if make_active:
                 await activate(session, version)
-            report = await recalc(session, version, source=config_source())
+            report = await recalc(session, version, source=reading_source(chosen))
         except ThresholdsError as exc:
             print(f"пересчёт не выполнен: {exc}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
@@ -277,7 +263,7 @@ async def _recalc(version: str, *, make_active: bool) -> int:
     return 0 if report.recalculated else 1
 
 
-async def _preview(version: str) -> int:
+async def _preview(version: str, chosen: MetricSource | None = None) -> int:
     """Что даст версия порогов, если её применить. Ничего не меняет.
 
     Нужна калибровке: заказчик правит порог, смотрит последствия, спорит,
@@ -287,7 +273,7 @@ async def _preview(version: str) -> int:
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
         try:
-            report = await preview(session, version, source=config_source())
+            report = await preview(session, version, source=reading_source(chosen))
         except ThresholdsError as exc:
             print(f"предпросмотр не выполнен: {exc}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
@@ -296,7 +282,7 @@ async def _preview(version: str) -> int:
     return 0
 
 
-async def _diagnose(domain: str | None) -> int:
+async def _diagnose(domain: str | None, chosen: MetricSource | None = None) -> int:
     """Диагностика «плохих»: что просело, когда началось, потеряны ли домены.
 
     По ТЗ кейс «плохим» не формируется, но список с краткой причиной нужен для
@@ -304,14 +290,14 @@ async def _diagnose(domain: str | None) -> int:
     """
     async with get_sessionmaker()() as session:
         if domain is not None:
-            one = await diagnose_domain(session, domain, source=config_source())
+            one = await diagnose_domain(session, domain, source=reading_source(chosen))
             if one is None:
                 print(f"проект не найден: {domain}", file=sys.stderr)
                 return _EXIT_BAD_SOURCE
             print("\n".join(one.as_lines()))
             return 0
 
-        found = await diagnose_poor(session, source=config_source())
+        found = await diagnose_poor(session, source=reading_source(chosen))
     if not found:
         print("«плохих» проектов нет — диагностировать нечего")
         return 0
@@ -321,7 +307,7 @@ async def _diagnose(domain: str | None) -> int:
     return 0
 
 
-async def _explain(domain: str) -> int:
+async def _explain(domain: str, chosen: MetricSource | None = None) -> int:
     """Показать вердикт одного домена со всеми условиями.
 
     Нужна не для отладки, а для калибровки: заказчик сверяет группу с
@@ -337,7 +323,7 @@ async def _explain(domain: str) -> int:
             print(f"проект не найден: {domain}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
         ruleset = await active_ruleset(session)
-        decision = await classify_project(session, project, ruleset, source=config_source())
+        decision = await classify_project(session, project, ruleset, source=reading_source(chosen))
         await session.commit()
 
     print(
