@@ -7,9 +7,9 @@
 - **kind:** feature
 - **repro_test:** tests/test_api_users.py::test_user_with_runs_is_not_deleted_but_named
 - **diagnosis:** n/a reason=не дефект: недостающая возможность, названная владельцем
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («добавь возможность удалять пользователей, это может делать только админ и инженер»)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
