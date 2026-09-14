@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import sys
 from pathlib import Path
 
@@ -102,10 +104,34 @@ def _only(raw: str | None) -> list[str] | None:
         return None
     path = Path(raw)
     if path.is_file():
-        names = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+        names = _names_in(path.read_text(encoding="utf-8"))
     else:
         names = [name.strip() for name in raw.split(",")]
     return [_canonical(name) for name in names if name]
+
+
+def _names_in(text: str) -> list[str]:
+    """Домены из файла: список построчно **или** колонка `domain` файла приёма.
+
+    Оператор загружает список файлом — это боевой сценарий, — и тот же файл
+    естественно подставляет в `--only`, чтобы прогон шёл ровно по нему. Раньше
+    это отказывало на строке заголовков: «`domain,period_start,…`: не домен».
+    Сообщение честное и бесполезное — человек видит свою же первую строку и не
+    понимает, чего от него хотят.
+
+    Разделитель ищется тот же, что у приёма (`csv.Sniffer`), а не
+    предполагается запятой: агентство выгружает из Excel, и там бывает `;`.
+    """
+    first = text.splitlines()[0] if text.strip() else ""
+    if "domain" not in first.lower() or not any(sep in first for sep in ",;\t"):
+        return [line.strip() for line in text.splitlines()]
+    reader = csv.DictReader(io.StringIO(text), dialect=csv.Sniffer().sniff(first))
+    column = next(
+        (name for name in reader.fieldnames or () if name.strip().lower() == "domain"), None
+    )
+    if column is None:
+        return [line.strip() for line in text.splitlines()]
+    return [str(row.get(column) or "").strip() for row in reader]
 
 
 def _named(domain: str | None) -> str | None:

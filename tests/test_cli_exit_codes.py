@@ -192,3 +192,40 @@ def test_paying_commands_do_not_take_a_source() -> None:
         assert name not in block, (
             f"платящая команда {name} получила --source: покупка и пометка точек — один режим"
         )
+
+
+def test_only_reads_the_domain_column_of_the_intake_file(tmp_path: Path) -> None:
+    """Файл, которым делали `intake`, годится и для `--only`.
+
+    Оператор загружает список файлом — это боевой сценарий, — и тот же файл
+    естественно подставляет в прогон, чтобы он шёл ровно по нему. Раньше это
+    отказывало на строке заголовков: «`domain,period_start,…`: не домен».
+    Сообщение честное и бесполезное: человек видит свою же первую строку.
+
+    Разделитель ищется, а не предполагается: агентство выгружает из Excel, и
+    там бывает `;`.
+    """
+    module = _cli_module()
+    comma = tmp_path / "список.csv"
+    comma.write_text(
+        "domain,period_start,niche\nWWW.Example.COM,2025-01-01,fintech\nsecond.example,2025-02-01,авто\n",
+        encoding="utf-8",
+    )
+    semicolon = tmp_path / "из-excel.csv"
+    semicolon.write_text("domain;period_start\nthird.example;2025-03-01\n", encoding="utf-8")
+
+    assert module._only(str(comma)) == ["example.com", "second.example"]
+    assert module._only(str(semicolon)) == ["third.example"]
+
+
+def test_only_still_reads_a_plain_list_of_domains(tmp_path: Path) -> None:
+    """Файл со строками-доменами читается как раньше — это тоже боевой ввод.
+
+    Оракул стоит рядом с предыдущим нарочно: правило «в файле бывает колонка»
+    не должно превратиться в «в файле обязана быть колонка».
+    """
+    module = _cli_module()
+    plain = tmp_path / "домены.txt"
+    plain.write_text("first.example\nsecond.example\n\n", encoding="utf-8")
+
+    assert module._only(str(plain)) == ["first.example", "second.example"]
