@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cli_exit_codes.py::test_only_reads_the_domain_column_of_the_intake_file
 - **diagnosis:** n/a reason=найдено исполнением: тот же файл, которым делали intake, `--only` не принимает
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («я сам хочу погонять с импортом из файла»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
