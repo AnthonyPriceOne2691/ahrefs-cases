@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** web/src/pages/__tests__/projects.test.tsx::фильтр и страница берутся из адреса при открытии
 - **diagnosis:** n/a reason=причина понятна: состояние экранов жило только в памяти компонента
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («при обновлении любой страницы через f5 не должно сбрасываться состояние»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
