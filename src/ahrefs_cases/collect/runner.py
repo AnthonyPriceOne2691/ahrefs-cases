@@ -25,13 +25,13 @@ from ahrefs_cases import config
 from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
 from ahrefs_cases.collect.budget import (
     record_cached,
-    record_spend,
     reserve,
     reserved_units,
     run_saved,
     run_spend,
     uncounted_spend,
 )
+from ahrefs_cases.collect.cache import share_twin_points
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.fetch import TaskOutcome, fetch_one
 from ahrefs_cases.collect.plan import (
@@ -50,13 +50,13 @@ from ahrefs_cases.collect.run_journal import (
     open_run,
     reject_run,
     start_run,
+    store_outcome,
     system_user,
 )
 from ahrefs_cases.collect.run_reaper import reap_stale_runs
 from ahrefs_cases.collect.run_report import RunReport
 from ahrefs_cases.collect.scheme import PointWindows
-from ahrefs_cases.collect.series import store_history
-from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome
+from ahrefs_cases.storage._enums import RunItemOutcome
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 
@@ -157,6 +157,15 @@ async def _execute_run(
 ) -> RunReport:
     """Тело прогона. Вынесено, чтобы перехват выше читался одной страницей."""
     build = _PLAN_BUILDERS[options.stage]
+    # До плана, а не после: перенос отдаёт проекту месяцы, уже купленные другой
+    # кампанией того же домена, и планировщик после этого их не заказывает.
+    # Порядок здесь и есть вся экономия (Z8).
+    shared = await share_twin_points(
+        session,
+        projects,
+        source=engine.source,
+        windows=options.windows or PointWindows(),
+    )
     plan = await build(
         session,
         projects,
@@ -219,6 +228,17 @@ async def _execute_run(
     await finish_run(session, run)
     await session.commit()
 
+    # После сбора — второй перенос: кампания, чьи месяцы купила соседняя, свои
+    # ряды получает только теперь. Без него экономия превращалась бы в дыру:
+    # запрос не сделан, данных нет, и вердикт объявил бы «не хватает данных».
+    spread = await share_twin_points(
+        session,
+        projects,
+        source=engine.source,
+        windows=options.windows or PointWindows(),
+    )
+    await session.commit()
+
     return RunReport(
         run_id=run.id,
         status=run.status.value,
@@ -235,6 +255,7 @@ async def _execute_run(
         units_estimated=estimate,
         requests_made=len(plan.tasks),
         requests_saved=await run_saved(session, run.id),
+        points_shared=shared + spread,
     )
 
 
@@ -299,32 +320,13 @@ async def _execute_tasks(
     points = 0
     for done, future in enumerate(asyncio.as_completed([one(task) for task in tasks]), start=1):
         item = await future
-        points += await _store_outcome(session, run, item)
+        points += await store_outcome(session, run, item)
         if done % config.ahrefs.checkpoint_every == 0:
             # Чекпойнт: прогон, убитый после этой точки, теряет не больше
             # `checkpoint_every` доменов — за них уже заплачено.
             await session.commit()
 
     await session.commit()
-    return points
-
-
-async def _store_outcome(session: AsyncSession, run: Run, item: TaskOutcome) -> int:
-    """Записать исход одной задачи: точки, расход, строку журнала, статус проекта."""
-    points = 0
-    if item.result is not None:
-        points = await store_history(session, item.task.project_id, item.result)
-        await record_spend(session, run.id, item.result)
-    await add_item(
-        session,
-        run,
-        project_id=item.task.project_id,
-        raw_domain=item.task.domain,
-        outcome=item.outcome,
-        reason=item.reason,
-        units_actual=item.result.units_actual if item.result else 0,
-    )
-    await _apply_project_status(session, item)
     return points
 
 
@@ -434,38 +436,20 @@ async def collect_all(
     if only is not None:
         statement = statement.where(Project.domain.in_(list(only)))
     projects = (await session.execute(statement)).scalars().all()
-    if only is not None and len(projects) != len(set(only)):
-        # Молча собрать меньше названного — худший исход: человек решит, что
-        # прогон сделан, а половина списка осталась без данных.
+    if only is not None:
+        # Сверяются **домены**, а не количества: у одного сайта может быть
+        # несколько кампаний, и «просили 3, нашли 4» — это норма, а не пропажа.
+        # Счёт по длине списков падал ровно на таком случае, и падал молча: в
+        # сообщении не оказывалось ни одного имени (Z15).
         missing = sorted(set(only) - {project.domain for project in projects})
-        message = f"в базе нет проектов: {', '.join(missing)}"
-        raise ValueError(message)
+        if missing:
+            # Молча собрать меньше названного — худший исход: человек решит, что
+            # прогон сделан, а половина списка осталась без данных.
+            message = f"в базе нет проектов: {', '.join(missing)}"
+            raise ValueError(message)
     return await collect_projects(
         session, list(projects), provider, now=now, refresh=refresh, quota=quota, windows=windows
     )
-
-
-_PROJECT_STATUS_BY_OUTCOME = {
-    RunItemOutcome.OK: ProjectStatus.COLLECTED,
-    RunItemOutcome.SKIPPED_NO_DATA: ProjectStatus.SKIPPED,
-    RunItemOutcome.FAILED: ProjectStatus.FAILED,
-}
-"""`SKIPPED_ABORTED` намеренно отсутствует: по такому домену мы ничего не
-спрашивали, и менять его статус значило бы записать незнание как результат."""
-
-
-async def _apply_project_status(session: AsyncSession, item: TaskOutcome) -> None:
-    """Статус проекта по исходу сбора.
-
-    Статус двигает прогон, а не приём списка (см. `intake/upsert.py`): иначе
-    повторная загрузка файла обнуляла бы результат последнего сбора.
-    """
-    status = _PROJECT_STATUS_BY_OUTCOME.get(item.outcome)
-    if status is None:
-        return
-    project = await session.get(Project, item.task.project_id)
-    if project is not None:
-        project.status = status
 
 
 async def _fail_run(session: AsyncSession, run: Run, exc: Exception) -> None:

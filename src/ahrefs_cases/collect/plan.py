@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -249,6 +249,12 @@ async def build_plan(
     tasks: list[CollectTask] = []
     cached: list[CachedTask] = []
     choices: dict[tuple[int, str], SchemeChoice] = {}
+    # Что уже заказано **в этом же плане** — по паре «домен + режим» и
+    # endpoint'у. Кэш отвечает на вопрос «что куплено раньше», а этот реестр —
+    # «что купит соседняя кампания того же сайта через три задачи отсюда».
+    # Без него две кампании одного домена платят за общие месяцы дважды в
+    # одном прогоне, и смета показывает эту двойную цену как норму (Z8).
+    claimed: dict[tuple[str, str, str], set[date]] = {}
     for project in projects:
         skip_reason = await _skip_reason(session, project, refresh=refresh)
         for spec in specs:
@@ -260,9 +266,84 @@ async def build_plan(
             planned, saved = await _tasks_for_spec(
                 session, project, spec, choice, source=source, now=now, refresh=refresh
             )
+            key = (project.domain, project.target_mode.value, spec.name)
+            planned, twin_saved = _drop_twin_months(
+                project, spec, planned, claimed.setdefault(key, set())
+            )
             tasks.extend(planned)
             cached.extend(saved)
+            cached.extend(twin_saved)
     return CollectPlan(tasks=tasks, cached=cached, choices=choices)
+
+
+def _months_of(window_from: date, window_to: date) -> list[date]:
+    """Месяцы окна включительно — та же арифметика, что у цены запроса."""
+    months: list[date] = []
+    cursor = window_from.replace(day=1)
+    last = window_to.replace(day=1)
+    while cursor <= last:
+        months.append(cursor)
+        total = cursor.year * 12 + cursor.month
+        cursor = date(total // 12, total % 12 + 1, 1)
+    return months
+
+
+def _chunks(months: Sequence[date]) -> list[tuple[date, date]]:
+    """Подряд идущие месяцы — отрезками. Дыра внутри режет отрезок надвое.
+
+    Просить один отрезок от первого месяца до последнего было бы проще и
+    дороже: середина, купленная соседней кампанией, покупалась бы заново — то
+    есть ровно то, ради чего реестр и заводится.
+    """
+    if not months:
+        return []
+    spans: list[tuple[date, date]] = []
+    start = previous = months[0]
+    for month in months[1:]:
+        total = previous.year * 12 + previous.month
+        if month != date(total // 12, total % 12 + 1, 1):
+            spans.append((start, previous))
+            start = month
+        previous = month
+    spans.append((start, previous))
+    return spans
+
+
+def _drop_twin_months(
+    project: Project,
+    spec: EndpointSpec,
+    planned: Sequence[CollectTask],
+    claimed: set[date],
+) -> tuple[list[CollectTask], list[CachedTask]]:
+    """Выкинуть из задач месяцы, которые уже заказаны по тому же домену.
+
+    Данные одни и те же: трафик домена за январь не зависит от того, в рамках
+    какой кампании его спросили. Купленное раздаётся кампаниям после прогона
+    (`cache.share_twin_points`), поэтому здесь месяц можно просто не заказывать.
+    """
+    kept: list[CollectTask] = []
+    saved: list[CachedTask] = []
+    for task in planned:
+        window = task.request
+        asked_months = _months_of(window.date_from, window.date_to or window.date_from)
+        left = [month for month in asked_months if month not in claimed]
+        claimed.update(asked_months)
+        if not left:
+            saved.append(_cached(project, spec, "месяцы покупает другая кампания того же домена"))
+            continue
+        if len(left) == len(asked_months):
+            kept.append(task)
+            continue
+        for span_from, span_to in _chunks(left):
+            kept.append(
+                CollectTask(
+                    project_id=task.project_id,
+                    domain=task.domain,
+                    spec=task.spec,
+                    request=replace(window, date_from=span_from, date_to=span_to),
+                )
+            )
+    return kept, saved
 
 
 def _choice_for(

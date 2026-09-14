@@ -125,6 +125,29 @@ class SchemeChoice:
         return min(self.units_full_history, self.units_two_points)
 
 
+def history_span(
+    *,
+    period_start: date,
+    period_end: date,
+    windows: PointWindows,
+    max_history_months: int,
+) -> Window:
+    """Весь отрезок, который проект вообще может купить по этому периоду.
+
+    Схема истории берёт его целиком, схема точек — два окна **внутри** него.
+    Живёт отдельной функцией, потому что спрашивают его двое: выбор схемы и
+    перенос уже купленных месяцев между кампаниями одного домена
+    (`cache.share_twin_points`). Второй экземпляр этой арифметики разошёлся бы
+    с первым на первой же правке глубины истории — и перенос начал бы отдавать
+    месяцы за пределами периода, растягивая серию и создавая в ней дыры.
+    """
+    floor = _shift_months(period_end, -max_history_months)
+    return Window(
+        date_from=max(_shift_months(period_start, -windows.baseline_months), floor),
+        date_to=period_end,
+    )
+
+
 def choose_scheme(
     *,
     period_start: date,
@@ -155,11 +178,15 @@ def choose_scheme(
     молча. Факт перекрытия остаётся в объяснении: оператору он полезен, потому
     что показывает, почему точки для такого периода бессмысленны.
     """
+    full = history_span(
+        period_start=period_start,
+        period_end=period_end,
+        windows=windows,
+        max_history_months=max_history_months,
+    )
     floor = _shift_months(period_end, -max_history_months)
-    lead_from = max(_shift_months(period_start, -windows.baseline_months), floor)
+    lead_from = full.date_from
     purchased = max(windows.point_months, spec.rows_under_minimum())
-
-    full = Window(date_from=lead_from, date_to=period_end)
     # Конец окна точки А считается от **двух** якорей: от старта работ (там его
     # ждёт `classify/points.py`) и от начала самого окна, если глубина истории
     # сдвинула его вперёд. Без второго якоря окно переворачивалось на проектах

@@ -117,7 +117,7 @@ async def test_failure_outside_tasks_closes_the_run(
         message = "диск кончился"
         raise RuntimeError(message)
 
-    monkeypatch.setattr("ahrefs_cases.collect.runner.store_history", boom)
+    monkeypatch.setattr("ahrefs_cases.collect.run_journal.store_history", boom)
 
     with pytest.raises(RuntimeError, match="диск кончился"):
         await collect_all(db_session, AhrefsFixture(), now=NOW)
@@ -196,7 +196,7 @@ async def test_interrupted_run_keeps_what_it_collected(
             raise RuntimeError(message)
         return await real_store(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr("ahrefs_cases.collect.runner.store_history", store_twice_then_die)
+    monkeypatch.setattr("ahrefs_cases.collect.run_journal.store_history", store_twice_then_die)
 
     with pytest.raises(RuntimeError):
         await collect_all(db_session, AhrefsFixture(), now=NOW)
@@ -204,7 +204,7 @@ async def test_interrupted_run_keeps_what_it_collected(
     saved = (await db_session.execute(select(func.count()).select_from(MetricPoint))).scalar_one()
     assert saved > 0, "данные двух собранных доменов пропали — прогон стал чистой тратой"
 
-    monkeypatch.setattr("ahrefs_cases.collect.runner.store_history", real_store)
+    monkeypatch.setattr("ahrefs_cases.collect.run_journal.store_history", real_store)
     provider = CountingFixture()
     await collect_all(db_session, provider, now=NOW)
 

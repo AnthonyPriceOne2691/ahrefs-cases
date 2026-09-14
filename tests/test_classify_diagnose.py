@@ -161,9 +161,12 @@ async def test_missing_stage2_data_is_said_in_words(db_session: AsyncSession) ->
     project = await _project(db_session, "nolinks.example.com")
     await _points(db_session, project, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
 
-    found = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
+    campaigns = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
 
-    assert found is not None
+    # Разбор приходит списком: у одного сайта кампаний может быть несколько, и
+    # `.first()` показывал бы одну из них, выбранную порядком строк в базе.
+    assert len(campaigns) == 1
+    found = campaigns[0]
     assert found.refdomains.bought is False
     assert "не покупались" in found.refdomains.describe()
     assert "units" in found.refdomains.describe(), "цена вопроса названа"
@@ -175,9 +178,10 @@ async def test_lost_refdomains_are_counted(db_session: AsyncSession) -> None:
     await _points(db_session, project, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
     await _points(db_session, project, [120.0, 100.0, 80.0], Metric.REFDOMAINS)
 
-    found = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
+    campaigns = await diagnose_domain(db_session, project.domain, source=MetricSource.FIXTURE)
 
-    assert found is not None
+    assert len(campaigns) == 1
+    found = campaigns[0]
     assert found.refdomains.bought is True
     assert "потеряно доменов: 120 → 80" in found.refdomains.describe()
 
@@ -257,3 +261,21 @@ async def test_normalization_refusal_reaches_every_path(db_session: AsyncSession
         await recalc(db_session, "2026-09-N", source=MetricSource.FIXTURE)
     with pytest.raises(ThresholdsError):
         await preview(db_session, "2026-09-N", source=MetricSource.FIXTURE)
+
+
+async def test_domain_with_two_campaigns_is_diagnosed_twice(db_session: AsyncSession) -> None:
+    """Домен не опознаёт проект: у сайта бывает несколько кампаний.
+
+    Раньше здесь стоял `.first()`, и команда молча показывала разбор одной из
+    них — какой именно, зависело от порядка строк в базе. Тот же класс, что
+    у фильтра `--only` (Z15): «домен = проект» верно ровно до второй кампании.
+    """
+    first = await _project(db_session, "twin-diag.example")
+    await _points(db_session, first, [2000.0, 1500.0, 1000.0], Metric.ORG_TRAFFIC)
+    row = "twin-diag.example,2025-07-01,2026-06-01,fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
+    await accept(db_session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
+    await db_session.flush()
+
+    campaigns = await diagnose_domain(db_session, "twin-diag.example", source=MetricSource.FIXTURE)
+
+    assert len(campaigns) == 2, "разобрана одна кампания из двух"

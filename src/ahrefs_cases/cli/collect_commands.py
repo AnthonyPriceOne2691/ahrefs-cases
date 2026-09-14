@@ -290,11 +290,14 @@ async def _diagnose(domain: str | None, chosen: MetricSource | None = None) -> i
     """
     async with get_sessionmaker()() as session:
         if domain is not None:
-            one = await diagnose_domain(session, domain, source=reading_source(chosen))
-            if one is None:
+            campaigns = await diagnose_domain(session, domain, source=reading_source(chosen))
+            if not campaigns:
                 print(f"проект не найден: {domain}", file=sys.stderr)
                 return _EXIT_BAD_SOURCE
-            print("\n".join(one.as_lines()))
+            if len(campaigns) > 1:
+                print(f"кампаний по домену: {len(campaigns)}")
+            for one in campaigns:
+                print("\n".join(one.as_lines()))
             return 0
 
         found = await diagnose_poor(session, source=reading_source(chosen))
@@ -314,27 +317,46 @@ async def _explain(domain: str, chosen: MetricSource | None = None) -> int:
     экспертной оценкой и должен видеть, какое условие её определило.
     """
     async with get_sessionmaker()() as session:
-        project = (
-            (await session.execute(select(Project).where(Project.domain == domain)))
+        # Все кампании домена, а не первая попавшаяся: агентство ведёт сайт
+        # несколькими периодами, и раньше команда молча показывала одну из них —
+        # какую именно, зависело от порядка строк в базе.
+        projects = list(
+            (
+                await session.execute(
+                    select(Project).where(Project.domain == domain).order_by(Project.period_start)
+                )
+            )
             .scalars()
-            .first()
+            .all()
         )
-        if project is None:
+        if not projects:
             print(f"проект не найден: {domain}", file=sys.stderr)
             return _EXIT_BAD_SOURCE
         ruleset = await active_ruleset(session)
-        decision = await classify_project(session, project, ruleset, source=reading_source(chosen))
+        verdicts = [
+            (
+                project,
+                await classify_project(session, project, ruleset, source=reading_source(chosen)),
+            )
+            for project in projects
+        ]
         await session.commit()
 
-    print(
-        f"{domain}: {decision.group.value} (пороги {ruleset.version}, score {decision.score:.0f})"
-    )
-    for reason in decision.reasons:
-        mark = "✓" if reason.passed else "✗"
-        weight = "решает" if reason.decisive else "справочно"
-        fact = "—" if reason.fact is None else f"{reason.fact:.1f}"
-        threshold = "—" if reason.threshold is None else f"{reason.threshold:.1f}"
+    if len(verdicts) > 1:
+        print(f"кампаний по домену {domain}: {len(verdicts)}")
+    for project, decision in verdicts:
+        period = f"{project.period_start:%Y-%m} — {project.period_end:%Y-%m}"
         print(
-            f"  {mark} {reason.subject:34} факт {fact:>10}  порог {threshold:>10}  [{weight}] {reason.note}"
+            f"{domain} [{period}]: {decision.group.value} "
+            f"(пороги {ruleset.version}, score {decision.score:.0f})"
         )
+        for reason in decision.reasons:
+            mark = "✓" if reason.passed else "✗"
+            weight = "решает" if reason.decisive else "справочно"
+            fact = "—" if reason.fact is None else f"{reason.fact:.1f}"
+            threshold = "—" if reason.threshold is None else f"{reason.threshold:.1f}"
+            print(
+                f"  {mark} {reason.subject:34} факт {fact:>10}  "
+                f"порог {threshold:>10}  [{weight}] {reason.note}"
+            )
     return 0

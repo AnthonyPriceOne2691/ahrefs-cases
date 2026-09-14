@@ -18,7 +18,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.storage._enums import RunItemOutcome, RunStatus, UserGroup
+from ahrefs_cases.collect.budget import record_spend
+from ahrefs_cases.collect.fetch import TaskOutcome
+from ahrefs_cases.collect.series import store_history
+from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome, RunStatus, UserGroup
+from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run, RunItem
 from ahrefs_cases.storage.models.user import User
 
@@ -271,3 +275,45 @@ def _verdict(run: Run, *, error: str, aborted: int = 0) -> RunStatus:
     if run.projects_failed or aborted:
         return RunStatus.PARTIAL
     return RunStatus.DONE
+
+
+_PROJECT_STATUS_BY_OUTCOME = {
+    RunItemOutcome.OK: ProjectStatus.COLLECTED,
+    RunItemOutcome.SKIPPED_NO_DATA: ProjectStatus.SKIPPED,
+    RunItemOutcome.FAILED: ProjectStatus.FAILED,
+}
+"""`SKIPPED_ABORTED` намеренно отсутствует: по такому домену мы ничего не
+спрашивали, и менять его статус значило бы записать незнание как результат."""
+
+
+async def store_outcome(session: AsyncSession, run: Run, item: TaskOutcome) -> int:
+    """Записать исход одной задачи: точки, расход, строку журнала, статус проекта."""
+    points = 0
+    if item.result is not None:
+        points = await store_history(session, item.task.project_id, item.result)
+        await record_spend(session, run.id, item.result)
+    await add_item(
+        session,
+        run,
+        project_id=item.task.project_id,
+        raw_domain=item.task.domain,
+        outcome=item.outcome,
+        reason=item.reason,
+        units_actual=item.result.units_actual if item.result else 0,
+    )
+    await _apply_project_status(session, item)
+    return points
+
+
+async def _apply_project_status(session: AsyncSession, item: TaskOutcome) -> None:
+    """Статус проекта по исходу сбора.
+
+    Статус двигает прогон, а не приём списка (см. `intake/upsert.py`): иначе
+    повторная загрузка файла обнуляла бы результат последнего сбора.
+    """
+    status = _PROJECT_STATUS_BY_OUTCOME.get(item.outcome)
+    if status is None:
+        return
+    project = await session.get(Project, item.task.project_id)
+    if project is not None:
+        project.status = status

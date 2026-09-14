@@ -335,3 +335,87 @@ async def test_breakdown_counts_projects_not_tasks(
     assert all(share.endpoint == "metrics-history" for share in breakdown.shares), (
         "на шаге 1 endpoint один, и разрез по нему вырождается в прежний"
     )
+
+
+async def _campaign(session: AsyncSession, domain: str, start: str, end: str) -> Project:
+    """Кампания по домену: у одного сайта их может быть несколько."""
+    row = f"{domain},{start},{end},fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
+    await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
+    # Поиск по началу периода, а не по домену: приём кладёт в базу **канон**
+    # (IDN → punycode), и сравнение с тем, как домен набрали, ничего не найдёт
+    # (урок L124). У кампаний одного сайта различается именно период.
+    return (
+        (
+            await session.execute(
+                select(Project).where(Project.period_start == date.fromisoformat(start))
+            )
+        )
+        .scalars()
+        .one()
+    )
+
+
+async def test_two_campaigns_of_one_domain_ask_for_each_month_once(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Z8: общие месяцы двух кампаний одного сайта заказываются один раз.
+
+    Экономия обязана попадать **в смету**, а не появляться после прогона:
+    `preflight` сверяет с квотой именно план, и двойная цена в нём означала бы
+    отказ там, где денег на самом деле хватает.
+
+    Данные при этом одни: трафик домена за август не зависит от того, в рамках
+    какой кампании его спросили. Свою серию вторая кампания получает переносом
+    (`cache.share_twin_points`), а не запросом.
+    """
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.ahrefs, "collect_scheme", "history")
+    first = await _campaign(db_session, "twin-campaign.example", "2025-01-01", "2025-12-01")
+    second = await _campaign(db_session, "twin-campaign.example", "2025-07-01", "2026-06-01")
+
+    plan = await build_stage1_plan(
+        db_session, [first, second], source=MetricSource.FIXTURE, now=NOW, windows=PointWindows()
+    )
+
+    asked = sorted((task.request.date_from, task.request.date_to) for task in plan.tasks)
+    months = [month for span in asked for month in _months_between(*span)]
+    assert len(months) == len(set(months)), f"месяц заказан дважды: {asked}"
+    # Вторая кампания просит только хвост, которого нет у первой.
+    assert asked[1][0] > asked[0][1], asked
+
+
+def _months_between(start: date, end: date | None) -> list[date]:
+    months: list[date] = []
+    cursor, last = start, (end or start)
+    while cursor <= last:
+        months.append(cursor)
+        total = cursor.year * 12 + cursor.month
+        cursor = date(total // 12, total % 12 + 1, 1)
+    return months
+
+
+async def test_campaign_inside_another_one_asks_for_nothing(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Кампания, целиком лежащая внутри другой, не делает ни одного запроса.
+
+    Причина названа человеку словами: «кейса нет, потому что месяцы покупает
+    другая кампания» читается, а молчаливое отсутствие задачи — нет (L32, L34).
+    """
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.ahrefs, "collect_scheme", "history")
+    wide = await _campaign(db_session, "nested-campaign.example", "2025-01-01", "2026-06-01")
+    narrow = await _campaign(db_session, "nested-campaign.example", "2025-06-01", "2025-09-01")
+
+    plan = await build_stage1_plan(
+        db_session, [wide, narrow], source=MetricSource.FIXTURE, now=NOW, windows=PointWindows()
+    )
+
+    assert [task.project_id for task in plan.tasks] == [wide.id]
+    assert any(
+        cached.project_id == narrow.id
+        and cached.reason == "месяцы покупает другая кампания того же домена"
+        for cached in plan.cached
+    ), [cached.reason for cached in plan.cached]

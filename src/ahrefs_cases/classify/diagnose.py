@@ -240,18 +240,30 @@ async def diagnose_poor(session: AsyncSession, *, source: MetricSource) -> list[
 
 async def diagnose_domain(
     session: AsyncSession, domain: str, *, source: MetricSource
-) -> Diagnosis | None:
-    """Разбор одного проекта независимо от его группы.
+) -> list[Diagnosis]:
+    """Разбор домена независимо от группы — по **каждой** его кампании.
 
     Группа здесь не проверяется намеренно: спросить «что с этим доменом» могут
     и про «средний» — диагноз от этого не становится неверным, он просто
     показывает, что роста хватило.
+
+    Кампаний у одного сайта может быть несколько, и раньше здесь стоял `.first()`:
+    команда молча показывала разбор одной из них, а какой именно — зависело от
+    порядка строк в базе. Домен не опознаёт проект (им опознаёт тройка с началом
+    периода), и всякий, кто принимает домен снаружи, обязан это помнить.
     """
-    project = (
-        (await session.execute(select(Project).where(Project.domain == domain))).scalars().first()
+    projects = (
+        (
+            await session.execute(
+                select(Project).where(Project.domain == domain).order_by(Project.period_start)
+            )
+        )
+        .scalars()
+        .all()
     )
-    if project is None:
-        return None
-    return diagnose(
-        project.domain, await load_series(session, project.id, source), project.period_start
-    )
+    return [
+        diagnose(
+            project.domain, await load_series(session, project.id, source), project.period_start
+        )
+        for project in projects
+    ]

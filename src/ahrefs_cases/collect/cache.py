@@ -12,18 +12,24 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
 from ahrefs_cases import config
+from ahrefs_cases.collect.scheme import PointWindows, history_span
 from ahrefs_cases.storage._enums import Metric, MetricSource, RunItemOutcome
 from ahrefs_cases.storage.models.metric_point import MetricPoint
+from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run, RunItem
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +48,96 @@ class Coverage:
     @property
     def is_empty(self) -> bool:
         return self.last_point is None
+
+
+async def share_twin_points(
+    session: AsyncSession,
+    projects: Sequence[Project],
+    *,
+    source: MetricSource,
+    windows: PointWindows,
+) -> int:
+    """Перенести проекту месяцы, уже купленные по тому же домену и режиму.
+
+    Один сайт может вестись двумя кампаниями — агентство заводит их отдельными
+    строками, и проект опознаётся тройкой `(домен, режим, начало периода)`. Это
+    правильно: кампании сравнивают между собой. Но ряды лежат в `metric_points`
+    с `project_id`, и кэш «закрытый месяц неизменяем» смотрел только на свой
+    проект: перекрывающиеся месяцы второй кампании покупались **по второму
+    разу** — 209 units на каждую лишнюю историю по профилю ТЗ (Z8).
+
+    Данные при этом одни и те же: трафик домена за январь не зависит от того,
+    в рамках какой кампании его спросили. Поэтому месяц не покупается заново, а
+    **переносится** — бесплатно, запросом к своей же базе.
+
+    Переносится только то, что лежит **внутри отрезка этого проекта**
+    (`scheme.history_span`). Копировать всё подряд нельзя: кампания двухлетней
+    давности растянула бы серию назад, между ней и нынешней зияла бы дыра в
+    полтора года, и правило достоверности серии объявило бы «данных не хватает»
+    там, где всё в порядке.
+
+    Возвращает число перенесённых точек — прогон печатает его в отчёте: молчать
+    об экономии нельзя, иначе первый же вопрос «почему второй прогон дешевле»
+    останется без ответа.
+    """
+    shared = 0
+    for project in projects:
+        span = history_span(
+            period_start=project.period_start,
+            period_end=project.period_end,
+            windows=windows,
+            max_history_months=config.ahrefs.max_history_months,
+        )
+        twins = (
+            select(Project.id)
+            .where(
+                Project.domain == project.domain,
+                Project.target_mode == project.target_mode,
+                Project.id != project.id,
+            )
+            .scalar_subquery()
+        )
+        # `DISTINCT ON` берёт свежую копию месяца, если кампаний больше двух:
+        # без него один и тот же месяц пришёл бы в INSERT дважды.
+        source_rows = (
+            select(
+                literal(project.id).label("project_id"),
+                MetricPoint.metric,
+                MetricPoint.point_date,
+                MetricPoint.value,
+                MetricPoint.source,
+                MetricPoint.fetched_at,
+            )
+            .where(
+                MetricPoint.project_id.in_(twins),
+                MetricPoint.source == source,
+                MetricPoint.point_date >= span.date_from,
+                MetricPoint.point_date <= span.date_to,
+            )
+            .distinct(MetricPoint.metric, MetricPoint.point_date)
+            .order_by(
+                MetricPoint.metric,
+                MetricPoint.point_date,
+                MetricPoint.fetched_at.desc(),
+            )
+        )
+        stmt = pg_insert(MetricPoint).from_select(
+            ["project_id", "metric", "point_date", "value", "source", "fetched_at"],
+            source_rows,
+        )
+        # Уже лежащая точка не трогается: она наша, и `fetched_at` у неё честный.
+        # `returning(id)` вместо `rowcount`: у асинхронного драйвера счётчик
+        # строк типизирован как отсутствующий, а нам нужно назвать число в
+        # отчёте — «сколько месяцев не купили заново» это и есть сэкономленное.
+        inserted = await session.execute(
+            stmt.on_conflict_do_nothing(constraint="uq_metric_point_identity").returning(
+                MetricPoint.id
+            )
+        )
+        shared += len(inserted.all())
+    if shared:
+        logger.info("collect_points_shared", extra={"points": shared, "source": source.value})
+    return shared
 
 
 async def coverage(

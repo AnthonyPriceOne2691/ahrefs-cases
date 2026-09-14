@@ -20,8 +20,10 @@ from ahrefs_cases.collect.cache import (
     coverage,
     is_fresh,
     next_date_from,
+    share_twin_points,
 )
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
+from ahrefs_cases.collect.scheme import PointWindows
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import parse_csv_text
 from ahrefs_cases.storage._enums import Metric, MetricSource
@@ -239,3 +241,140 @@ async def test_source_separates_fixture_from_live(db_session: AsyncSession) -> N
     known = await coverage(db_session, project.id, STAGE1_METRICS, MetricSource.LIVE)
 
     assert known.is_empty
+
+
+async def _campaign(session: AsyncSession, domain: str, period: tuple[str, str]) -> Project:
+    """Кампания по домену: агентство ведёт один сайт несколькими периодами."""
+    from sqlalchemy import select as _select
+
+    start, end = period
+    row = f"{domain},{start},{end},fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
+    await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
+    return (
+        (
+            await session.execute(
+                _select(Project).where(Project.period_start == date.fromisoformat(start))
+            )
+        )
+        .scalars()
+        .one()
+    )
+
+
+async def test_second_campaign_does_not_buy_the_same_months_again(
+    db_session: AsyncSession,
+) -> None:
+    """Z8: общие месяцы двух кампаний одного домена не покупаются дважды.
+
+    Агентство ведёт сайт двумя кампаниями, и это законно: проект опознаётся
+    тройкой `(домен, режим, начало периода)`, кампании сравнивают между собой.
+    Но ряды лежат с `project_id`, и кэш смотрел только на свой проект — вторая
+    кампания платила за уже купленные месяцы по второму разу (209 units на
+    историю по профилю ТЗ). Трафик домена за январь не зависит от того, в
+    рамках какой кампании его спросили: месяц переносится, а не покупается.
+    """
+    first = await _campaign(db_session, "две-кампании.example", ("2025-01-01", "2025-12-01"))
+    second = await _campaign(db_session, "две-кампании.example", ("2025-07-01", "2026-06-01"))
+    for month in range(1, 13):
+        db_session.add(
+            MetricPoint(
+                project_id=first.id,
+                metric=Metric.ORG_TRAFFIC,
+                point_date=date(2025, month, 1),
+                value=1000.0 + month,
+                source=MetricSource.FIXTURE,
+                fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    await db_session.flush()
+
+    shared = await share_twin_points(
+        db_session,
+        [second],
+        source=MetricSource.FIXTURE,
+        windows=PointWindows(point_months=2),
+    )
+    await db_session.flush()
+    known = await coverage(db_session, second.id, (Metric.ORG_TRAFFIC,), MetricSource.FIXTURE)
+
+    assert shared > 0, "месяцы первой кампании не перенесены — вторая купит их заново"
+    assert known.last_point == date(2025, 12, 1)
+    # Докупать теперь надо только хвост, которого нет ни у одной кампании.
+    assert next_date_from(
+        known,
+        window_from=date(2025, 7, 1),
+        window_to=date(2026, 6, 1),
+        now=NOW,
+        fresh=True,
+    ) == date(2026, 1, 1)
+
+
+async def test_sharing_does_not_stretch_the_series_beyond_the_period(
+    db_session: AsyncSession,
+) -> None:
+    """Перенос ограничен отрезком проекта — иначе он сам создаёт дыру.
+
+    Кампания двухлетней давности растянула бы серию назад, между ней и нынешней
+    зияла бы дыра в полтора года, и правило достоверности серии объявило бы
+    «данных не хватает» там, где всё в порядке. Дефект был бы дороже
+    исправляемого: тот стоил units, этот — кейсов.
+    """
+    old = await _campaign(db_session, "давняя-кампания.example", ("2023-01-01", "2023-06-01"))
+    fresh = await _campaign(db_session, "давняя-кампания.example", ("2025-07-01", "2026-06-01"))
+    for month in range(1, 7):
+        db_session.add(
+            MetricPoint(
+                project_id=old.id,
+                metric=Metric.ORG_TRAFFIC,
+                point_date=date(2023, month, 1),
+                value=500.0,
+                source=MetricSource.FIXTURE,
+                fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    await db_session.flush()
+
+    shared = await share_twin_points(
+        db_session,
+        [fresh],
+        source=MetricSource.FIXTURE,
+        windows=PointWindows(point_months=2),
+    )
+
+    assert shared == 0, "перенесли месяцы, лежащие вне отрезка проекта"
+
+
+async def test_sharing_ignores_another_target_mode(db_session: AsyncSession) -> None:
+    """Домен тот же, режим другой — это другие числа, и переносить их нельзя.
+
+    `subdomains` считает поддомены, `prefix` — только раздел: у проекта-раздела
+    трафик меньше по построению. Перенос между режимами подменил бы данные
+    молча, и подмену было бы видно только по величине.
+    """
+    from sqlalchemy import select as _select
+
+    whole = await _campaign(db_session, "смена-режима.example", ("2025-01-01", "2025-12-01"))
+    row = "смена-режима.example,2025-07-01,2026-06-01,fintech,US,seo,10,Acme,i.petrov,yes,prefix,"
+    await accept(db_session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
+    section = (
+        (await db_session.execute(_select(Project).where(Project.target_mode == "prefix")))
+        .scalars()
+        .one()
+    )
+    db_session.add(
+        MetricPoint(
+            project_id=whole.id,
+            metric=Metric.ORG_TRAFFIC,
+            point_date=date(2025, 8, 1),
+            value=1000.0,
+            source=MetricSource.FIXTURE,
+            fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    )
+    await db_session.flush()
+
+    shared = await share_twin_points(
+        db_session, [section], source=MetricSource.FIXTURE, windows=PointWindows(point_months=2)
+    )
+
+    assert shared == 0, "перенесли данные другого режима подсчёта"
