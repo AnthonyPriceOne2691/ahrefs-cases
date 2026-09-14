@@ -21,7 +21,7 @@ from ahrefs_cases.classify.rulesets import (
     thresholds_of,
 )
 from ahrefs_cases.classify.thresholds import ThresholdsError
-from ahrefs_cases.classify.verdicts import classify_all, classify_project
+from ahrefs_cases.classify.verdicts import classify_all, classify_project, source_mismatch
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
 from ahrefs_cases.intake.accept import accept
@@ -237,3 +237,46 @@ async def test_reclassification_updates_not_duplicates(db_session: AsyncSession)
 
     count = (await db_session.execute(select(func.count()).select_from(Verdict))).scalar_one()
     assert count == 1
+
+
+async def test_verdict_records_the_source_it_was_computed_from(
+    db_session: AsyncSession,
+) -> None:
+    """E1: вердикт помнит, по каким рядам посчитан, и помнит это после пересчёта.
+
+    Без источника вердикт нельзя сверить ни с чем: числа таблицы кейса
+    приходят из него, кривые — из серий, и совпадение держалось только на том,
+    что человек звал `classify` и `cases` в одном режиме (Z10).
+    """
+    projects = await _prepare(db_session, ["d0.example.com"])
+    ruleset = await seed_thresholds(db_session)
+
+    await classify_project(db_session, projects[0], ruleset, source=MetricSource.FIXTURE)
+    await db_session.flush()
+    verdict = (await db_session.execute(select(Verdict))).scalars().one()
+    assert verdict.source is MetricSource.FIXTURE
+
+    # Пересчёт по другому источнику перезаписывает вердикт **вместе с
+    # источником**: иначе поле осталось бы от прошлого прогона и врало бы
+    # именно там, где его завели.
+    await classify_project(db_session, projects[0], ruleset, source=MetricSource.LIVE)
+    await db_session.flush()
+    await db_session.refresh(verdict)
+    assert verdict.source is MetricSource.LIVE
+
+
+def test_source_mismatch_names_what_did_not_match() -> None:
+    """E2, E3: правило расхождения живёт у вердикта, а не у каждого читателя.
+
+    Потребителей двое — лист PDF и карточка на экране, — и разойтись им
+    достаточно один раз: в том из них, где проверку забыли завести (L127).
+    """
+    assert source_mismatch(MetricSource.FIXTURE, MetricSource.FIXTURE) is None
+
+    other = source_mismatch(MetricSource.FIXTURE, MetricSource.LIVE)
+    assert other is not None
+    assert "fixture" in other and "live" in other
+
+    unknown = source_mismatch(None, MetricSource.LIVE)
+    assert unknown is not None
+    assert "записывать" in unknown

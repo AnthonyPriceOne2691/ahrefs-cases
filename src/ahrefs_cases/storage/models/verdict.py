@@ -8,7 +8,7 @@ from sqlalchemy import DateTime, Enum, Float, ForeignKey, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from ahrefs_cases.storage._enums import Group
+from ahrefs_cases.storage._enums import Group, MetricSource
 from ahrefs_cases.storage.models._base import Base
 
 
@@ -40,6 +40,21 @@ class Verdict(Base):
 
     point_a: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
     point_b: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict)
+    source: Mapped[MetricSource | None] = mapped_column(
+        Enum(MetricSource, name="metric_source"), nullable=True
+    )
+    """По каким рядам посчитаны точки. Без него вердикт нельзя сверить ни с чем:
+    числа таблицы кейса приходят отсюда, кривые — из серий, и совпадение этих
+    двух миров держалось только на том, что человек звал `classify` и `cases` в
+    одном режиме. На стенде, где по проекту лежат и живые, и фикстурные ряды,
+    это дало кейс с таблицей «35 394 → 60 101» и кривой до 1 058 129 (Z10).
+
+    `NULL` — вердикт, вынесенный до 14.09.2026, когда источник ещё не
+    записывали. Не «фикстура по умолчанию»: часть таких вердиктов посчитана по
+    живым рядам, и угадывание записало бы в базу неправду ровно там, где её
+    убирают. Кейс по такому вердикту не собирается — переклассификация
+    бесплатна и не делает ни одного запроса к Ahrefs."""
+
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

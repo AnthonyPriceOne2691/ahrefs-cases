@@ -51,6 +51,7 @@ const VERDICT = {
       note: '',
     },
   ],
+  source: 'fixture',
   point_a: { org_traffic: 1000 },
   point_b: { org_traffic: 2400 },
   comparison: [
@@ -94,7 +95,16 @@ function renderCard() {
  *  ответа. */
 function cardServer(overrides: Record<string, { status: number; body: unknown }> = {}) {
   server({
-    '/api/projects/7': { status: 200, body: { project: PROJECT, verdict: VERDICT, series: [] } },
+    '/api/projects/7': {
+      status: 200,
+      body: {
+        project: PROJECT,
+        verdict: VERDICT,
+        series: [],
+        series_source: 'fixture',
+        source_mismatch: null,
+      },
+    },
     '/api/projects/7/charts': { status: 200, body: CHARTS },
     ...overrides,
   });
@@ -174,6 +184,38 @@ describe('карточка проекта: основание вердикта',
     expect(screen.getByText('решающее')).toBeInTheDocument();
     expect(screen.getByText('прошло')).toBeInTheDocument();
     expect(screen.getByText('не прошло')).toBeInTheDocument();
+  });
+
+  it('E7: карточка предупреждает, когда числа и кривые из разных данных', async () => {
+    // Таблица приходит из вердикта, кривые — из рядов. Когда это разные
+    // данные, экран обязан сказать об этом раньше, чем человек сверит их
+    // глазами: кейс по такому вердикту не собирается вовсе (Z10).
+    cardServer({
+      '/api/projects/7': {
+        status: 200,
+        body: {
+          project: PROJECT,
+          verdict: { ...VERDICT, source: 'fixture' },
+          series: [],
+          series_source: 'live',
+          source_mismatch: 'вердикт вынесен по рядам «fixture», а показаны «live»',
+        },
+      },
+    });
+
+    renderCard();
+
+    expect(await screen.findByText('Числа и кривые — из разных данных')).toBeInTheDocument();
+    expect(screen.getByText(/вердикт вынесен по рядам/)).toBeInTheDocument();
+  });
+
+  it('обычная карточка ничем не предупреждает', async () => {
+    cardServer();
+
+    renderCard();
+    await screen.findByText('органический трафик');
+
+    expect(screen.queryByText('Числа и кривые — из разных данных')).toBeNull();
   });
 
   it('E4: графики приходят готовыми и вставляются как есть', async () => {

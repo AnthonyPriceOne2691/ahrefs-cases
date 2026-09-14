@@ -7,9 +7,14 @@
 которому проект попал в «хорошие». Поэтому `build_case` серию не принимает
 вовсе: границы ему брать неоткуда, кроме вердикта.
 
-Серия читается для другого — сказать, что вердикт от неё отстал
-(`stale_subjects`). Сборка детерминирована вердиктом, Ahrefs не трогается, в
-базу ничего не пишется.
+Серия читается для двух других вещей. Первая — сказать, что вердикт от неё
+отстал (`stale_subjects`). Вторая — **сверить**: числа вердикта обязаны
+воспроизводиться по тем рядам, которые кейс кладёт рядом с ними на лист. Не
+воспроизводятся — кейса нет (`numbers_mismatch`, `verdict_mismatch`): лист с
+таблицей из одних данных и кривой из других уже уходил клиенту (Z10).
+
+Сборка детерминирована вердиктом, Ahrefs не трогается, в базу ничего не
+пишется.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
+from math import isclose
 from typing import Any
 
 from sqlalchemy import select
@@ -36,11 +42,14 @@ from ahrefs_cases.cases.model import (
     Change,
     Period,
 )
+from ahrefs_cases.classify import points as points_module
+from ahrefs_cases.classify import verdicts as verdicts_module
 from ahrefs_cases.classify.deltas import between
 from ahrefs_cases.classify.points import KW_TOP10, Point, window_from
 from ahrefs_cases.classify.recalc import ruleset_by_version
-from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
 from ahrefs_cases.classify.series import MetricSeries, load_series
+from ahrefs_cases.classify.thresholds import Windows
 from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource
 from ahrefs_cases.storage.models.project import Project
@@ -78,6 +87,9 @@ class VerdictView:
     ruleset_version: str
     point_a: Point
     point_b: Point
+    source: MetricSource | None = None
+    """По каким рядам посчитаны точки. `None` — вердикт старше 14.09.2026 и
+    источника не помнит; кейс по такому не собирается (Z10)."""
 
     @classmethod
     def of(cls, verdict: Verdict, version: str) -> VerdictView:
@@ -87,6 +99,7 @@ class VerdictView:
             ruleset_version=version,
             point_a=_point_from_json(verdict.point_a),
             point_b=_point_from_json(verdict.point_b),
+            source=verdict.source,
         )
 
 
@@ -187,6 +200,63 @@ def stale_subjects(verdict: VerdictView, series: MetricSeries) -> tuple[str, ...
     )
 
 
+_SAME_NUMBER = 1e-6
+"""Насколько два числа считаются одним. Точка — среднее по тем же месяцам тем
+же кодом, поэтому расхождение здесь либо нулевое, либо крупное: допуск нужен
+только на то, что число съездило через JSONB и обратно."""
+
+
+def numbers_mismatch(
+    project: Project, verdict: VerdictView, series: MetricSeries, windows: Windows
+) -> str | None:
+    """Чем числа вердикта разошлись с рядами, которые показывают рядом с ними.
+
+    Кейс уходит клиенту, и число в его таблице обязано быть сверено с данными
+    механикой, а не совпадать по договорённости. Сверка **считает точки заново
+    тем же кодом** (`classify.points`) по окнам той версии порогов, которой
+    вынесен вердикт: вторая формула границ разошлась бы с первой на ближайшей
+    правке окон, и кейс начал бы отказываться на ровном месте.
+
+    Что сверяется: метрики, которые в вердикте **есть**. Купленная после
+    решения метрика расхождением не считается — у неё свой канал
+    (`stale_subjects`, урок L41), и молчать о ней нельзя ровно так же.
+
+    `None` — числа сходятся. Строка — готовое объяснение человеку.
+    """
+    fresh_a = points_module.point_a(series, project.period_start, windows)
+    fresh_b = points_module.point_b(series, project.period_end, windows)
+    for name, edge, stored, fresh in (
+        ("А", "начинается", verdict.point_a, fresh_a),
+        ("Б", "кончается", verdict.point_b, fresh_b),
+    ):
+        if stored.at != fresh.at:
+            return (
+                f"точка {name} вердикта стоит на {stored.at:%Y-%m}, "
+                f"а период работ {edge} {fresh.at:%Y-%m}"
+            )
+        diverged = _diverged(stored, fresh)
+        if diverged:
+            return f"точка {name} не сходится с рядом: {'; '.join(diverged)}"
+    return None
+
+
+def _diverged(stored: Point, fresh: Point) -> list[str]:
+    """Метрики, чьё число вердикта не воспроизводится по серии, — с обоими числами.
+
+    Оба числа названы, потому что действие человека зависит от их порядка:
+    «1 058 129 против 35 394» — это разные источники, а «60 101 против 60 400»
+    — докупленный в окно месяц.
+    """
+    lines = []
+    for metric, value in sorted(stored.values.items(), key=lambda item: item[0].value):
+        now = fresh.values.get(metric)
+        if now is not None and isclose(value, now, rel_tol=_SAME_NUMBER):
+            continue
+        shown = "в ряду нет" if now is None else f"{now:,.0f}".replace(",", " ")
+        lines.append(f"{metric.value} {value:,.0f}".replace(",", " ") + f" против {shown}")
+    return lines
+
+
 def chart_series(series: MetricSeries) -> tuple[CaseSeries, ...]:
     """Месячные ряды под кривые — только те метрики, что покупали.
 
@@ -254,10 +324,20 @@ async def build_cases(
     иначе его не сравнить глазами.
     """
     ruleset = await (ruleset_by_version(session, version) if version else active_ruleset(session))
+    # Окна нужны сверке чисел: точки пересчитываются по окнам **той версии
+    # порогов, которой вынесен вердикт**, а не действующей сейчас.
+    windows = thresholds_of(ruleset).windows
     projects = await _projects(session, domain)
     verdicts = await _verdicts(session, ruleset.id)
     attempts = [
-        await _attempt(session, project, verdicts.get(project.id), ruleset.version, source=source)
+        await _attempt(
+            session,
+            project,
+            verdicts.get(project.id),
+            ruleset.version,
+            source=source,
+            windows=windows,
+        )
         for project in projects
     ]
     return CaseReport(ruleset_version=ruleset.version, attempts=tuple(attempts))
@@ -270,16 +350,34 @@ async def _attempt(
     version: str,
     *,
     source: MetricSource,
+    windows: Windows,
 ) -> CaseAttempt:
-    """Один проект: исход и, если кейс положен, сам кейс."""
+    """Один проект: исход и, если кейс положен, сам кейс.
+
+    Сюда сходятся все пути сборки — показать список, собрать PDF, собрать
+    пачку, — поэтому обе проверки происхождения чисел стоят здесь, а не в
+    вызывающих: правило, стоящее в обёртке, действует только на тех, кто зовёт
+    обёртку (урок L127).
+    """
     if verdict is None:
         return CaseAttempt(domain=project.domain, outcome=CaseOutcome.NO_VERDICT)
     if verdict.group is Group.INSUFFICIENT_DATA:
         return CaseAttempt(domain=project.domain, outcome=CaseOutcome.INSUFFICIENT_DATA)
     if verdict.group not in CASE_GROUPS:
         return CaseAttempt(domain=project.domain, outcome=CaseOutcome.NOT_ELIGIBLE)
+
+    # Источник спрашивается до чтения серии: он отвечает на вопрос «те ли это
+    # вообще данные», а числа — только на «те ли они сейчас».
+    mismatch = verdicts_module.source_mismatch(verdict.source, source)
+    if mismatch is not None:
+        return _mismatch(project, mismatch)
+
     series = await load_series(session, project.id, source)
     view = VerdictView.of(verdict, version)
+    diverged = numbers_mismatch(project, view, series, windows)
+    if diverged is not None:
+        return _mismatch(project, diverged)
+
     return CaseAttempt(
         domain=project.domain,
         outcome=CaseOutcome.BUILT,
@@ -287,6 +385,21 @@ async def _attempt(
         project_id=project.id,
         verdict_id=verdict.id,
         stale_subjects=stale_subjects(view, series),
+    )
+
+
+def _mismatch(project: Project, reason: str) -> CaseAttempt:
+    """Кейса нет, потому что его числа пришли бы из двух разных миров.
+
+    Причина обязательна: «кейс не собран» без неё отправляет человека искать
+    поломку там, где сработало правило (класс уроков L32, L34). Совет один на
+    все три случая — переклассифицировать по этому источнику, и он бесплатен:
+    `classify` считает по уже купленному и в Ahrefs не ходит.
+    """
+    return CaseAttempt(
+        domain=project.domain,
+        outcome=CaseOutcome.VERDICT_MISMATCH,
+        detail=f"{reason} — перезапустите `classify` по этому источнику",
     )
 
 

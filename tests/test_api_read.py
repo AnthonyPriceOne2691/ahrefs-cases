@@ -168,6 +168,7 @@ def seeded(
             },
             point_a={"values": {"org_traffic": 1000.0}, "derived": {"kw_top10": 10.0}},
             point_b={"values": {"org_traffic": 2400.0}, "derived": {"kw_top10": 25.0}},
+            source=MetricSource.FIXTURE,
         )
         session.add_all(  # type: ignore[attr-defined]
             [
@@ -275,6 +276,29 @@ def test_card_shows_verdict_points_and_series(client: TestClient, seeded: dict[s
     assert card["verdict"]["point_b"]["org_traffic"] == 2400.0
     assert card["verdict"]["point_b"]["kw_top10"] == 25.0
     assert card["series"][0]["metric"] == "org_traffic"
+
+
+def test_card_says_when_numbers_and_curves_come_from_different_data(
+    client: TestClient, seeded: dict[str, int]
+) -> None:
+    """E7: карточка кладёт числа вердикта рядом с кривыми рядов — та же пара,
+    что разъехалась в кейсе (Z10). Значит и предупреждать обязана она же.
+
+    Решает сервер: правило одно на лист PDF и на экран. Сравнение двух строк на
+    фронте было бы вторым экземпляром правила — и разошлось бы с первым на
+    случае «источник не записан вовсе».
+    """
+    headers = _token(client)
+    same = client.get(f"/api/projects/{seeded['project']}", headers=headers).json()
+
+    assert same["verdict"]["source"] == "fixture"
+    assert same["series_source"] == "fixture"
+    assert same["source_mismatch"] is None
+
+    other = client.get(f"/api/projects/{seeded['project']}?source=live", headers=headers).json()
+
+    assert other["source_mismatch"] is not None
+    assert "fixture" in other["source_mismatch"] and "live" in other["source_mismatch"]
 
 
 def test_card_compares_points_with_labels(client: TestClient, seeded: dict[str, int]) -> None:

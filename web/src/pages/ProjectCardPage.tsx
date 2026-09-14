@@ -19,6 +19,7 @@ import { Charts } from './card/Charts';
 import { Comparison } from './card/Comparison';
 import { Hero } from './card/Hero';
 import { Reasons } from './card/Reasons';
+import { SourceMismatch } from './card/SourceMismatch';
 
 const FOOTNOTE =
   'Числа — оценки Ahrefs, а не фактические визиты. Точки А и Б усреднены по окнам ' +
@@ -69,6 +70,8 @@ export function ProjectCardPage() {
     <Container size="lg">
       <Stack gap="lg">
         <CardHeader card={card.data} />
+
+        <SourceMismatch reason={card.data.source_mismatch} />
 
         {verdict ? (
           <>

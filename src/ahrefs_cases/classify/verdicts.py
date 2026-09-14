@@ -67,6 +67,10 @@ class Computed:
     gap: coverage_module.CoverageGap
     """Чего не хватает под окна этой версии порогов. Пустой — хватает всего."""
 
+    source: MetricSource
+    """По каким рядам посчитано. Едет вместе с числами, а не рядом с ними:
+    вердикт, не помнящий источника, нельзя сверить ни с чем (Z10)."""
+
 
 async def compute_verdict(
     session: AsyncSession,
@@ -108,7 +112,12 @@ async def compute_verdict(
         ),
     )
     return Computed(
-        decision=decision, point_a=point_a, point_b=point_b, months=tuple(months), gap=gap
+        decision=decision,
+        point_a=point_a,
+        point_b=point_b,
+        months=tuple(months),
+        gap=gap,
+        source=source,
     )
 
 
@@ -205,6 +214,7 @@ async def store(
         "reasons": {"checks": decision.reasons_json(), "sort_key": decision.sort_key},
         "point_a": _point_json(computed.point_a),
         "point_b": _point_json(computed.point_b),
+        "source": computed.source,
     }
     stmt = insert(Verdict).values(payload)
     stmt = stmt.on_conflict_do_update(
@@ -215,10 +225,32 @@ async def store(
             "reasons": stmt.excluded.reasons,
             "point_a": stmt.excluded.point_a,
             "point_b": stmt.excluded.point_b,
+            "source": stmt.excluded.source,
         },
     )
     await session.execute(stmt)
     project.status = ProjectStatus.CLASSIFIED
+
+
+def source_mismatch(stored: MetricSource | None, shown: MetricSource) -> str | None:
+    """Почему числа этого вердикта нельзя показывать рядом с этими рядами.
+
+    Правило живёт у вердикта, а не у кейса, потому что потребителей два: лист,
+    который уходит клиенту, и карточка на экране. Оба кладут рядом числа
+    вердикта и кривые серий, и разойтись им достаточно один раз — в том
+    потребителе, где проверку забыли завести (класс урока L127).
+
+    `None` — сверять нечего, источники одни. Строка — готовое объяснение
+    человеку: что с чем не сошлось и почему это не его опечатка.
+    """
+    if stored is None:
+        return (
+            "вердикт вынесен до того, как источник рядов стали записывать, "
+            "и сверить его числа не с чем"
+        )
+    if stored is not shown:
+        return f"вердикт вынесен по рядам «{stored.value}», а показаны «{shown.value}»"
+    return None
 
 
 def _point_json(point: points_module.Point) -> dict[str, object]:

@@ -31,6 +31,7 @@ from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import load_series
+from ahrefs_cases.classify.verdicts import source_mismatch
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
@@ -119,7 +120,8 @@ async def project_card(
     ruleset = await active_ruleset(session)
     verdict = await _active_verdict(session, project.id)
 
-    series = await load_series(session, project.id, source or configured_source())
+    shown = source or configured_source()
+    series = await load_series(session, project.id, shown)
     return ProjectCard(
         project=_row(project, verdict),
         verdict=_verdict_view(verdict, ruleset) if verdict is not None else None,
@@ -127,6 +129,11 @@ async def project_card(
             SeriesRow(metric=metric.value, points=sorted(points.items()))
             for metric, points in sorted(series.items(), key=lambda item: item[0].value)
         ],
+        series_source=shown.value,
+        # Карточка кладёт числа вердикта рядом с кривыми рядов — ровно та пара,
+        # которая разъехалась в кейсе (Z10). Правило расхождения берётся у
+        # вердикта, а не пишется здесь второй раз.
+        source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
     )
 
 
@@ -221,6 +228,7 @@ def _verdict_view(verdict: Verdict, ruleset: Ruleset) -> VerdictView:
         ruleset_version=ruleset.version,
         decided_at=verdict.decided_at,
         reasons=[ReasonRow(**check) for check in checks],
+        source=verdict.source.value if verdict.source is not None else None,
         point_a=_point(verdict.point_a),
         point_b=_point(verdict.point_b),
         comparison=_comparison(verdict),

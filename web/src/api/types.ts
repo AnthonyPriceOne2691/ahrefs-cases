@@ -135,6 +135,8 @@ export interface VerdictView {
   point_a: Record<string, number>;
   point_b: Record<string, number>;
   comparison: ComparisonRow[];
+  /** По каким рядам посчитан вердикт. `null` — вынесен до того, как источник стали записывать. */
+  source: string | null;
 }
 
 export interface SeriesRow {
@@ -146,6 +148,12 @@ export interface ProjectCard {
   project: ProjectRow;
   verdict: VerdictView | null;
   series: SeriesRow[];
+  series_source: string;
+  /**
+   * Числа вердикта посчитаны не по тем рядам, которые показаны рядом.
+   * Решает сервер: правило одно на лист PDF и на карточку (Z10).
+   */
+  source_mismatch: string | null;
 }
 
 export interface ChartBlock {

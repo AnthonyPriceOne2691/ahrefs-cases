@@ -73,6 +73,9 @@ class VerdictView(BaseModel):
     point_a: dict[str, float]
     point_b: dict[str, float]
     comparison: list[ComparisonRow] = []
+    source: str | None = None
+    """По каким рядам посчитан вердикт. `null` — вынесен до 14.09.2026, когда
+    источник ещё не записывали."""
 
 
 class SeriesRow(BaseModel):
@@ -86,6 +89,14 @@ class ProjectCard(BaseModel):
     project: ProjectRow
     verdict: VerdictView | None
     series: list[SeriesRow]
+    series_source: str
+    """Откуда прочитаны ряды карточки. Виден на экране рядом с числами
+    вердикта: они приходят из разных мест, и человек обязан видеть, из каких."""
+
+    source_mismatch: str | None = None
+    """Заполнено, когда числа вердикта посчитаны **не по этим** рядам: таблица
+    и кривые на одном экране оказались бы из разных миров (Z10). Решает сервер,
+    а не фронт: правило одно на лист PDF и на карточку."""
 
 
 class CaseRow(BaseModel):

@@ -9,9 +9,10 @@
 from __future__ import annotations
 
 import sys
+from typing import TextIO
 
 from ahrefs_cases.cases.builder import build_cases
-from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, Change
+from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, CaseReport, Change
 from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.cases.store import store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
@@ -70,6 +71,7 @@ async def show_cases(
         print("проектов нет: сначала `intake`, потом `collect` и `classify`")
         return 0
     print("\n".join(report.as_lines()))
+    _print_refusals(report)
     for attempt in report.by_outcome(CaseOutcome.BUILT):
         if attempt.case is not None:
             print("")
@@ -78,6 +80,17 @@ async def show_cases(
                 missing = ", ".join(SUBJECT_LABELS[subject] for subject in attempt.stale_subjects)
                 print(f"  куплено, но не в вердикте: {missing} — перезапустите `classify`")
     return 0
+
+
+def _print_refusals(report: CaseReport, *, stream: TextIO = sys.stdout) -> None:
+    """Домены, которым отказано из-за происхождения чисел, — с причиной.
+
+    Печатается всегда, когда такие есть: счётчик в отчёте говорит «сколько», а
+    человеку нужно «кому и почему». Молчаливый отказ здесь читается как
+    поломка сборки, хотя это сработавшее правило.
+    """
+    for attempt in report.by_outcome(CaseOutcome.VERDICT_MISMATCH):
+        print(f"{attempt.domain}: {attempt.detail}", file=stream)
 
 
 def _case_lines(domain: str, case: CaseData) -> list[str]:
@@ -117,6 +130,7 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
         if not built:
             print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
             print("\n".join(report.as_lines()), file=sys.stderr)
+            _print_refusals(report, stream=sys.stderr)
             return EXIT_BAD_SOURCE
 
         for attempt in built:
@@ -156,6 +170,7 @@ async def pack_cases(source: MetricSource | None = None) -> int:
         report = await build_cases(session, source=_source(source))
         built = [item for item in report.by_outcome(CaseOutcome.BUILT) if item.case is not None]
         print("\n".join(report.as_lines()))
+        _print_refusals(report)
 
         try:
             bundle = pack([(item.domain, item.case) for item in built if item.case])
