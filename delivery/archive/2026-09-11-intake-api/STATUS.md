@@ -6,6 +6,7 @@
 - **class:** M
 - **kind:** feature
 - **repro_test:** tests/api/test_intake_api.py::test_estimate_uses_threshold_windows reason=внутри поставки чинится дефект окон, и он закрыт своим тестом
+- **repro_test_corrected:** tests/test_api_intake.py::test_queued_run_and_estimate_use_the_same_windows — тест существует, но по другому адресу и под другим именем: каталога `tests/api/` в проекте нет, раскладка тестов плоская. Исходная строка оставлена как история (найдено 14.09.2026 оракулом `test_every_declared_repro_test_exists`)
 - **diagnosis:** delivery/active/diagnosis.md
 - **phase:** handoff
 - **builder:** agent:claude

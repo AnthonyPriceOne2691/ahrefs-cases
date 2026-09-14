@@ -6,6 +6,7 @@
 - **class:** S
 - **kind:** chore
 - **repro_test:** tests/test_cli_exit_codes.py::test_reading_commands_take_the_source_explicitly
+- **repro_test_corrected:** tests/test_cli_exit_codes.py::test_every_reading_command_takes_the_source — обещанного теста не существовало: строка объявляла гарантию, которой не было, и ценой стал Z11 (флаг получили три команды вместо класса команд). Написан 14.09.2026 поставкой `source-is-named-by-the-caller`; исходная строка оставлена как история
 - **diagnosis:** n/a reason=не дефект: недостающая возможность, замеченная при сборке кейсов
 - **phase:** accepted
 - **builder:** agent:claude

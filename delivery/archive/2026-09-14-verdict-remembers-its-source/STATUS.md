@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cases_builder.py::test_case_refuses_when_the_verdict_came_from_other_data
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026 после живой проверки на двух источниках)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony (Z10 объявлен главным открытым дефектом и назначен следующей поставкой)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
