@@ -7,9 +7,9 @@
 - **kind:** chore
 - **repro_test:** web/src/pages/__tests__/cases.test.tsx::листает по двадцать строк
 - **diagnosis:** n/a reason=не дефект логики: замечания по виду экранов, снятые владельцем со скриншотов
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 14.09.2026)
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony (пять замечаний со скриншотов)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
