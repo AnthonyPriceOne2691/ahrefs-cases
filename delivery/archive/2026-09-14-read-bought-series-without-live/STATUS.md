@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** tests/test_cli_exit_codes.py::test_reading_commands_take_the_source_explicitly
 - **diagnosis:** n/a reason=не дефект: недостающая возможность, замеченная при сборке кейсов
-- **phase:** handoff
+- **phase:** accepted
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-14 by=human:anthony («сохрани этот кейс», «погоняй ещё кейсы» — для этого нужно читать уже купленные живые ряды)
