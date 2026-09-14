@@ -24,7 +24,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from ahrefs_cases import config
 from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ContentBlockedError
-from ahrefs_cases.export.pdf_renderer import filename, render_pdf
+from ahrefs_cases.export.pdf_renderer import filename, render_pdf, unique_name
 
 MANIFEST_NAME = "кейсы.csv"
 MANIFEST_NOTE = "внутренний список: домены всех проектов пачки, клиенту не отдаётся"
@@ -94,7 +94,7 @@ def pack(
                 domain=domain,
                 case=case,
                 path=rendered.path,
-                arcname=_unique(filename(case), used),
+                arcname=unique_name(filename(case), used),
             )
         )
 
@@ -131,22 +131,6 @@ def manifest(packed: Sequence[PackedCase]) -> bytes:
             ]
         )
     return buffer.getvalue().encode("utf-8-sig")
-
-
-def _unique(name: str, used: set[str]) -> str:
-    """Имена внутри архива не сталкиваются.
-
-    Два проекта одной ниши дают одинаковое «сайт в нише travel — Кейс.pdf», и
-    второй молча затёр бы первого: в ZIP это законно, а пачка стала бы короче
-    отчёта.
-    """
-    candidate, counter = name, 2
-    stem, _, suffix = name.rpartition(".")
-    while candidate in used:
-        candidate = f"{stem} ({counter}).{suffix}"
-        counter += 1
-    used.add(candidate)
-    return candidate
 
 
 def _default_name() -> str:

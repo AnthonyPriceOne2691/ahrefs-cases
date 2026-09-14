@@ -163,3 +163,76 @@ def test_template_may_not_reach_the_network(tmp_path: Path) -> None:
 
     with pytest.raises(pdf_renderer.NetworkAccessDeniedError):
         pdf_renderer.render_pdf(_case(), output_dir=tmp_path, templates_dir=templates)
+
+
+def test_second_case_of_the_same_niche_does_not_overwrite_the_first(tmp_path: Path) -> None:
+    """Имя файла задано ТЗ и **не опознаёт кейс**.
+
+    «Сайт в нише travel — Кейс.pdf» получают все анонимные проекты этой ниши, а
+    с сентября 2026 — ещё и две кампании одного домена. Совпадение законно,
+    потеря файла — нет: раньше второй кейс молча затирал первый, и на диске
+    оставался файл с чужим проектом внутри.
+    """
+    # Заголовок анонимного кейса решает сборка (`builder._title`), и у двух
+    # разных проектов одной ниши он одинаков — в этом и весь случай.
+    anonymous = {"title": "сайт в нише travel", "anonymized": True, "niche": "travel"}
+    first = pdf_renderer.render_pdf(_case(**anonymous), output_dir=tmp_path)
+    # Числа у второго проекта свои: одинаковое имя при разном содержимом — это и
+    # есть случай, в котором файл терялся.
+    second = pdf_renderer.render_pdf(
+        _case(**anonymous, changes=tuple(_change(subject, 7.0, 42.0) for subject in SUBJECTS)),
+        output_dir=tmp_path,
+    )
+
+    assert first.path != second.path, "второй кейс лёг поверх первого"
+    assert first.path.exists() and second.path.exists()
+    assert first.path.name == "сайт в нише travel — Кейс.pdf"
+    assert second.path.name == "сайт в нише travel — Кейс (2).pdf"
+    assert len(list(tmp_path.iterdir())) == 2
+
+
+def test_single_case_keeps_the_name_from_the_spec(tmp_path: Path) -> None:
+    """Пока столкновения нет, имя ровно то, что требует ТЗ — без суффиксов.
+
+    Суффикс «(2)» — это следствие совпадения, а не украшение: появившись у
+    одиночного кейса, он ушёл бы клиенту в имени файла.
+    """
+    rendered = pdf_renderer.render_pdf(_case(), output_dir=tmp_path)
+
+    assert rendered.path.name == "example.com — Кейс.pdf"
+
+
+def test_naming_rule_is_one_for_the_archive_and_the_disk() -> None:
+    """Правило разведения имён — одно на оба пути выдачи.
+
+    Когда оно жило только в архиве, запись на диск затирала молча. Второй
+    экземпляр правила разошёлся бы с первым на первом же изменении суффикса, и
+    ZIP с каталогом начали бы называть одни и те же кейсы по-разному.
+    """
+    from ahrefs_cases.export import archive
+
+    used: set[str] = set()
+    name = "сайт в нише travel — Кейс.pdf"
+
+    assert pdf_renderer.unique_name(name, used) == name
+    assert pdf_renderer.unique_name(name, used) == "сайт в нише travel — Кейс (2).pdf"
+    assert pdf_renderer.unique_name(name, used) == "сайт в нише travel — Кейс (3).pdf"
+    assert archive.unique_name is pdf_renderer.unique_name
+
+
+def test_rebuilding_the_same_case_does_not_clone_the_file(tmp_path: Path) -> None:
+    """Тот же кейс, собранный заново, — тот же файл, а не близнец рядом.
+
+    Рендер детерминирован (соседний оракул это и держит), поэтому повторная
+    сборка даёт байт в байт то же самое. Класть такое под именем «(2)» значит
+    засыпать каталог выдачи копиями и лишить контрольную сумму артефакта её
+    единственного смысла — отличать «пересобрали» от «переименовали».
+
+    Правила два, и они смотрят в разные стороны: **чужое не затираем, своё не
+    дублируем**. Держать надо оба — каждое по отдельности даёт дефект.
+    """
+    first = pdf_renderer.render_pdf(_case(), output_dir=tmp_path)
+    second = pdf_renderer.render_pdf(_case(), output_dir=tmp_path)
+
+    assert first.path == second.path
+    assert len(list(tmp_path.iterdir())) == 1
