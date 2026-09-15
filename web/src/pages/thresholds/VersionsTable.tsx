@@ -4,7 +4,7 @@
  * Версия неизменяема — правка это новая версия, потому что вердикты ссылаются
  * на версию, и правка задним числом сделала бы прошлые решения необъяснимыми.
  */
-import { Badge, Button, Table, Text } from '@mantine/core';
+import { Badge, Table, Text } from '@mantine/core';
 
 import type { RulesetRow } from '../../api/types';
 
@@ -14,14 +14,12 @@ function moment(iso: string): string {
 
 interface Props {
   rows: RulesetRow[];
+  /** Раскрытая версия. Под её строкой стоит подробность. */
   selected: string | null;
-  /** Версия, по которой сейчас считается предпросмотр. */
-  busyVersion: string | null;
   onSelect: (row: RulesetRow) => void;
-  onPreview: (row: RulesetRow) => void;
 }
 
-export function VersionsTable({ rows, selected, busyVersion, onSelect, onPreview }: Props) {
+export function VersionsTable({ rows, selected, onSelect }: Props) {
   return (
     <Table.ScrollContainer minWidth={720}>
       <Table striped highlightOnHover>
@@ -30,7 +28,6 @@ export function VersionsTable({ rows, selected, busyVersion, onSelect, onPreview
             <Table.Th>Версия</Table.Th>
             <Table.Th>Утверждена</Table.Th>
             <Table.Th>Заметка</Table.Th>
-            <Table.Th>Последствия</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -55,21 +52,6 @@ export function VersionsTable({ rows, selected, busyVersion, onSelect, onPreview
                 <Text size="xs" c="dimmed">
                   {row.note || '—'}
                 </Text>
-              </Table.Td>
-              <Table.Td>
-                <Button
-                  size="compact-sm"
-                  variant="light"
-                  loading={busyVersion === row.version}
-                  onClick={(event) => {
-                    // Клик по строке выбирает версию, клик по кнопке — считает:
-                    // без остановки всплытия одно нажатие делало бы оба.
-                    event.stopPropagation();
-                    onPreview(row);
-                  }}
-                >
-                  Что изменится
-                </Button>
               </Table.Td>
             </Table.Tr>
           ))}

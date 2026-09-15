@@ -78,11 +78,10 @@ export function ThresholdsPage() {
         {rows.length > 0 && (
           <VersionsSection
             rows={rows}
-            selected={current?.version ?? null}
             busyVersion={busyVersion}
             preview={preview}
             error={previewError}
-            onSelect={(row) => setChosen(row.version)}
+            onSelect={setChosen}
             onPreview={(row) => ask.mutate(row)}
           />
         )}

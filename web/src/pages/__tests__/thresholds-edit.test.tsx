@@ -58,6 +58,10 @@ describe('доступ к форме', () => {
     showThresholds();
     await userEvent.click(await screen.findByRole('button', { name: 'Править пороги' }));
 
+    // Поля живут в окне (15.09.2026), и оно появляется не в том же кадре:
+    // `getAllBy…` спрашивал разметку раньше, чем окно успевало открыться.
+    await screen.findByRole('dialog');
+
     // Правка начинается с утверждённых значений: пустая форма означала бы
     // пороги, взятые из воздуха.
     const проценты = screen.getAllByLabelText('Рост трафика от, %');
@@ -246,5 +250,67 @@ describe('применение и пересчёт', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Пересчитать вердикты' }));
 
     expect(await screen.findByText(/пересчитано проектов: 10/)).toBeInTheDocument();
+  });
+});
+
+describe('окно правки не закрывается само', () => {
+  /** Уборка обязательна: признак живёт в памяти браузера, и оставленный после
+   *  теста, он открывал бы окно в соседних — «зелёный по причине окружения». */
+  afterEach(() => {
+    try {
+      localStorage.clear();
+    } catch {
+      // приватное окно — чистить нечего
+    }
+    window.history.pushState({}, '', '/thresholds');
+  });
+
+  it('обновление страницы застаёт окно открытым', async () => {
+    server({ 'GET /api/auth/me': ME_EDIT, 'GET /api/rulesets': LIST });
+    // Так выглядит адрес после F5: признак в нём уже стоит.
+    window.history.pushState(
+      {},
+      '',
+      '/thresholds?%D0%BF%D1%80%D0%B0%D0%B2%D0%BA%D0%B0=%D0%B4%D0%B0',
+    );
+
+    showThresholds();
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('уход на соседний экран и возврат — окно на месте', async () => {
+    server({ 'GET /api/auth/me': ME_EDIT, 'GET /api/rulesets': LIST });
+    const first = showThresholds();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Править пороги' }));
+    await screen.findByRole('dialog');
+
+    // Уход в соседний раздел и возврат по меню: адрес чистый, дерево собрано
+    // заново. Адрес этого не переживает — переживает память экрана.
+    first.unmount();
+    window.history.pushState({}, '', '/thresholds');
+    showThresholds();
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('закрытое окно не открывается само при возврате', async () => {
+    server({ 'GET /api/auth/me': ME_EDIT, 'GET /api/rulesets': LIST });
+    const first = showThresholds();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Править пороги' }));
+    await screen.findByRole('dialog');
+    // Закрываем клавишей: у кнопки закрытия Mantine своё имя, и тест,
+    // приколоченный к нему, ломался бы от смены версии библиотеки.
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+    first.unmount();
+    window.history.pushState({}, '', '/thresholds');
+    showThresholds();
+
+    await screen.findByRole('button', { name: 'Править пороги' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

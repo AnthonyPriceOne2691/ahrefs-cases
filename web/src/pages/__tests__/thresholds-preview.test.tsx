@@ -1,6 +1,10 @@
 /**
  * Предпросмотр порогов. Примеры приёмки E1, E3–E6, E9.
  *
+ * С 15.09.2026 предпросмотр раскрывается вместе с версией: владелец попросил
+ * убрать отдельную кнопку и паковать «пороги этой версии» и «что изменится» в
+ * одну раскрывающуюся секцию — как на экране людей.
+ *
  * Проверяется, виден ли каждый из четырёх исходов расчёта — и особенно тот,
  * который легче всего слить с «не изменится»: проект, которому этой версией
  * не хватает купленных месяцев.
@@ -59,7 +63,9 @@ describe('предпросмотр', () => {
     });
 
     showThresholds();
-    await userEvent.click(await screen.findByRole('button', { name: 'Что изменится' }));
+    // Раскрытие версии и есть вопрос «что изменится»: отдельная кнопка
+    // спрашивала то же самое вторым нажатием (15.09.2026).
+    await userEvent.click(await screen.findByText('2026-09-I'));
 
     // Группы теми же словами, что на экране проектов: «good → poor» посреди
     // русского экрана — то, что показал прогон живого стенда.
@@ -89,7 +95,9 @@ describe('предпросмотр', () => {
     });
 
     showThresholds();
-    await userEvent.click(await screen.findByRole('button', { name: 'Что изменится' }));
+    // Раскрытие версии и есть вопрос «что изменится»: отдельная кнопка
+    // спрашивала то же самое вторым нажатием (15.09.2026).
+    await userEvent.click(await screen.findByText('2026-09-I'));
 
     expect(await screen.findByText(/Никто не сменит группу/)).toBeInTheDocument();
   });
@@ -121,7 +129,9 @@ describe('предпросмотр: чего в счёте нет', () => {
     });
 
     showThresholds();
-    await userEvent.click(await screen.findByRole('button', { name: 'Что изменится' }));
+    // Раскрытие версии и есть вопрос «что изменится»: отдельная кнопка
+    // спрашивала то же самое вторым нажатием (15.09.2026).
+    await userEvent.click(await screen.findByText('2026-09-I'));
 
     // Найдено прогоном живого экрана: пять из одиннадцати посчитаны, шести не
     // хватает данных — и зелёное «всё спокойно» тут читается как вывод о базе.
@@ -140,7 +150,9 @@ describe('предпросмотр: чего в счёте нет', () => {
     });
 
     showThresholds();
-    await userEvent.click(await screen.findByRole('button', { name: 'Что изменится' }));
+    // Раскрытие версии и есть вопрос «что изменится»: отдельная кнопка
+    // спрашивала то же самое вторым нажатием (15.09.2026).
+    await userEvent.click(await screen.findByText('2026-09-I'));
 
     expect(await screen.findByText('нет версии порогов 2026-09-I')).toBeInTheDocument();
   });
@@ -160,5 +172,77 @@ describe('предпросмотр: чего в счёте нет', () => {
       expect(screen.queryByRole('button', { name: /Сохранить/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Активировать/ })).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('раскрытие версии', () => {
+  const TWO = {
+    'GET /api/auth/me': ME,
+    'GET /api/rulesets': {
+      status: 200,
+      body: [ruleset('2026-09-II', false, PAYLOAD, 2), ruleset('2026-09-I', true)],
+    },
+    'POST /api/rulesets/2026-09-I/preview': {
+      status: 200,
+      body: {
+        version: '2026-09-I',
+        total: 3,
+        changes: [],
+        first_time: [],
+        unchanged: 3,
+        missing_data: [],
+      },
+    },
+    'POST /api/rulesets/2026-09-II/preview': {
+      status: 200,
+      body: {
+        version: '2026-09-II',
+        total: 3,
+        changes: [],
+        first_time: [],
+        unchanged: 3,
+        missing_data: [],
+      },
+    },
+  };
+
+  it('нажатие на ту же версию сворачивает подробность', async () => {
+    server(TWO);
+    showThresholds();
+
+    await userEvent.click(await screen.findByText('2026-09-I'));
+    expect(await screen.findByText('Что изменится')).toBeInTheDocument();
+
+    // Повторное нажатие повторяет вопрос, и ответ на него — закрыть. Так же
+    // ведёт себя экран людей, и владелец просил повторить это поведение.
+    await userEvent.click(screen.getByText('2026-09-I'));
+    await waitFor(() =>
+      expect(document.querySelector('[data-version-details]')?.closest('[style]')).toBeTruthy(),
+    );
+    expect(screen.getByText('2026-09-I')).toBeInTheDocument();
+  });
+
+  it('раскрытая версия остаётся в адресе — переживает обновление', async () => {
+    server(TWO);
+    showThresholds();
+
+    await userEvent.click(await screen.findByText('2026-09-II'));
+
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get('версия')).toBe('2026-09-II'),
+    );
+  });
+
+  it('подробность раскрытой версии показывает её пороги, а не действующей', async () => {
+    server(TWO);
+    showThresholds();
+
+    await userEvent.click(await screen.findByText('2026-09-II'));
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-version-details]')?.getAttribute('data-version-details'),
+      ).toBe('2026-09-II'),
+    );
   });
 });

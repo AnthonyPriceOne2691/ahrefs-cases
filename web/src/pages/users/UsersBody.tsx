@@ -7,9 +7,8 @@
  */
 import { Alert, Collapse, Divider, Stack, Text } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
 
-import { useScreenState } from '../../app/screenState';
+import { FOLD_MS, useFoldedChoice } from '../../app/foldedChoice';
 import { fetchRights, fetchUsers } from '../../api/users';
 import { failureText } from '../cases/failure';
 
@@ -29,57 +28,14 @@ function Empty() {
   );
 }
 
-const FOLD_MS = 220;
-/** Длительность сворачивания. Столько же ждёт открытие следующего человека:
- *  две панели, едущие навстречу друг другу, читаются как рывок. */
-
 export function UsersBody() {
   const queryClient = useQueryClient();
   // Раскрытый человек — в адресе: обновив вкладку, руководитель остаётся на
   // том, кого правил, а не закрывает панель и ищет строку заново.
   //
-  // Источник правды — состояние компонента, адрес получает копию. Наоборот
-  // было бы стройнее, но панель едет вниз по таймеру, и её открытие зависело
-  // бы от того, успел ли маршрутизатор довезти новый адрес.
-  const screen = useScreenState();
-  const [chosen, remember] = useState<number | null>(screen.number('человек', 0) || null);
-  const setChosen = (id: number | null) => {
-    remember(id);
-    screen.set({ человек: id ? String(id) : null });
-  };
-  // Панель остаётся на экране, пока едет вниз: убери её сразу — и сворачивать
-  // будет нечего, вместо анимации получится мгновенное исчезновение.
-  //
-  // Начальное значение берётся из адреса: после F5 в нём уже стоит раскрытый
-  // человек, и `null` здесь оставил бы панель закрытой при открытом адресе.
-  const [shown, setShown] = useState<number | null>(chosen);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /**
-   * Нажатие на человека. Три случая, и они разные:
-   *
-   * - тот же самый — свернуть (нажатие повторяет вопрос, ответ — закрыть);
-   * - никого не открыто — открыть сразу;
-   * - открыт другой — сначала свернуть его, потом открыть нового, иначе
-   *   содержимое подменяется под открытой панелью и выглядит как подмена.
-   */
-  function choose(id: number) {
-    if (timer.current) clearTimeout(timer.current);
-    if (chosen === id) {
-      setChosen(null);
-      return;
-    }
-    if (chosen === null) {
-      setShown(id);
-      setChosen(id);
-      return;
-    }
-    setChosen(null);
-    timer.current = setTimeout(() => {
-      setShown(id);
-      setChosen(id);
-    }, FOLD_MS);
-  }
+  // Раскрытие панели — общее поведение экранов, а не местное: тот же хук
+  // держит версии порогов. Три случая нажатия описаны в нём.
+  const { chosen, shown, choose, close } = useFoldedChoice('человек');
   const users = useQuery({ queryKey: ['users'], queryFn: () => fetchUsers() });
   const catalog = useQuery({ queryKey: ['users', 'rights'], queryFn: fetchRights });
 
@@ -112,19 +68,19 @@ export function UsersBody() {
     );
   }
 
-  const selected = rows.find((row) => row.id === shown) ?? null;
+  const selected = rows.find((row) => String(row.id) === shown) ?? null;
 
   return (
     <Stack gap="md">
       <UsersTable
         rows={rows}
         catalog={rights}
-        selected={chosen}
-        onSelect={(user) => choose(user.id)}
+        selected={chosen === null ? null : Number(chosen)}
+        onSelect={(user) => choose(String(user.id))}
       />
 
       {selected && (
-        <Collapse in={chosen === selected.id} transitionDuration={FOLD_MS}>
+        <Collapse in={chosen === String(selected.id)} transitionDuration={FOLD_MS}>
           <Stack gap="md">
             <Divider />
             <ManageUser
@@ -132,7 +88,7 @@ export function UsersBody() {
               catalog={rights}
               onChanged={refresh}
               onDeleted={() => {
-                setChosen(null);
+                close();
                 refresh();
               }}
             />
