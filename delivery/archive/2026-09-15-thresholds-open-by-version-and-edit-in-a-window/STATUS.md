@@ -7,9 +7,9 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/thresholds-preview.test.tsx
 - **diagnosis:** n/a reason=не дефект: экран переустроен по просьбе владельца
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 15.09.2026 — «Подписываю, пушьте»)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («давай причешем страницу „Пороги“… упаковать в раскрывающуюся секцию… повтори поведение которое у нас в пользователях… сами поля правки сделай модалкой»)
 - **human_ok_plan:** n/a reason=переустройство одного экрана плюс вынос уже существующего поведения в общий хук
 - **shape-oracles:** cqg-deployed

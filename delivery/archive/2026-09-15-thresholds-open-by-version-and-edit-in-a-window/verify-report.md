@@ -43,3 +43,5 @@
 только в реализации. Второе законно; первое — повод спросить.
 
 asserts_without_example: 0
+
+asserts_reviewed_by: human:anthony at=2026-09-15
