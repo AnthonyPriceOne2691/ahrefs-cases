@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 from tests.owned_rows import delete_owned
 
+from ahrefs_cases import config
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
 from ahrefs_cases.storage import UserGroup
@@ -492,3 +493,30 @@ def test_queued_run_and_estimate_use_the_same_windows(
     assert seen, "задача не позвала сбор — проверять нечего"
     assert seen[0] is not None
     assert seen[0] == asyncio.run(_expected())
+
+
+def test_quota_source_follows_the_key_not_the_series_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Остаток спрашивается у ключа, а не у режима рядов.
+
+    До 15.09.2026 источник остатка привязывался к `provider`, и на стенде с
+    фикстурными рядами смета показывала «Остаток квоты: 10 000» — зашитое
+    учебное число, выданное за настоящий остаток ключа (около 1,46 млн). По
+    этой строке человек решает, запускать ли прогон.
+
+    Признак — ключ, и это не придирка к формулировке: запрос остатка бесплатен
+    (`subscription-info`, 0 units), а **без ключа ходить в сеть нельзя вовсе**.
+    Поэтому проверяются оба конца: с ключом живой источник, без ключа —
+    учебный, и мягкий стоп продолжает срабатывать в разработке.
+    """
+    from ahrefs_cases.collect.factory import build_quota
+    from ahrefs_cases.collect.quota import FixtureQuota, LiveQuota
+
+    monkeypatch.setattr(config.ahrefs, "api_key", "")
+    monkeypatch.setattr(config.ahrefs, "provider", "fixture")
+    assert isinstance(build_quota(), FixtureQuota)
+
+    monkeypatch.setattr(config.ahrefs, "api_key", "ключ")
+    # Режим рядов остаётся фикстурным — источник остатка от него не зависит.
+    assert isinstance(build_quota(), LiveQuota)

@@ -12,6 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Тесты не читают .env разработчика: иначе результат зависит от чужой машины.
 os.environ.setdefault("AHREFS_PROVIDER", "fixture")
+# Ключ снимается ЖЁСТКО, а не `setdefault`: обещание докстроки этого файла —
+# «ни один тест не берёт живой ключ Ahrefs», — до 15.09.2026 держалось только
+# на том, что все источники сверялись с `provider`. Стоило `build_quota`
+# начать спрашивать остаток по наличию ключа (решение владельца), как полтора
+# десятка тестов пошли в сеть с боевым ключом из `.env`. Обещание, которое
+# держится на чужой проверке, — не обещание.
+os.environ["AHREFS_API_KEY"] = ""
 
 _UP_COMMAND = "docker compose -f docker-compose.dev.yml up -d postgres"
 _SKIP_REASON = f"дев-база недоступна: {_UP_COMMAND}"
