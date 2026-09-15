@@ -544,3 +544,69 @@ describe('шаг, на котором рисовать нечего', () => {
     expect(await screen.findByText('Динамика органического трафика')).toBeInTheDocument();
   });
 });
+
+describe('таблица «Почему эта группа»', () => {
+  const TWO_GROUPS = {
+    ...VERDICT,
+    reasons: [
+      {
+        subject: 'good.org_traffic_pct',
+        fact: 341,
+        threshold: 100,
+        passed: true,
+        decisive: true,
+        note: 'рост органического трафика в процентах',
+      },
+      {
+        subject: 'medium.org_traffic_pct',
+        fact: 341,
+        threshold: 20,
+        passed: true,
+        decisive: true,
+        note: 'рост органического трафика в процентах',
+      },
+    ],
+  };
+
+  function cardWith(verdict: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) return new Response(JSON.stringify(CHARTS), { status: 200 });
+        if (url.includes('/api/cases')) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+  }
+
+  it('технических ключей правил на экране нет', async () => {
+    cardWith(TWO_GROUPS);
+    renderCard();
+
+    await screen.findAllByText('рост органического трафика в процентах');
+    expect(screen.queryByText('good.org_traffic_pct')).not.toBeInTheDocument();
+    expect(screen.queryByText('medium.org_traffic_pct')).not.toBeInTheDocument();
+  });
+
+  it('одинаковые условия разных групп остаются различимыми', async () => {
+    cardWith(TWO_GROUPS);
+    renderCard();
+
+    // Половина условий повторяется дважды — у «хорошего» и у «среднего», с
+    // одной формулировкой и разными порогами. Убрать ключ и не дать взамен
+    // ничего значило бы показать две одинаковые строки с порогами 100 и 20.
+    await screen.findAllByText('рост органического трафика в процентах');
+    expect(document.querySelector('[data-group="хороший"]')).not.toBeNull();
+    expect(document.querySelector('[data-group="средний"]')).not.toBeNull();
+  });
+});

@@ -8,7 +8,8 @@
 | Новые проверки падали до правки | те же на `Charts.tsx` из HEAD | 3 failed из 3 |
 | Пороги после чистки экрана | `vitest run src/pages/__tests__/thresholds*.tsx` | 27 passed |
 | Справка о таблице | `vitest run src/pages/__tests__/intake.test.tsx` | 16 passed (3 новых) |
-| Фронт целиком | `vitest run` | 162 passed |
+| Таблица условий вердикта | `vitest run src/pages/__tests__/card.test.tsx` | 25 passed (2 новых, оба падали до правки) |
+| Фронт целиком | `vitest run` | 164 passed |
 | Бэкенд целиком | `pytest -q` | 587 passed, 1 skipped |
 | Типы и стиль | `tsc`, `eslint`, `prettier` | чисто; 0 предупреждений при планке 0 |
 
