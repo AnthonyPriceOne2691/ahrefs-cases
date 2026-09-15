@@ -170,3 +170,30 @@ def test_the_coverage_waiver_expires_out_loud() -> None:
                 "Либо закрыть долг тестами и снять continue-on-error, либо назвать "
                 "новый срок — здесь и в docs/FINDINGS.md (Z22)"
             )
+
+
+def test_a_manifest_without_dependencies_is_not_a_dependency_decision() -> None:
+    """Манифест с нулём зависимостей не требует объявления в STATUS.
+
+    `check_new_dependency.py` считал появление манифеста решением о
+    зависимостях. Посылка верна для `pyproject.toml` с двадцатью восемью
+    пакетами и неверна для `src/pyproject.toml`, где нет ни одного: там только
+    `[tool.mutmut]`, потому что mutmut 3.x читает конфиг из каталога запуска.
+    Гейт требовал назвать зависимостью то, чего в файле нет, — требование без
+    честного выхода (§4.3b). Адаптация записана в `scripts/lint/adapted.json`.
+    """
+    import sys
+
+    sys.path.insert(0, str(_ROOT / "scripts" / "lint"))
+    from dependency_manifests import extractor_for  # noqa: PLC0415
+
+    extract = extractor_for("src/pyproject.toml")
+    assert extract is not None, "pyproject.toml перестал считаться манифестом — проверка смотрит не туда"
+    assert extract((_ROOT / "src" / "pyproject.toml").read_text(encoding="utf-8")) == set(), (
+        "в src/pyproject.toml появились зависимости — тогда его и правда надо объявлять, "
+        "а этот файл задуман только под область мутационного гейта"
+    )
+    assert extract((_ROOT / "pyproject.toml").read_text(encoding="utf-8")), (
+        "в корневом pyproject.toml не нашлось зависимостей — извлекатель сломан, "
+        "и гейт новых зависимостей молча пропустит любую"
+    )

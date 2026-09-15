@@ -101,7 +101,15 @@ def scan_manifests(merge_base: str, paths: list[str]) -> tuple[list[str], int, l
             continue
         checked += 1
         if not base_text.strip():
-            if head_text.strip():
+            # Появление манифеста — одно решение, но решение о ЗАВИСИМОСТЯХ.
+            # Манифест, в котором их ноль, таким решением не является: файл с
+            # одной секцией настроек инструмента (`src/pyproject.toml` —
+            # только `[tool.mutmut]`, область мутационного гейта) гейт требовал
+            # объявить строкой `new_dependency: <pkg> reason=… by=…`, то есть
+            # назвать зависимостью то, чего в нём нет. Выхода у требования не
+            # было ни одного, кроме ложного объявления. Адаптация записана в
+            # scripts/lint/adapted.json (15.09.2026).
+            if head_text.strip() and fn(head_text):
                 findings.append(path.lower())
             continue
         findings.extend(sorted(fn(head_text) - fn(base_text)))
