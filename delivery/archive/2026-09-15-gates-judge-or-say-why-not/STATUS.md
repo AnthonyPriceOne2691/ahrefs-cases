@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_ci_gates_judge.py::test_suite_runner_job_has_a_database
 - **diagnosis:** n/a reason=причина найдена прогоном CI и записана как Z18–Z20: сьют требует базы, а джоба `gates` идёт без неё
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 15.09.2026 — «Принять и в архив»)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («все три сразу», выбор маршрута «перенести в tests»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
