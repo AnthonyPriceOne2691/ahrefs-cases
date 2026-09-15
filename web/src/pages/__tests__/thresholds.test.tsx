@@ -6,6 +6,7 @@
  * предложении, а не в пути `groups.good.org_traffic.growth_pct_min`.
  */
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken, rememberToken } from '../../api/client';
@@ -20,6 +21,12 @@ afterEach(() => {
   forgetToken();
 });
 
+/** Подробности версии живут в раскрытии списка (15.09.2026): отдельная карточка
+ *  «Действующая версия» дословно повторяла их и была снята. */
+async function openVersion(version = '2026-09-I') {
+  await userEvent.click(await screen.findByText(version));
+}
+
 describe('действующая версия', () => {
   it('E1: показывается та версия, по которой считаются вердикты', async () => {
     server({
@@ -31,9 +38,10 @@ describe('действующая версия', () => {
     });
 
     showThresholds();
+    await openVersion();
 
     // Свежая версия — не обязательно действующая: сохранение не активирует.
-    expect(await screen.findByText(/Действующая версия 2026-09-I/)).toBeInTheDocument();
+    expect(await screen.findByText(/Пороги версии 2026-09-I — действующей/)).toBeInTheDocument();
   });
 
   it('E2 и E8: условия групп словами, включая вилку «средних»', async () => {
@@ -43,6 +51,7 @@ describe('действующая версия', () => {
     });
 
     showThresholds();
+    await openVersion();
 
     expect(await screen.findByText('Рост трафика от 100 %')).toBeInTheDocument();
     expect(screen.getByText('И при этом прирост не меньше 2 000 визитов')).toBeInTheDocument();
@@ -60,6 +69,7 @@ describe('действующая версия', () => {
     });
 
     showThresholds();
+    await openVersion();
     await screen.findByText('Рост трафика от 100 %');
 
     // «Конец периода не ниже пика на 0 %» читалось бы как работающее правило.
@@ -99,6 +109,7 @@ describe('состояния экрана', () => {
     });
 
     showThresholds();
+    await openVersion();
 
     // Версия с ненулевой нормализацией не пройдёт разбор на сервере. Сказать
     // об этом на экране дешевле, чем показать отказ после сохранения.

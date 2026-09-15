@@ -478,3 +478,69 @@ describe('кейс проекта на карточке', () => {
     expect(screen.getByText(/файла к нему нет/)).toBeInTheDocument();
   });
 });
+
+describe('шаг, на котором рисовать нечего', () => {
+  function cardWithEmptyQuarter() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) {
+          // На месяце кривые есть, на квартале — ни одной: у короткого периода
+          // квартал схлопывается в одну точку, а кривой по одной точке не бывает.
+          const step = url.split('grouping=')[1] ?? 'month';
+          return new Response(JSON.stringify(step === 'month' ? CHARTS : []), { status: 200 });
+        }
+        if (url.includes('/api/cases')) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict: VERDICT,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+  }
+
+  it('переключатель остаётся, когда кривых нет — иначе это тупик', async () => {
+    cardWithEmptyQuarter();
+    renderCard();
+    await screen.findByText('Динамика органического трафика');
+
+    await userEvent.click(screen.getByText('квартал'));
+
+    // Ядро дефекта: вместе с кривыми исчезал и переключатель, и вернуться на
+    // месяц было нечем — выходили перезагрузкой страницы.
+    expect(await screen.findByText('месяц')).toBeInTheDocument();
+    expect(screen.getByText('год')).toBeInTheDocument();
+  });
+
+  it('причина названа по существу, а не «метрику не покупали»', async () => {
+    cardWithEmptyQuarter();
+    renderCard();
+    await screen.findByText('Динамика органического трафика');
+
+    await userEvent.click(screen.getByText('квартал'));
+
+    // Ряды есть — их не хватает на этом шаге. Прежний текст про «не собрано»
+    // отправлял бы человека докупать то, что уже куплено.
+    expect(await screen.findByText(/точек слишком мало/)).toBeInTheDocument();
+    expect(screen.queryByText(/не собрано/)).not.toBeInTheDocument();
+  });
+
+  it('вернуться на месяц можно, и кривые возвращаются', async () => {
+    cardWithEmptyQuarter();
+    renderCard();
+    await screen.findByText('Динамика органического трафика');
+
+    await userEvent.click(screen.getByText('квартал'));
+    await screen.findByText(/точек слишком мало/);
+    await userEvent.click(screen.getByText('месяц'));
+
+    expect(await screen.findByText('Динамика органического трафика')).toBeInTheDocument();
+  });
+});

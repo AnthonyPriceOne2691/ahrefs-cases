@@ -1,32 +1,26 @@
 /**
- * Карточка действующих порогов: что сейчас решает группы.
+ * Состояния списка версий, в которых показывать нечего.
  *
- * Отдельно от списка версий, потому что отвечает на другой вопрос: не «какие
- * версии есть», а «по чему считается то, что я вижу на остальных экранах».
+ * Жили в карточке «Действующая версия», а её сняли (15.09.2026): подробности
+ * версии дословно повторялись в раскрытии списка ниже. Но вместе с карточкой
+ * ушли бы и эти три ответа — а они как раз про случаи, когда списка нет вовсе,
+ * и раскрывать нечего.
  */
-import { Alert, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Paper, Stack, Text } from '@mantine/core';
 
-import type { RulesetRow } from '../../api/types';
 import { failureText } from '../cases/failure';
 
-import { RulesView } from './RulesView';
-import { readRules } from './rules';
-
 interface Props {
-  current: RulesetRow | null;
   pending: boolean;
   error: unknown;
   empty: boolean;
 }
 
-export function CurrentVersion({ current, pending, error, empty }: Props) {
+export function VersionsState({ pending, error, empty }: Props) {
+  if (!pending && !empty && (error === null || error === undefined)) return null;
   return (
     <Paper className="glass" p="lg">
       <Stack gap="md">
-        <Title order={4}>
-          {current?.is_active ? 'Действующая версия' : 'Версия'} {current?.version ?? ''}
-        </Title>
-
         {pending && <Text size="sm">Загружаем версии…</Text>}
 
         {error !== null && error !== undefined && (
@@ -43,8 +37,6 @@ export function CurrentVersion({ current, pending, error, empty }: Props) {
             </Text>
           </Alert>
         )}
-
-        {current && <RulesView rules={readRules(current.payload)} />}
       </Stack>
     </Paper>
   );

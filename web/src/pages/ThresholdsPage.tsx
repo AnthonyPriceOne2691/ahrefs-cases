@@ -18,12 +18,16 @@ import type { PreviewView, RulesetRow } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 
 import { failureText } from './cases/failure';
-import { CurrentVersion } from './thresholds/CurrentVersion';
 import { EditSection } from './thresholds/EditSection';
+import { VersionsState } from './thresholds/VersionsState';
 import { VersionsSection } from './thresholds/VersionsSection';
 
-/** Показываем выбранную версию, а по умолчанию — действующую: именно по ней
- *  посчитаны вердикты, которые человек видит на остальных экранах. */
+/** Версия-основа для правки: выбранная, а по умолчанию действующая — именно по
+ *  ней посчитаны вердикты, которые человек видит на остальных экранах.
+ *
+ *  Отдельной карточки «действующая версия» на экране больше нет (15.09.2026):
+ *  её содержимое дословно повторялось в раскрытии той же версии в списке ниже,
+ *  и человек читал одно и то же дважды. */
 function shown(rows: RulesetRow[] | undefined, chosen: string | null): RulesetRow | null {
   if (!rows || rows.length === 0) return null;
   if (chosen) return rows.find((row) => row.version === chosen) ?? null;
@@ -59,8 +63,7 @@ export function ThresholdsPage() {
       <Stack gap="lg">
         <Title order={2}>Пороги</Title>
 
-        <CurrentVersion
-          current={current}
+        <VersionsState
           pending={rulesets.isPending}
           error={rulesets.isError ? rulesets.error : null}
           empty={rulesets.isSuccess && rows.length === 0}

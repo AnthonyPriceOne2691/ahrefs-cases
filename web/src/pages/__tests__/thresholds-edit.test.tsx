@@ -47,7 +47,9 @@ describe('доступ к форме', () => {
     server({ 'GET /api/auth/me': me(['read']), 'GET /api/rulesets': LIST });
 
     showThresholds();
-    await screen.findByText(/Действующая версия/);
+    // Карточки «Действующая версия» на экране больше нет: ждём список версий,
+    // он появляется у всех, у кого есть право на раздел.
+    await screen.findByText('Версии');
 
     expect(screen.queryByRole('button', { name: 'Править пороги' })).not.toBeInTheDocument();
   });

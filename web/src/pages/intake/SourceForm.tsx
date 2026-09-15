@@ -7,6 +7,8 @@
 import { Alert, Button, FileButton, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useState } from 'react';
 
+import { SheetHelp } from './SheetHelp';
+
 const BUTTON_WIDTH = 210;
 /** Поля укорочены: список путей к файлу и ссылка на таблицу — короткие строки,
  *  а поле во всю ширину обещает длинный ввод и уводит кнопку к краю экрана. */
@@ -65,13 +67,27 @@ export function SourceForm({ busy, error, onSubmit }: Props) {
       </Group>
 
       <Group align="flex-end" wrap="wrap">
-        <TextInput
-          label="Ссылка на Google Sheet"
-          placeholder="https://docs.google.com/spreadsheets/…"
-          value={link}
-          onChange={(event) => setLink(event.currentTarget.value)}
-          w={FIELD_WIDTH}
-        />
+        {/*
+          Подпись и знак справки — соседи, а НЕ содержимое `<label>`: кнопка
+          внутри подписи склеивает своё имя с именем поля («Ссылка на Google
+          Sheet какой должна быть таблица») и наводит фокус на поле по нажатию
+          на значок. Поэтому подпись рисуется сама, а поле получает своё имя
+          через `aria-label`.
+        */}
+        <Stack gap={4} w={FIELD_WIDTH}>
+          <Group gap={6} align="center">
+            <Text size="sm" fw={500}>
+              Ссылка на Google Sheet
+            </Text>
+            <SheetHelp />
+          </Group>
+          <TextInput
+            aria-label="Ссылка на Google Sheet"
+            placeholder="https://docs.google.com/spreadsheets/…"
+            value={link}
+            onChange={(event) => setLink(event.currentTarget.value)}
+          />
+        </Stack>
         <Button
           variant="light"
           onClick={() => link.trim() && onSubmit(link.trim())}

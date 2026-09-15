@@ -46,14 +46,18 @@ function GroupFieldset({ title, fields, onChange }: GroupProps) {
   return (
     <Stack gap="xs">
       <Title order={5}>{title}</Title>
-      <Grid>
+      {/* `align="flex-end"` — не косметика: подписи разной длины переносятся
+          на разное число строк, и поля в одном ряду вставали уступами. Ровняем
+          по нижнему краю — тогда сами поля стоят на одной линии, как бы ни
+          переносились подписи над ними. */}
+      <Grid align="flex-end">
         <Num
           label="Рост трафика от, %"
           value={fields.growthPctMin}
           onChange={(growthPctMin) => onChange({ growthPctMin })}
         />
         <Num
-          label="Рост трафика до, % (пусто — без верхней границы)"
+          label="Рост трафика до, % (пусто — без границы)"
           value={fields.growthPctMax}
           onChange={(growthPctMax) => onChange({ growthPctMax })}
         />
@@ -86,7 +90,10 @@ function GroupFieldset({ title, fields, onChange }: GroupProps) {
         />
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <Checkbox
-            mt="xl"
+            // Ровняется рядом с полями нижним краем — прежний отступ «на глаз»
+            // подбирался под подписи в одну строку и уезжал, стоило им
+            // перенестись.
+            mb={6}
             label="Сильный рост в процентах при малом приросте — сюда же"
             checked={fields.orHighPctLowAbs}
             onChange={(event) => onChange({ orHighPctLowAbs: event.currentTarget.checked })}
@@ -105,7 +112,7 @@ interface Props {
 export function ThresholdsForm({ values, onChange }: Props) {
   return (
     <Stack gap="md">
-      <Grid>
+      <Grid align="flex-end">
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <TextInput
             label="Имя версии"
@@ -135,7 +142,7 @@ export function ThresholdsForm({ values, onChange }: Props) {
       />
 
       <Title order={5}>Когда классифицировать вообще нельзя</Title>
-      <Grid>
+      <Grid align="flex-end">
         <Num
           label="Не раньше, месяцев после старта"
           value={values.minMonthsAfterStart}

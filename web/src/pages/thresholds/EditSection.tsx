@@ -6,7 +6,7 @@
  * посмотрел последствия. Предпросмотр после сохранения считается сам — это тот
  * самый цикл, которого требует ТЗ: «правишь цифру — видишь, кто сменит группу».
  */
-import { Alert, Button, Modal, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Button, Group, Modal, Stack, Text } from '@mantine/core';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -56,16 +56,15 @@ function FormBlock({
   );
 }
 
-/** Приглашение к правке: почему это новая версия и чем заполнятся поля. */
-function StartEditing({ version, onStart }: { version: string; onStart: () => void }) {
+/** Отказ сервера его же словами: он называет занятое имя версии, кривую
+ *  структуру или нехватку права, и «что-то пошло не так» оставило бы человека
+ *  без следующего шага. */
+function Failure({ text }: { text: string | null }) {
+  if (!text) return null;
   return (
-    <>
-      <Text size="sm" c="dimmed">
-        Правка — это всегда новая версия: прежняя остаётся, потому что на неё ссылаются вынесенные
-        вердикты. Поля заполнятся значениями версии {version}.
-      </Text>
-      <Button onClick={onStart}>Править пороги</Button>
-    </>
+    <Alert color="red" variant="light">
+      <Text size="sm">{text}</Text>
+    </Alert>
   );
 }
 
@@ -112,7 +111,9 @@ function EditWindow({
       opened={opened}
       onClose={onClose}
       title={`Правка порогов — основа ${base.version}`}
-      size="lg"
+      // Шире обычного: полей девять в двух колонках, и в узком окне подписи
+      // переносились по два-три раза, отчего поля вставали уступами.
+      size="xl"
       centered
     >
       <Stack gap="md">
@@ -178,42 +179,42 @@ export function EditSection({ base, onChanged }: { base: RulesetRow; onChanged: 
   });
 
   return (
-    <Paper className="glass" p="lg">
-      <Stack gap="md">
-        <Title order={4}>Правка порогов</Title>
+    <Stack gap="md">
+      {/*
+        Секции «Правка порогов» на экране больше нет (15.09.2026): плашка с
+        заголовком, пояснением и кнопкой занимала экран ради одной кнопки, а
+        всё остальное — поля, предпросмотр, применение — и так живёт в окне.
+        Осталась кнопка; она сама и есть вход в правку.
+      */}
+      <Group>
+        <Button onClick={() => setEditing(true)}>Править пороги</Button>
+      </Group>
 
-        <StartEditing version={base.version} onStart={() => setEditing(true)} />
+      <EditWindow
+        base={base}
+        opened={editing}
+        values={values}
+        saving={save.isPending}
+        onClose={() => setEditing(false)}
+        onChange={(patch) => setValues(values === null ? null : { ...values, ...patch })}
+        onSave={(form) => save.mutate(form)}
+      />
 
-        <EditWindow
-          base={base}
-          opened={editing}
-          values={values}
-          saving={save.isPending}
-          onClose={() => setEditing(false)}
-          onChange={(patch) => setValues(values === null ? null : { ...values, ...patch })}
-          onSave={(form) => save.mutate(form)}
+      <Failure text={error} />
+
+      {saved && (
+        <ApplyPanel
+          version={saved}
+          active={active}
+          preview={preview}
+          recalc={recalcReport}
+          confirming={confirming}
+          applying={apply.isPending}
+          recalculating={again.isPending}
+          onApply={() => (confirming ? apply.mutate(saved) : setConfirming(true))}
+          onRecalc={() => again.mutate(saved)}
         />
-
-        {error && (
-          <Alert color="red" variant="light">
-            <Text size="sm">{error}</Text>
-          </Alert>
-        )}
-
-        {saved && (
-          <ApplyPanel
-            version={saved}
-            active={active}
-            preview={preview}
-            recalc={recalcReport}
-            confirming={confirming}
-            applying={apply.isPending}
-            recalculating={again.isPending}
-            onApply={() => (confirming ? apply.mutate(saved) : setConfirming(true))}
-            onRecalc={() => again.mutate(saved)}
-          />
-        )}
-      </Stack>
-    </Paper>
+      )}
+    </Stack>
   );
 }

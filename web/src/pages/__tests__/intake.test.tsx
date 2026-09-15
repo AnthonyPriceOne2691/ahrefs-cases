@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetToken, rememberToken } from '../../api/client';
 import { renderApp } from '../../test/render';
 import { RunsPage } from '../RunsPage';
+import { SHEET_ACCESS, SHEET_COLUMNS } from '../intake/SheetHelp';
 
 /** Раздел живёт в маршрутизаторе: признак открытого окна сметы держится в
  *  адресе, и без `Router` экран падает на `useLocation`. */
@@ -386,5 +387,45 @@ describe('кнопка загрузки файла', () => {
     const field = await screen.findByLabelText('Файл со списком');
     expect(field).toHaveValue('сентябрь.xlsx');
     expect(field).toHaveAttribute('readonly');
+  });
+});
+
+describe('справка о таблице', () => {
+  it('значок стоит у поля ссылки и назван словами', async () => {
+    rememberToken('токен');
+    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    showRuns();
+
+    // Знак вопроса сам по себе не говорит, о чём спросят: подпись обязательна,
+    // и по ней же его находит тест.
+    const help = await screen.findByLabelText('какой должна быть таблица');
+    expect(help).toBeInTheDocument();
+  });
+
+  it('справка называет ровно те колонки, которых требует приём', () => {
+    // Содержимое проверяется данными, а не раскрытием карточки: попапы Mantine
+    // в jsdom разворачиваются секундами (грабли Ф6). Список здесь обязан
+    // совпадать с REQUIRED_COLUMNS из `intake/validate.py` — расхождение
+    // означает, что человек соберёт таблицу по нашей же неверной подсказке.
+    expect(SHEET_COLUMNS.map((column) => column.name)).toEqual([
+      'domain',
+      'period_start',
+      'period_end',
+      'niche',
+      'geo',
+      'service_type',
+      'work_volume',
+      'client',
+      'owner',
+      'publishable',
+    ]);
+  });
+
+  it('справка прямо говорит, что авторизация не нужна, а приватная таблица не годится', () => {
+    // Два вопроса владельца одним предложением: он спросил и про формат, и про
+    // авторизацию — значит по экрану это было не видно.
+    expect(SHEET_ACCESS).toMatch(/Авторизация не нужна/);
+    expect(SHEET_ACCESS).toMatch(/по ссылке/);
+    expect(SHEET_ACCESS).toMatch(/приватную/i);
   });
 });
