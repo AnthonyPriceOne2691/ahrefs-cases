@@ -1,4 +1,8 @@
 /**
+ * ВНИМАНИЕ: с 15.09.2026 «Загрузка» и «Прогоны» — один раздел, и приём списка
+ * живёт на `RunsPage`. Проверки ниже про приём списка и смету; журнал прогонов
+ * проверяет `ops.test.tsx`.
+ *
  * Экран загрузки. Примеры приёмки E3–E12.
  *
  * Проверяется поведение, а не разметка: что человек видит после приёма, что
@@ -7,11 +11,29 @@
  */
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken, rememberToken } from '../../api/client';
 import { renderApp } from '../../test/render';
-import { IntakePage } from '../IntakePage';
+import { RunsPage } from '../RunsPage';
+
+/** Раздел живёт в маршрутизаторе: признак открытого окна сметы держится в
+ *  адресе, и без `Router` экран падает на `useLocation`. */
+/** Смета живёт в окне (15.09.2026): плашка на странице пролистывалась вместе
+ *  с ней, а смета — это решение «запускать ли», а не сводка. */
+async function openEstimate() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Смета и запуск' }));
+  await screen.findByRole('dialog');
+}
+
+function showRuns() {
+  return renderApp(
+    <BrowserRouter>
+      <RunsPage />
+    </BrowserRouter>,
+  );
+}
 
 interface Reply {
   status: number;
@@ -43,16 +65,42 @@ const REPORT = {
 };
 
 /** Ответы по пути запроса. Очередь на путь — чтобы второй запрос той же сметы
- *  мог ответить иначе: ровно это и значит «смета пересчиталась». */
+ *  мог ответить иначе: ровно это и значит «смета пересчиталась».
+ *
+ *  Ключ можно писать с методом (`'GET /api/runs'`). Это понадобилось, когда
+ *  приём списка и журнал прогонов сошлись в одном разделе: запуск — это
+ *  `POST /api/runs`, журнал — `GET /api/runs`, и помощник, сличавший только
+ *  путь, отдавал журналу ответ запуска. Падало это не на сравнении, а глубже —
+ *  `(rows ?? []).some is not a function`, то есть в коде экрана, который в этом
+ *  не виноват. Ключ без метода по-прежнему отвечает на любой. */
 function server(routes: Record<string, Reply | Reply[]>): { calls: string[] } {
   const calls: string[] = [];
   const queues = { ...routes };
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = typeof input === 'string' ? input : input.toString();
+      const method = (init?.method ?? 'GET').toUpperCase();
       calls.push(path);
-      const found = Object.entries(queues).find(([prefix]) => path.startsWith(prefix));
+      // Побеждает САМОЕ ДЛИННОЕ совпадение, а не первое: `GET /api/runs`
+      // (журнал) — префикс `/api/runs/estimate` (смета), и поиск «первого
+      // подходящего» отдавал смете ответ журнала. Ошибка вылезала далеко от
+      // причины: `quota_left.toLocaleString of undefined` в отрисовке.
+      const route = (key: string) => {
+        const [head, ...rest] = key.split(' ');
+        return rest.length > 0
+          ? { method: head, prefix: rest.join(' ') }
+          : { method: null, prefix: key };
+      };
+      const candidates = Object.entries(queues).filter(([key]) => {
+        const { method: only, prefix } = route(key);
+        return (only === null || only === method) && path.startsWith(prefix);
+      });
+      // Длина ПУТИ, а не ключа: метод в ключе добавляет символов, и `GET
+      // /api/runs` (журнал) обходил `/api/runs/7` (карточка прогона) просто
+      // потому, что строка длиннее.
+      candidates.sort(([a], [b]) => route(b).prefix.length - route(a).prefix.length);
+      const found = candidates[0];
       if (!found) return new Response(JSON.stringify({ detail: 'нет пути' }), { status: 404 });
       const value = found[1];
       const reply = Array.isArray(value) ? (value.length > 1 ? value.shift() : value[0]) : value;
@@ -67,8 +115,11 @@ async function upload(file = new File(['x'], 'список.xlsx')) {
   // `applyAccept: false`: подсказка `accept` фильтрует список в диалоге, но не
   // запрещает выбрать «все файлы» — отказ сервера по формату достижим, и
   // именно его проверяет E5.
+  //
+  // Второго нажатия здесь больше нет: с 15.09.2026 выбор файла и есть отправка.
+  // Прежде кнопка стояла недоступной, пока файл не выбран, и выглядела
+  // сломанной — владелец так её и описал.
   await userEvent.upload(input, file, { applyAccept: false });
-  await userEvent.click(screen.getByRole('button', { name: 'Загрузить файл' }));
 }
 
 afterEach(() => {
@@ -84,7 +135,7 @@ describe('экран загрузки', () => {
       '/api/intake/file': { status: 200, body: REPORT },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
     await upload();
 
     expect(await screen.findByText('принято 10')).toBeInTheDocument();
@@ -110,7 +161,7 @@ describe('экран загрузки', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
     await upload();
 
     // Номер строки — тот, который человек ищет глазами в Excel.
@@ -133,7 +184,7 @@ describe('экран загрузки', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
     await upload();
 
     // Проект принят: отклонённых строк нет, а непонятая ячейка названа.
@@ -156,7 +207,7 @@ describe('экран загрузки: отказы источника', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
     await upload(new File(['x'], 'отчёт.pdf'));
 
     expect(await screen.findByText(/не понимаю формат файла/)).toBeInTheDocument();
@@ -172,7 +223,7 @@ describe('экран загрузки: отказы источника', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
     await userEvent.type(
       screen.getByLabelText(/Ссылка на Google Sheet/),
       'https://docs.google.com/spreadsheets/d/abc/edit',
@@ -188,7 +239,8 @@ describe('экран загрузки: смета и запуск', () => {
     rememberToken('токен');
     server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
 
     expect(await screen.findByText('units по смете 1980')).toBeInTheDocument();
     expect(screen.getByText(/Остаток квоты: 9\s?500/)).toBeInTheDocument();
@@ -210,7 +262,8 @@ describe('экран загрузки: смета и запуск', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
 
     expect(await screen.findByText(/не хватает units: остаток 300/)).toBeInTheDocument();
     expect(screen.getByTestId('start-run')).toBeDisabled();
@@ -231,7 +284,8 @@ describe('экран загрузки: смета и запуск', () => {
       },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
 
     expect(await screen.findByText(/остаток квоты Ahrefs неизвестен/)).toBeInTheDocument();
     expect(screen.getByText('Остаток квоты: неизвестен')).toBeInTheDocument();
@@ -257,10 +311,14 @@ describe('экран загрузки: прогон', () => {
           error: '',
         },
       },
+      // Журнал и запуск — один путь, разные методы: без явного ключа журнал
+      // получал бы ответ запуска (см. докстроку `server`).
+      'GET /api/runs': { status: 200, body: [] },
       '/api/runs': { status: 202, body: { run_id: 7, queued_as: 'inline:7' } },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
     await userEvent.click(await screen.findByTestId('start-run'));
 
     expect(await screen.findByText(/Прогон №7/)).toBeInTheDocument();
@@ -270,10 +328,12 @@ describe('экран загрузки: прогон', () => {
     rememberToken('токен');
     server({
       '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      'GET /api/runs': { status: 200, body: [] },
       '/api/runs': { status: 409, body: { detail: 'прогон 4 уже идёт: второй стоит вторую цену' } },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
     await userEvent.click(await screen.findByTestId('start-run'));
 
     expect(await screen.findByText(/прогон 4 уже идёт/)).toBeInTheDocument();
@@ -289,10 +349,42 @@ describe('экран загрузки: прогон', () => {
       '/api/intake/file': { status: 200, body: REPORT },
     });
 
-    renderApp(<IntakePage />);
+    showRuns();
+    await openEstimate();
     expect(await screen.findByText('units по смете 0')).toBeInTheDocument();
     await upload();
 
     await waitFor(() => expect(screen.getByText('units по смете 1980')).toBeInTheDocument());
+  });
+});
+
+describe('кнопка загрузки файла', () => {
+  it('доступна до того, как файл выбран: она и открывает выбор', async () => {
+    rememberToken('токен');
+    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    showRuns();
+    await openEstimate();
+
+    // Ядро жалобы: кнопка «по сути ничего не делает». Она была `disabled`,
+    // пока файл не выбран, а выбирало его поле рядом — то есть работу делало
+    // поле, а кнопка только подтверждала уже сделанное.
+    expect(await screen.findByRole('button', { name: 'Загрузить файл' })).toBeEnabled();
+  });
+
+  it('поле показывает имя выбранного файла и в него нельзя печатать', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': { status: 200, body: REPORT },
+    });
+    showRuns();
+    await openEstimate();
+    await screen.findByRole('button', { name: 'Загрузить файл' });
+
+    await upload(new File(['x'], 'сентябрь.xlsx'));
+
+    const field = await screen.findByLabelText('Файл со списком');
+    expect(field).toHaveValue('сентябрь.xlsx');
+    expect(field).toHaveAttribute('readonly');
   });
 });

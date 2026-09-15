@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,6 +24,7 @@ from sqlalchemy import func, select, text
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
+    RunAuthor,
     RunCard,
     RunEstimate,
     RunItemView,
@@ -84,20 +85,76 @@ async def start_cases(
     return await _enqueue(session, user.id, job=cases_job)
 
 
+DAY = timedelta(days=1)
+"""Шаг верхней границы отбора: `until` включает весь названный день."""
+
+
 @router.get("", response_model=list[RunRow])
 async def list_runs(
     session: SessionDep,
     _: Annotated[object, Depends(require_right("read"))] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    started_by: Annotated[int | None, Query(ge=1)] = None,
+    since: Annotated[date | None, Query()] = None,
+    until: Annotated[date | None, Query()] = None,
 ) -> list[RunRow]:
     """Журнал прогонов: свежие сверху, с именем того, кто запускал.
 
     Авторы берутся **одним запросом** на страницу, а не по строке: двадцать
     прогонов дали бы двадцать походов в базу за тем же десятком людей.
+
+    Страницы и отборы заведены 15.09.2026: журнал на стенде перевалил за пять
+    сотен строк, и «свежие двадцать» перестали отвечать на вопрос «а что было
+    в понедельник и кто это запускал».
+
+    Границы дат **включающие и по календарю**: `until=2026-09-13` берёт весь
+    тринадцатое число, а не «до полуночи». Иначе человек, выбравший один день,
+    получил бы пустой список и решил, что прогонов не было.
     """
-    stmt = select(Run).order_by(Run.id.desc()).limit(limit)
-    runs = list((await session.execute(stmt)).scalars().all())
+    stmt = select(Run).order_by(Run.id.desc())
+    if started_by is not None:
+        stmt = stmt.where(Run.started_by == started_by)
+    if since is not None:
+        stmt = stmt.where(Run.created_at >= datetime.combine(since, time.min, tzinfo=UTC))
+    if until is not None:
+        stmt = stmt.where(Run.created_at < datetime.combine(until, time.min, tzinfo=UTC) + DAY)
+    runs = list((await session.execute(stmt.limit(limit).offset(offset))).scalars().all())
     return [_row(run, await _authors(session, runs)) for run in runs]
+
+
+@router.get("/authors", response_model=list[RunAuthor])
+async def run_authors(
+    session: SessionDep,
+    _: Annotated[object, Depends(require_right("read"))] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = MAX_PAGE,
+) -> list[RunAuthor]:
+    """Кем запускались прогоны — для отбора в журнале.
+
+    Отдельным путём, а не полем страницы: страница показывает двадцать строк, и
+    список авторов, собранный по ней, менялся бы от страницы к странице — отбор
+    «показать Петра» исчезал бы, стоило пролистнуть туда, где Петра нет.
+
+    Объявлен **до** `/{run_id}`: иначе слово `authors` уходит в разбор номера
+    (урок L173, тот же капкан, что у `pack` и `selection`).
+    """
+    # Потолок стоит, хотя авторов столько же, сколько заведённых людей: список
+    # без границы — это обещание, что их всегда мало, а сервис живёт годами и
+    # учётки в нём копятся. Гейт `unbounded-list` прав, и спорить с ним здесь
+    # дешевле, чем однажды отдать страницу на тысячу строк.
+    ids = (await session.execute(select(Run.started_by).distinct().limit(limit))).scalars().all()
+    if not ids:
+        return []
+    users = (await session.execute(select(User).where(User.id.in_(set(ids))))).scalars().all()
+    known = {user.id: user for user in users}
+    return [
+        RunAuthor(
+            id=author_id,
+            name=known[author_id].email if author_id in known else f"#{author_id}",
+            deleted=author_id not in known or known[author_id].deleted_at is not None,
+        )
+        for author_id in sorted(set(ids))
+    ]
 
 
 async def _authors(session: SessionDep, runs: Sequence[Run]) -> dict[int, User]:

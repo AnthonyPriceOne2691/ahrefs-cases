@@ -315,3 +315,54 @@ def test_fates_are_bounded(client: TestClient) -> None:
     card = client.get(f"/api/runs/{run_id}", headers=headers).json()
 
     assert len(card["fates"]) <= MAX_FATES
+
+
+def test_journal_pages_and_filters(client: TestClient) -> None:
+    """Журнал листается и отбирается: по автору и по календарным датам.
+
+    Заведено 15.09.2026: журнал на стенде перевалил за пять сотен строк, и
+    «свежие двадцать» перестали отвечать на вопрос «что было в понедельник и
+    кто это запускал».
+
+    Границы дат **включающие**: `until` берёт весь названный день. Иначе
+    человек, выбравший один день, получил бы пустой список и решил, что
+    прогонов не было, — отбор, который врёт молча, хуже отсутствующего.
+    """
+    headers = _headers(client)
+    started = client.post("/api/runs", headers=headers).json()
+    mine = client.get("/api/runs", headers=headers).json()[0]
+
+    # Страница: первая строка первой страницы не повторяется на второй.
+    first = client.get("/api/runs?limit=1", headers=headers).json()
+    second = client.get("/api/runs?limit=1&offset=1", headers=headers).json()
+    assert len(first) == 1
+    assert first[0]["id"] == started["run_id"]
+    assert not second or second[0]["id"] != first[0]["id"]
+
+    # Отбор по автору: свой прогон виден, чужой номер не возвращает ничего.
+    author = mine["started_by"]
+    ours = client.get(f"/api/runs?started_by={author}&limit=100", headers=headers).json()
+    assert {row["started_by"] for row in ours} == {author}
+    assert client.get("/api/runs?started_by=999999", headers=headers).json() == []
+
+    # Календарный день прогона включён обеими границами.
+    day = mine["created_at"][:10]
+    same_day = client.get(f"/api/runs?since={day}&until={day}&limit=100", headers=headers).json()
+    assert started["run_id"] in {row["id"] for row in same_day}
+
+
+def test_authors_list_is_not_a_run_id(client: TestClient) -> None:
+    """`authors` — путь, а не номер прогона.
+
+    Третий случай того же капкана после `pack` и `selection` (урок L173):
+    путь, объявленный после `/{run_id}`, уходит в разбор номера и отвечает 422.
+    """
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+
+    response = client.get("/api/runs/authors", headers=headers)
+
+    assert response.status_code == 200, response.text
+    authors = response.json()
+    assert authors, "список авторов пуст, хотя прогон только что запущен"
+    assert all({"id", "name", "deleted"} <= set(row) for row in authors)

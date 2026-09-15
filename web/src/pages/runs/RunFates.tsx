@@ -10,10 +10,10 @@
  * таймеру, пока идёт прогон, и таскать список судеб каждые пять секунд ради
  * строки, которую никто не открыл, незачем.
  */
-import { Alert, Button, Stack, Table, Text } from '@mantine/core';
+import { ActionIcon, Alert, Collapse, Group, Stack, Table, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 
+import { FOLD_MS } from '../../app/foldedChoice';
 import { ApiError } from '../../api/client';
 import { fetchRun } from '../../api/ops';
 import { fateWord } from '../status';
@@ -65,27 +65,98 @@ function Fates({ runId }: { runId: number }) {
   );
 }
 
-export function RunFates({ runId, skipped }: { runId: number; skipped: number }) {
-  const [opened, setOpened] = useState(false);
-
-  if (skipped <= 0) return null;
-
+/** Знак вопроса рядом с числом пропущенных.
+ *
+ * Прежде здесь стояло слово «почему» кнопкой, и оно занимало в колонке больше
+ * места, чем само число: колонка «Проекты» раздувалась ради подписи, которую
+ * читают один раз (замечание владельца 15.09.2026). Жёлтый — того же цвета,
+ * что «пропущено N»: знак принадлежит этой строке, а не таблице вообще.
+ *
+ * `aria-label` обязателен: знак вопроса сам по себе не говорит, о чём спросят.
+ */
+export function WhySkipped({
+  runId,
+  skipped,
+  failed,
+  opened,
+  onToggle,
+}: {
+  runId: number;
+  skipped: number;
+  /** Прогон упал с причиной. Знак нужен и тогда, когда пропущенных нет вовсе:
+   *  причина отказа — единственное объяснение упавшего прогона. */
+  failed: boolean;
+  opened: boolean;
+  onToggle: () => void;
+}) {
+  if (skipped <= 0 && !failed) return null;
   return (
-    <Stack gap={4}>
-      <Text size="xs" c="orange" data-run-skipped={skipped}>
-        пропущено {skipped}
-      </Text>
-      {/* Инлайн-раскрытие, а не модальное окно: попапы Mantine в jsdom
-          рендерятся секундами, и оракул на них уходит в таймаут (урок из Ф6). */}
-      <Button
-        size="compact-xs"
-        variant="subtle"
-        onClick={() => setOpened((was) => !was)}
+    <Group gap={6} justify="center">
+      {skipped > 0 && (
+        <Text size="xs" c="orange" data-run-skipped={skipped}>
+          пропущено {skipped}
+        </Text>
+      )}
+      <ActionIcon
+        size="xs"
+        radius="xl"
+        variant={opened ? 'filled' : 'light'}
+        color="yellow"
+        onClick={onToggle}
+        aria-label={opened ? 'скрыть, почему пропущены' : 'почему пропущены'}
         data-run-why={runId}
       >
-        {opened ? 'скрыть' : 'почему'}
-      </Button>
-      {opened && <Fates runId={runId} />}
-    </Stack>
+        ?
+      </ActionIcon>
+    </Group>
+  );
+}
+
+/** Раскрытие живёт ОТДЕЛЬНОЙ строкой таблицы во всю ширину.
+ *
+ * Внутри ячейки список судеб раздвигал свою колонку, и остальные прыгали —
+ * именно это владелец и просил убрать. Строка на всю ширину меняет высоту
+ * таблицы и не трогает ни одной колонки.
+ */
+export function FatesRow({
+  runId,
+  error,
+  columns,
+  background,
+  opened,
+  shown,
+}: {
+  runId: number;
+  /** Причина отказа как её записал прогон. Живёт здесь, а не в ячейке
+   *  таблицы: владелец увидел `MissingGreenlet: greenlet_spawn has not been
+   *  called…` строкой на всю ширину экрана (15.09.2026). Прятать её нельзя —
+   *  это единственное объяснение упавшего прогона, — но место ей в раскрытии. */
+  error: string;
+  columns: number;
+  /** Фон полосы своего прогона: раскрытие — продолжение его строки. */
+  background: string | undefined;
+  opened: boolean;
+  /** Чьи судьбы показывать: отстаёт от `opened` на время сворачивания, иначе
+   *  сворачивать будет нечего. */
+  shown: boolean;
+}) {
+  if (!shown) return null;
+  return (
+    <Table.Tr data-fates-row={runId} bg={background}>
+      {/* `p: 0` у закрытого раскрытия: иначе пустая строка держит отступы и
+          таблица всё равно подрастает на пару пикселей. */}
+      <Table.Td colSpan={columns} style={{ padding: opened ? undefined : 0 }}>
+        <Collapse in={opened} transitionDuration={FOLD_MS}>
+          <Stack gap="xs">
+            {error && (
+              <Alert color="red" variant="light" data-run-error>
+                <Text size="xs">Прогон отказал: {error}</Text>
+              </Alert>
+            )}
+            <Fates runId={runId} />
+          </Stack>
+        </Collapse>
+      </Table.Td>
+    </Table.Tr>
   );
 }

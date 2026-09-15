@@ -9,7 +9,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../auth/AuthProvider';
 import { CasesPage } from '../pages/CasesPage';
-import { IntakePage } from '../pages/IntakePage';
 import { ProjectCardPage } from '../pages/ProjectCardPage';
 import { ProjectsPage } from '../pages/ProjectsPage';
 import { ThresholdsPage } from '../pages/ThresholdsPage';
@@ -22,7 +21,6 @@ import { NAV_SECTIONS } from './nav';
 /** Готовые экраны по адресу раздела. Чего здесь нет — то ещё заглушка, и
  *  заглушка говорит об этом вслух, а не показывает пустую страницу. */
 const SCREENS: Record<string, () => React.ReactElement> = {
-  '/intake': IntakePage,
   '/projects': ProjectsPage,
   '/cases': CasesPage,
   '/thresholds': ThresholdsPage,

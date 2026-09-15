@@ -5,13 +5,23 @@
  * кончился, и видно ли, сколько денег осталось — включая случай «остаток
  * неизвестен», который нельзя показывать нулём.
  */
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken, rememberToken } from '../../api/client';
 import { renderApp } from '../../test/render';
 import { RunsPage } from '../RunsPage';
+/** Раздел живёт в маршрутизаторе: с 15.09.2026 приём списка и журнал — один
+ *  экран, и признак открытого окна сметы держится в адресе. */
+function showRuns() {
+  return renderApp(
+    <BrowserRouter>
+      <RunsPage />
+    </BrowserRouter>,
+  );
+}
 import { UsagePage } from '../UsagePage';
 
 function run(id: number, status: string, extra: Record<string, unknown> = {}) {
@@ -70,10 +80,13 @@ describe('журнал прогонов', () => {
       },
     });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
-    expect(await screen.findByText('Ahrefs не отвечает')).toBeInTheDocument();
-    expect(screen.getByText('упало 6')).toBeInTheDocument();
+    // Причина отказа уехала в раскрытие (15.09.2026): в ячейке она занимала
+    // всю ширину экрана. В таблице остаётся знак вопроса, по нему — причина.
+    expect(await screen.findByText('упало 6')).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('почему пропущены'));
+    expect(await screen.findByText(/Ahrefs не отвечает/)).toBeInTheDocument();
     // Смета и факт рядом: расхождение видно сразу, а не после подсчёта.
     expect(screen.getAllByText(/2 112 → 1 936/)).not.toHaveLength(0);
   });
@@ -81,7 +94,7 @@ describe('журнал прогонов', () => {
   it('E3: завершённые прогоны не опрашиваются', async () => {
     const { calls } = server({ '/api/runs': { status: 200, body: [run(2, 'done')] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
     await screen.findByText('готов');
     const after = calls.length;
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -93,7 +106,7 @@ describe('журнал прогонов', () => {
   it('E2: идущий прогон переводит экран в режим самообновления', async () => {
     server({ '/api/runs': { status: 200, body: [run(4, 'running'), run(3, 'done')] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText(/журнал обновляется сам/)).toBeInTheDocument();
   });
@@ -102,7 +115,7 @@ describe('журнал прогонов', () => {
     // «done» посреди русского экрана — enum, а не исход. Человек читает исход.
     server({ '/api/runs': { status: 200, body: [run(2, 'done'), run(1, 'rejected')] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText('готов')).toBeInTheDocument();
     // «Отклонён по квоте» — не «упал»: прогон не начинался и units не потрачены.
@@ -114,7 +127,7 @@ describe('журнал прогонов', () => {
     // Сервис знает больше экрана: сырое значение честнее придуманного слова.
     server({ '/api/runs': { status: 200, body: [run(9, 'reaped')] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText('reaped')).toBeInTheDocument();
   });
@@ -122,7 +135,7 @@ describe('журнал прогонов', () => {
   it('E5: пустой журнал говорит словами и подсказывает, где запустить', async () => {
     server({ '/api/runs': { status: 200, body: [] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText(/Прогонов ещё не было/)).toBeInTheDocument();
   });
@@ -130,7 +143,7 @@ describe('журнал прогонов', () => {
   it('E10: отказ показан текстом сервера', async () => {
     server({ '/api/runs': { status: 403, body: { detail: 'нет права read: группа user' } } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText(/нет права read/)).toBeInTheDocument();
   });
@@ -159,9 +172,10 @@ describe('пропуски прогона', () => {
       '/api/runs/7': { status: 200, body: card },
     });
 
-    renderApp(<RunsPage />);
-    const why = await screen.findByText('почему');
-    await userEvent.click(why);
+    showRuns();
+    // Слово «почему» заменено жёлтым знаком вопроса: подпись занимала в
+    // колонке больше места, чем само число (замечание владельца 15.09.2026).
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
 
     expect(await screen.findByText('молодой.example')).toBeInTheDocument();
     // Исход — словом, а не значением перечисления.
@@ -172,10 +186,10 @@ describe('пропуски прогона', () => {
   it('E3: у прогона без пропусков лишнего на экране нет', async () => {
     server({ '/api/runs': { status: 200, body: [run(8, 'done')] } });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     await screen.findByText('готов');
-    expect(screen.queryByText('почему')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('почему пропущены')).not.toBeInTheDocument();
     expect(screen.queryByText(/пропущено/)).not.toBeInTheDocument();
   });
 });
@@ -293,7 +307,7 @@ describe('кто запускал прогон', () => {
       },
     });
 
-    renderApp(<RunsPage />);
+    showRuns();
 
     expect(await screen.findByText('Сотрудник PR')).toBeInTheDocument();
     expect(screen.getByText('Уволенный')).toBeInTheDocument();
@@ -301,5 +315,117 @@ describe('кто запускал прогон', () => {
     const marks = document.querySelectorAll('[data-author-deleted="yes"]');
     expect(marks).toHaveLength(1);
     expect(marks[0]?.closest('td')).toHaveTextContent('Уволенный');
+  });
+});
+
+describe('длинный текст не раздувает таблицу', () => {
+  const TRACE =
+    'MissingGreenlet: greenlet_spawn has not been called; ' +
+    "can't call await_only() here. Was IO attempted in an unexpected place? " +
+    '(Background on this error at: https://sqlalche.me/e/20/xd2s)';
+
+  it('трассировки в таблице нет, но она доступна под знаком вопроса', async () => {
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [run(387, 'failed', { error: TRACE, projects_ok: 0, projects_skipped: 19 })],
+      },
+      '/api/runs/387': {
+        status: 200,
+        body: { ...run(387, 'failed', { error: TRACE }), fates: [] },
+      },
+    });
+
+    showRuns();
+    await screen.findByText(/пропущено 19/);
+
+    // Ядро замечания: сырая трассировка стояла в ячейке и раздувала колонку.
+    expect(screen.queryByText(new RegExp('MissingGreenlet'))).not.toBeInTheDocument();
+
+    // Но она не потеряна: это единственное объяснение упавшего прогона.
+    await userEvent.click(screen.getByLabelText('почему пропущены'));
+    expect(await screen.findByText(new RegExp('MissingGreenlet'))).toBeInTheDocument();
+  });
+});
+
+describe('журнал листается и отбирается', () => {
+  const PAGE = Array.from({ length: 20 }, (_, index) => run(500 - index, 'done'));
+
+  function journal(rows: unknown, authors: unknown = []) {
+    return server({
+      '/api/runs/authors': { status: 200, body: authors },
+      '/api/runs': { status: 200, body: rows },
+    });
+  }
+
+  it('полная страница даёт листалку, неполная — нет', async () => {
+    journal(PAGE);
+    showRuns();
+
+    expect(await screen.findByRole('button', { name: 'Вперёд' })).toBeInTheDocument();
+  });
+
+  it('короткий журнал листалку не показывает', async () => {
+    journal([run(1, 'done')]);
+    showRuns();
+
+    await screen.findByText('готов');
+    expect(screen.queryByRole('button', { name: 'Вперёд' })).not.toBeInTheDocument();
+  });
+
+  it('отбор по автору уезжает в запрос и в адрес', async () => {
+    const net = journal(PAGE, [
+      { id: 7, name: 'anthony@ahrefs-cases.local', deleted: false },
+      { id: 9, name: 'pr@agency.local', deleted: true },
+    ]);
+    showRuns();
+
+    // Список авторов приезжает своим запросом: выбирать можно, только когда он
+    // приехал, иначе `selectOptions` не находит значения.
+    await screen.findByRole('option', { name: /pr@agency.local/ });
+    await userEvent.selectOptions(screen.getByLabelText('Кто запустил'), '9');
+
+    await waitFor(() => expect(net.calls.some((url) => url.includes('started_by=9'))).toBe(true));
+    expect(new URLSearchParams(window.location.search).get('кто')).toBe('9');
+  });
+
+  it('удалённый автор остаётся в отборе и помечен', async () => {
+    journal(PAGE, [{ id: 9, name: 'pr@agency.local', deleted: true }]);
+    showRuns();
+
+    // Журнал живёт ради вопроса «кто запускал»: вместе с уволившимся из отбора
+    // пропали бы и его прогоны.
+    expect(
+      await screen.findByRole('option', { name: /pr@agency.local \(удалён\)/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('даты уезжают в запрос обеими границами', async () => {
+    const net = journal(PAGE);
+    showRuns();
+
+    await userEvent.type(await screen.findByLabelText('С даты'), '2026-09-13');
+    await userEvent.type(screen.getByLabelText('По дату'), '2026-09-13');
+
+    await waitFor(() =>
+      expect(
+        net.calls.some(
+          (url) => url.includes('since=2026-09-13') && url.includes('until=2026-09-13'),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('пустой ответ под отбором объясняется иначе, чем пустой журнал', async () => {
+    journal([], [{ id: 9, name: 'pr@agency.local', deleted: false }]);
+    showRuns();
+
+    expect(await screen.findByText(/Прогонов ещё не было/)).toBeInTheDocument();
+
+    await screen.findByRole('option', { name: /pr@agency.local/ });
+    await userEvent.selectOptions(screen.getByLabelText('Кто запустил'), '9');
+
+    // «Ничего не нашлось» лечится снятием отбора, «ничего не было» — запуском.
+    expect(await screen.findByText(/Под этот отбор прогонов нет/)).toBeInTheDocument();
   });
 });

@@ -54,6 +54,13 @@ export interface RunStarted {
   queued_as: string;
 }
 
+/** Кем запускались прогоны — вариант отбора журнала. */
+export interface RunAuthor {
+  id: number;
+  name: string;
+  deleted: boolean;
+}
+
 export interface RunRow {
   id: number;
   status: string;

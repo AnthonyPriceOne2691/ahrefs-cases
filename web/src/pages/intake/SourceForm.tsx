@@ -4,10 +4,13 @@
  * Оба названы в ТЗ, и оба нужны: отдел присылает то файл, то ссылку, а
  * спрашивать у него формат значит спрашивать дважды.
  */
-import { Alert, Button, FileInput, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, FileButton, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useState } from 'react';
 
 const BUTTON_WIDTH = 210;
+/** Поля укорочены: список путей к файлу и ссылка на таблицу — короткие строки,
+ *  а поле во всю ширину обещает длинный ввод и уводит кнопку к краю экрана. */
+const FIELD_WIDTH = 420;
 
 interface Props {
   busy: boolean;
@@ -16,7 +19,7 @@ interface Props {
 }
 
 export function SourceForm({ busy, error, onSubmit }: Props) {
-  const [file, setFile] = useState<File | null>(null);
+  const [name, setName] = useState('');
   const [link, setLink] = useState('');
 
   return (
@@ -26,26 +29,39 @@ export function SourceForm({ busy, error, onSubmit }: Props) {
         колонок; строки без них попадут в отчёт с причиной, а остальные примутся.
       </Text>
 
+      {/*
+        Кнопка сама открывает выбор файла и сама его отправляет — одно движение
+        вместо двух. Прежде выбор делало поле, а кнопка стояла недоступной, пока
+        файл не выбран: она выглядела сломанной и, по словам владельца, «по сути
+        ничего не делает» (15.09.2026). Поле рядом теперь только показывает имя
+        выбранного — вводить в него нечего, поэтому оно `readOnly`.
+      */}
       <Group align="flex-end" wrap="wrap">
-        <FileInput
+        <TextInput
           label="Файл со списком"
-          placeholder="выбрать файл"
-          accept=".xlsx,.xlsm,.csv"
-          value={file}
-          onChange={setFile}
-          flex="1 1 16rem"
+          placeholder="файл не выбран"
+          value={name}
+          readOnly
+          w={FIELD_WIDTH}
+          data-chosen-file={name || undefined}
         />
         {/* Ширина кнопок задана одинаковой нарочно: иначе её задаёт длина
             надписи, и поля над ними получаются разной длины — «Загрузить по
             ссылке» на два символа длиннее «Загрузить файл». */}
-        <Button
-          onClick={() => file && onSubmit(file)}
-          disabled={!file || busy}
-          loading={busy}
-          w={BUTTON_WIDTH}
+        <FileButton
+          accept=".xlsx,.xlsm,.csv"
+          onChange={(chosen) => {
+            if (!chosen) return;
+            setName(chosen.name);
+            onSubmit(chosen);
+          }}
         >
-          Загрузить файл
-        </Button>
+          {(props) => (
+            <Button {...props} disabled={busy} loading={busy} w={BUTTON_WIDTH}>
+              Загрузить файл
+            </Button>
+          )}
+        </FileButton>
       </Group>
 
       <Group align="flex-end" wrap="wrap">
@@ -54,7 +70,7 @@ export function SourceForm({ busy, error, onSubmit }: Props) {
           placeholder="https://docs.google.com/spreadsheets/…"
           value={link}
           onChange={(event) => setLink(event.currentTarget.value)}
-          flex="1 1 16rem"
+          w={FIELD_WIDTH}
         />
         <Button
           variant="light"
