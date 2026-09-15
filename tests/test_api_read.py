@@ -391,6 +391,71 @@ def test_library_shows_one_case_per_project(
     assert ours(history) == [1, 2]
 
 
+def test_library_narrows_to_one_project(client: TestClient, seeded: dict[str, int]) -> None:
+    """Карточка проекта спрашивает свой кейс, а не листает чужую библиотеку.
+
+    Без фильтра единственный способ узнать номер кейса — выкачать библиотеку и
+    найти строку перебором: на сотне доменов первая страница занята чужими
+    проектами, и «моего кейса нет» становится неотличимо от «он на второй
+    странице». Фильтр отвечает на тот же вопрос («какой файл отправить
+    клиенту»), поэтому живёт тем же путём, а не вторым.
+    """
+    headers = _token(client)
+    mine = client.get(f"/api/cases?project_id={seeded['project']}", headers=headers).json()
+
+    assert mine, "кейс засеянного проекта не нашёлся по фильтру"
+    assert {int(row["project_id"]) for row in mine} == {seeded["project"]}
+    assert int(mine[0]["id"]) == seeded["case"]
+
+    # Чужого проекта с таким номером быть не может: фильтр обязан отвечать
+    # пустым списком, а не «первой попавшейся» строкой библиотеки.
+    alien = client.get("/api/cases?project_id=999999", headers=headers).json()
+    assert alien == []
+
+
+def test_selection_returns_one_archive(client: TestClient, seeded: dict[str, int]) -> None:
+    """Выбранные кейсы приезжают одним архивом, а не пачкой загрузок.
+
+    Пачкой нельзя: браузер разрешает вкладке одну загрузку за жест человека и
+    остальные обрывает молча — из десяти выбранных дошли бы два, и о восьми
+    никто бы не узнал.
+    """
+    headers = _token(client)
+    response = client.get(f"/api/cases/selection/download?ids={seeded['case']}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert response.content.startswith(b"PK")
+
+
+def test_selection_names_the_cases_it_could_not_give(
+    client: TestClient, seeded: dict[str, int]
+) -> None:
+    """Отказ называет НОМЕРА, а не «что-то не нашлось».
+
+    Выборка человека — это список, и «один из них недоступен» без имени
+    заставляет перебирать заново весь список руками.
+    """
+    headers = _token(client)
+    response = client.get(
+        f"/api/cases/selection/download?ids={seeded['case']}&ids=999999", headers=headers
+    )
+
+    assert response.status_code == 404
+    assert "999999" in response.json()["detail"]
+
+
+def test_selection_word_does_not_become_a_case_id(client: TestClient) -> None:
+    """`selection` — маршрут, а не номер кейса.
+
+    Тот же капкан, в который уже попадало слово `pack`: при объявлении после
+    `/{case_id}/download` путь уходит в разбор номера и отвечает 422 вместо
+    работы.
+    """
+    response = client.get("/api/cases/selection/download?ids=1", headers=_token(client))
+    assert response.status_code != 422
+
+
 def test_download_without_file_is_404(
     client: TestClient,
     seeded: dict[str, int],

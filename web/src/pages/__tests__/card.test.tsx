@@ -308,3 +308,173 @@ describe('карточка проекта: состояния', () => {
     expect(window.location.pathname).toBe('/projects');
   });
 });
+
+describe('смена шага кривой', () => {
+  /** Ответ по графикам держится, пока тест не разрешит его отдать: без паузы
+   *  новые кривые приезжают в том же тике, и проверять «что видно во время
+   *  загрузки» становится нечего. */
+  function serverWithHeldCharts() {
+    let release: (() => void) | null = null;
+    let hold = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) {
+          if (hold) {
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          }
+          const step = url.split('grouping=')[1] ?? 'month';
+          return new Response(
+            JSON.stringify([
+              { title: 'Динамика органического трафика', svg: `<svg data-step="${step}"></svg>` },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict: VERDICT,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    return {
+      holdNext: () => {
+        hold = true;
+      },
+      let_go: () => {
+        hold = false;
+        release?.();
+      },
+    };
+  }
+
+  it('прежние кривые остаются на экране, пока едут новые', async () => {
+    const net = serverWithHeldCharts();
+    renderCard();
+    await waitFor(() => expect(document.querySelector('[data-step="month"]')).not.toBeNull());
+
+    net.holdNext();
+    await userEvent.click(screen.getByText('квартал'));
+
+    // Ядро дефекта: блок «Динамика» исчезал целиком, страница схлопывалась на
+    // высоту одной строки, и браузер уводил прокрутку наверх — к кривым внизу
+    // приходилось возвращаться руками.
+    expect(document.querySelector('[data-step="month"]')).not.toBeNull();
+    expect(screen.queryByText('Рисуем кривые…')).not.toBeInTheDocument();
+
+    net.let_go();
+    await waitFor(() => expect(document.querySelector('[data-step="quarter"]')).not.toBeNull());
+  });
+
+  it('переключатель не пропадает под пальцем, пока едут новые кривые', async () => {
+    const net = serverWithHeldCharts();
+    renderCard();
+    await waitFor(() => expect(document.querySelector('[data-step="month"]')).not.toBeNull());
+
+    net.holdNext();
+    await userEvent.click(screen.getByText('квартал'));
+
+    expect(screen.getByText('квартал')).toBeInTheDocument();
+    expect(screen.getByText('месяц')).toBeInTheDocument();
+    net.let_go();
+  });
+
+  it('подмена рисунка показана приглушением, а не молча', async () => {
+    const net = serverWithHeldCharts();
+    renderCard();
+    await waitFor(() => expect(document.querySelector('[data-step="month"]')).not.toBeNull());
+
+    net.holdNext();
+    await userEvent.click(screen.getByText('год'));
+
+    await waitFor(() => expect(document.querySelector('[data-stale]')).not.toBeNull());
+
+    net.let_go();
+    await waitFor(() => expect(document.querySelector('[data-step="year"]')).not.toBeNull());
+    expect(document.querySelector('[data-stale]')).toBeNull();
+  });
+});
+
+describe('кейс проекта на карточке', () => {
+  const CASE_ROW = {
+    id: 42,
+    project_id: 7,
+    domain: 'klinika.example',
+    version: 1,
+    anonymized: false,
+    status: 'ready',
+    created_at: '2026-09-12T10:00:00Z',
+    filename: 'klinika.example Кейс.pdf',
+    checksum: 'abc',
+  };
+
+  function cardWithCase(rows: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/api/cases')) {
+          return new Response(JSON.stringify(rows), { status: 200 });
+        }
+        if (url.includes('/charts')) return new Response(JSON.stringify(CHARTS), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict: VERDICT,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+  }
+
+  it('кнопка «Скачать PDF» доступна, когда файл есть', async () => {
+    cardWithCase([CASE_ROW]);
+    renderCard();
+
+    const button = await screen.findByRole('button', { name: 'Скачать PDF' });
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  it('кейс спрашивается по своему проекту, а не перебором библиотеки', async () => {
+    cardWithCase([CASE_ROW]);
+    renderCard();
+    await screen.findByRole('button', { name: 'Скачать PDF' });
+
+    const calls = (globalThis.fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const toCases = calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.includes('/api/cases'));
+    expect(toCases.every((url) => url.includes('project_id=7'))).toBe(true);
+  });
+
+  it('кейса нет — кнопка не притворяется рабочей и говорит почему', async () => {
+    cardWithCase([]);
+    renderCard();
+
+    const button = await screen.findByRole('button', { name: 'Скачать PDF' });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(screen.getByText(/Кейс ещё не собран/)).toBeInTheDocument();
+  });
+
+  it('кейс есть, а файла нет — это отдельная причина, и она названа', async () => {
+    cardWithCase([{ ...CASE_ROW, filename: null, checksum: null }]);
+    renderCard();
+
+    const button = await screen.findByRole('button', { name: 'Скачать PDF' });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(screen.getByText(/файла к нему нет/)).toBeInTheDocument();
+  });
+});

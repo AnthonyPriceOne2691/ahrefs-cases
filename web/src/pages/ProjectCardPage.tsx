@@ -6,7 +6,7 @@
  * заново: экран обязан отвечать то же, что таблица и PDF (урок L41).
  */
 import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 
@@ -15,8 +15,9 @@ import { fetchProjectCard, fetchProjectCharts } from '../api/projects';
 import type { Grouping } from '../api/projects';
 
 import { CardHeader } from './card/CardHeader';
-import { Charts } from './card/Charts';
+import { CasePdf } from './card/CasePdf';
 import { Comparison } from './card/Comparison';
+import { Dynamics } from './card/Dynamics';
 import { Hero } from './card/Hero';
 import { Reasons } from './card/Reasons';
 import { SourceMismatch } from './card/SourceMismatch';
@@ -41,6 +42,13 @@ export function ProjectCardPage() {
     queryKey: ['project', id, 'charts', grouping],
     queryFn: () => fetchProjectCharts(id, grouping),
     enabled: Number.isFinite(id),
+    // Прежние кривые остаются на экране, пока грузятся новые. Без этого смена
+    // шага меняла ключ запроса, `data` становилась `undefined`, и блок «Динамика»
+    // исчезал целиком — вместе с переключателем, который только что нажали.
+    // Страница при этом схлопывалась на высоту одной строки, и браузер уводил
+    // прокрутку наверх, хотя кривые внизу: человек нажимал «квартал» и терял
+    // из виду и графики, и саму кнопку (найдено владельцем 15.09.2026).
+    placeholderData: keepPreviousData,
   });
 
   if (card.isPending) {
@@ -71,6 +79,8 @@ export function ProjectCardPage() {
       <Stack gap="lg">
         <CardHeader card={card.data} />
 
+        <CasePdf projectId={id} />
+
         <SourceMismatch reason={card.data.source_mismatch} />
 
         {verdict ? (
@@ -100,15 +110,13 @@ export function ProjectCardPage() {
           </Paper>
         )}
 
-        <Paper className="glass" p="lg">
-          <Stack gap="sm">
-            <Title order={3}>Динамика</Title>
-            {charts.isPending && <Text size="sm">Рисуем кривые…</Text>}
-            {charts.data && (
-              <Charts blocks={charts.data} grouping={grouping} onGrouping={setGrouping} />
-            )}
-          </Stack>
-        </Paper>
+        <Dynamics
+          blocks={charts.data}
+          pending={charts.isPending}
+          stale={charts.isPlaceholderData}
+          grouping={grouping}
+          onGrouping={setGrouping}
+        />
 
         <Text size="xs" c="dimmed">
           {FOOTNOTE}

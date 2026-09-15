@@ -21,9 +21,11 @@ interface Props {
   blocks: ChartBlock[];
   grouping: Grouping;
   onGrouping: (value: Grouping) => void;
+  /** Кривые на экране от прежнего шага, новые ещё грузятся. */
+  stale?: boolean;
 }
 
-export function Charts({ blocks, grouping, onGrouping }: Props) {
+export function Charts({ blocks, grouping, onGrouping, stale = false }: Props) {
   const step = (
     <Group justify="flex-end">
       <SegmentedControl
@@ -46,17 +48,28 @@ export function Charts({ blocks, grouping, onGrouping }: Props) {
   }
   return (
     <Stack gap="lg">
+      {/* Переключатель ВНЕ приглушаемой области: он не рисунок, а орган
+          управления, и гаснуть под пальцем ему незачем. */}
       {step}
-      {blocks.map((block) => (
-        <Stack key={block.title} gap="xs">
-          <Title order={4}>{block.title}</Title>
-          <div
-            data-chart={block.title}
-            // SVG собран нашим бэкендом из наших чисел — см. докстринг файла.
-            dangerouslySetInnerHTML={{ __html: block.svg }}
-          />
-        </Stack>
-      ))}
+      <Stack
+        gap="lg"
+        data-stale={stale || undefined}
+        // Переход задан здесь, а не в glass.css: правило касается одного этого
+        // блока, и держать его рядом с разметкой честнее, чем в общем файле
+        // оформления, где оно переживёт свой повод.
+        style={{ transition: 'opacity 180ms ease', opacity: stale ? 0.45 : 1 }}
+      >
+        {blocks.map((block) => (
+          <Stack key={block.title} gap="xs">
+            <Title order={4}>{block.title}</Title>
+            <div
+              data-chart={block.title}
+              // SVG собран нашим бэкендом из наших чисел — см. докстринг файла.
+              dangerouslySetInnerHTML={{ __html: block.svg }}
+            />
+          </Stack>
+        ))}
+      </Stack>
     </Stack>
   );
 }

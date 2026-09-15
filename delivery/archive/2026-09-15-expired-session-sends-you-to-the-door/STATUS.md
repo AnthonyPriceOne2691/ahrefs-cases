@@ -9,7 +9,7 @@
 - **diagnosis:** n/a reason=причина найдена чтением слоя и записана как Z23: `ApiError.needsLogin` не вызывается ни одним экраном, а проверка «кто я» идёт только на монтировании
 - **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony (принято 15.09.2026 — «Три поставки»)
+- **verifier:** human:anthony (принято 15.09.2026 — «Принимаю, оставьте», в ответ на прямой вопрос о приёмке)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («вот я после ночи открыл ноут и требуется действующий токен, давай поправим этот момент»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed

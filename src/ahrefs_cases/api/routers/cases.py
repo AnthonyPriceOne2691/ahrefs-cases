@@ -16,6 +16,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,6 +42,7 @@ async def list_cases(
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     all_versions: bool = False,
+    project_id: Annotated[int | None, Query(ge=1)] = None,
 ) -> list[CaseRow]:
     """Библиотека: по одному свежему кейсу на проект, если не просили иначе.
 
@@ -51,6 +53,13 @@ async def list_cases(
     вдобавок оказывалась занята версиями двух-трёх проектов.
 
     История никуда не делась: `all_versions=true` отдаёт её целиком.
+
+    `project_id` сужает библиотеку до одного проекта. Заведён ради карточки
+    проекта: без него она спрашивала бы всю библиотеку и искала свой кейс
+    перебором — на сотне доменов это страница чужих строк ради одной своей.
+    Фильтр стоит рядом с `all_versions`, а не отдельным путём
+    `/api/projects/{id}/case`: вопрос тот же самый («какой файл отправить
+    клиенту»), и второй ответ на него разошёлся бы с первым.
     """
     stmt = (
         select(Case, Project, CaseArtifact)
@@ -60,6 +69,8 @@ async def list_cases(
         .limit(limit)
         .offset(offset)
     )
+    if project_id is not None:
+        stmt = stmt.where(Case.project_id == project_id)
     if not all_versions:
         # Свежий кейс проекта — с наибольшим номером строки: версии пишутся
         # по возрастанию, и брать максимум времени было бы хуже — две сборки
@@ -140,6 +151,81 @@ async def download_pack() -> FileResponse:
             detail="пачки кейсов нет: она собирается прогоном сборки кейсов",
         )
     return FileResponse(path, filename=path.name, media_type="application/zip")
+
+
+MAX_SELECTION = 100
+
+
+@router.get("/selection/download")
+async def download_selection(
+    session: SessionDep,
+    ids: Annotated[list[int], Query(min_length=1, max_length=MAX_SELECTION)],
+) -> FileResponse:
+    """Отдать выбранные кейсы одним архивом.
+
+    Почему архивом, а не пачкой отдельных файлов: браузер разрешает вкладке
+    одну загрузку за жест человека, и десять подряд он оборвёт молча — человек
+    получит два PDF из десяти и не узнает, каких восьми не хватает.
+
+    Почему собирается на лету, а не берётся из `/pack/download`: пачка — это
+    результат ПРОГОНА по текущим вердиктам, у неё свой состав и своё время
+    сборки. Выборка — ответ на «отправь клиенту вот эти три»; подменить одно
+    другим значило бы отдать не то, что выбрали.
+
+    Маршрут объявлен ДО `/{case_id}/download` намеренно: иначе слово
+    `selection` уходит в номер кейса — тем же путём, каким туда уходило `pack`
+    (см. `test_pack_word_does_not_become_a_case_id`).
+    """
+    wanted = list(dict.fromkeys(ids))
+    artifacts = (
+        await session.execute(
+            select(CaseArtifact, Case)
+            .join(Case, Case.id == CaseArtifact.case_id)
+            .where(CaseArtifact.case_id.in_(wanted))
+            .order_by(CaseArtifact.built_at.desc())
+        )
+    ).all()
+
+    # По одному свежему артефакту на кейс: пересборка добавляет строку, и без
+    # этого в архив уехали бы две версии одного кейса под одним именем.
+    newest: dict[int, CaseArtifact] = {}
+    for artifact, case in artifacts:
+        newest.setdefault(case.id, artifact)
+
+    missing = [case_id for case_id in wanted if case_id not in newest]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"у кейсов нет артефактов: {', '.join(str(i) for i in missing)}",
+        )
+
+    def _build() -> Path:
+        """Архив пишется в каталог выгрузки, а не во временный файл процесса.
+
+        `FileResponse` отдаёт файл ПОСЛЕ возврата обработчика, и временный файл,
+        удаляемый по выходу из блока, к этому моменту уже не существует.
+        """
+        directory = config.export.output_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        out: Path = directory / "выборка-кейсов.zip"
+        with ZipFile(out, "w", ZIP_DEFLATED) as archive:
+            for case_id in wanted:
+                artifact = newest[case_id]
+                path = Path(artifact.path)
+                if not path.is_file():
+                    raise FileNotFoundError(artifact.filename)
+                archive.write(path, arcname=artifact.filename)
+        return out
+
+    try:
+        archive_path = await anyio.to_thread.run_sync(_build)
+    except FileNotFoundError as missing_file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"файл кейса не найден на диске: {missing_file}",
+        ) from missing_file
+
+    return FileResponse(archive_path, filename=archive_path.name, media_type="application/zip")
 
 
 @router.get("/{case_id}/download")
