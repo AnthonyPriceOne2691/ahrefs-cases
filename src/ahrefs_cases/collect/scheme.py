@@ -283,19 +283,38 @@ class SchemeBreakdown:
         return sum(share.units for share in self.shares)
 
     def as_lines(self) -> list[str]:
-        """Строки отчёта: способ, endpoint, число проектов и цена группы."""
+        """Строки отчёта: способ, endpoint, число проектов и цена группы.
+
+        **Сравнение способов подписано гипотезой.** Оно считается по всему
+        списку, как если бы данных не было вовсе, и на собранном списке стоит
+        рядом со сметой «0 units»: владелец прочитал «прогон стоил бы 7401
+        против 11468» рядом с нулём и справедливо спросил, какое из чисел
+        настоящее (15.09.2026). Настоящее — смета; эта строка про то, чего не
+        будет, и теперь так и написано.
+
+        Когда покупать нечего, об этом говорится словами, а не нулём: «0 units»
+        читается как «цена неизвестна», а не как «платить не за что».
+        """
         parts = [
             f"{share.endpoint} {share.scheme.value}: {share.projects} проект(ов), "
             f"{share.units} units"
             for share in self.shares
             if share.projects
         ]
-        lines = [f"схема сбора — {'; '.join(parts) if parts else 'нечего собирать'}"]
+        if not parts:
+            lines = ["нечего собирать: данные по этому списку уже куплены, прогон бесплатен"]
+        elif self.units() == 0:
+            lines = [
+                f"схема сбора — {'; '.join(parts)}",
+                "новых запросов нет: всё это уже куплено, прогон бесплатен",
+            ]
+        else:
+            lines = [f"схема сбора — {'; '.join(parts)}"]
         if self.units_if_auto != self.units_if_history:
             lines.append(
-                f"при выборе по цене прогон стоил бы {self.units_if_auto} units против "
-                f"{self.units_if_history} историей (экономия "
-                f"{self.units_if_history - self.units_if_auto})"
+                f"если бы собирали заново: по цене вышло бы {self.units_if_auto} units "
+                f"против {self.units_if_history} историей, экономия "
+                f"{self.units_if_history - self.units_if_auto}"
             )
         return lines
 
