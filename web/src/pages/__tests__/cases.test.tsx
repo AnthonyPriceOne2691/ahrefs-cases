@@ -326,3 +326,79 @@ describe('состояние библиотеки переживает обно�
     expect(asked?.url).toContain('all_versions=true');
   });
 });
+
+describe('выбор кейсов для скачивания', () => {
+  function library(rows: unknown[]) {
+    return server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: rows },
+      '/api/cases/pack': { status: 200, body: PACK },
+      '/api/cases/selection/download': {
+        status: 200,
+        body: new Blob(['PK'], { type: 'application/zip' }),
+        // Кириллица в заголовке уезжает формой RFC 5987 — именно так её шлёт
+        // Starlette, и именно её разбирает `nameFromHeaders`. Сырое
+        // `filename="выборка…"` в заголовок не помещается вовсе: jsdom требует
+        // ByteString и падает на первом же символе за пределами latin-1.
+        headers: {
+          'content-disposition':
+            "attachment; filename*=utf-8''%D0%B2%D1%8B%D0%B1%D0%BE%D1%80%D0%BA%D0%B0-%D0%BA%D0%B5%D0%B9%D1%81%D0%BE%D0%B2.zip",
+        },
+      },
+      '/api/cases/1/download': {
+        status: 200,
+        body: new Blob(['%PDF-'], { type: 'application/pdf' }),
+        headers: {
+          'content-disposition': "attachment; filename*=utf-8''%D0%BE%D0%B4%D0%B8%D0%BD.pdf",
+        },
+      },
+    });
+  }
+
+  it('несколько выбранных уезжают одним архивом', async () => {
+    const net = library([caseRow(1), caseRow(2), caseRow(3)]);
+    show();
+    await screen.findByText('site-1.example');
+
+    await userEvent.click(screen.getByLabelText('выбрать кейс site-1.example'));
+    await userEvent.click(screen.getByLabelText('выбрать кейс site-3.example'));
+    await userEvent.click(screen.getByRole('button', { name: /Скачать выбранные \(2\)/ }));
+
+    await waitFor(() => expect(saved?.name).toBe('выборка-кейсов.zip'));
+    const asked = net.calls.map((call) => call.url).find((url) => url.includes('selection'));
+    expect(asked).toContain('ids=1');
+    expect(asked).toContain('ids=3');
+    expect(asked).not.toContain('ids=2');
+  });
+
+  it('один выбранный — это PDF, а не архив из одного файла', async () => {
+    library([caseRow(1), caseRow(2)]);
+    show();
+    await screen.findByText('site-1.example');
+
+    await userEvent.click(screen.getByLabelText('выбрать кейс site-1.example'));
+    await userEvent.click(screen.getByRole('button', { name: 'Скачать выбранный PDF' }));
+
+    await waitFor(() => expect(saved?.name).toBe('один.pdf'));
+  });
+
+  it('«выбрать всё» берёт только то, у чего есть файл', async () => {
+    library([caseRow(1), caseRow(2, { filename: null, checksum: null }), caseRow(3)]);
+    show();
+    await screen.findByText('site-1.example');
+
+    await userEvent.click(screen.getByLabelText('выбрать все кейсы на странице'));
+
+    expect(screen.getByRole('button', { name: /Скачать выбранные \(2\)/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('выбрать кейс site-2.example')).toBeDisabled();
+  });
+
+  it('пока ничего не выбрано, панели выбора нет', async () => {
+    library([caseRow(1)]);
+    show();
+    await screen.findByText('site-1.example');
+
+    expect(screen.queryByRole('button', { name: /Скачать выбранные/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Снять выделение' })).not.toBeInTheDocument();
+  });
+});

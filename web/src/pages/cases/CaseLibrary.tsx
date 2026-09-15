@@ -14,6 +14,8 @@ import { usePagedScreen } from '../../app/screenState';
 import { Pager } from '../../components/Pager';
 
 import { CasesTable } from './CasesTable';
+import { SelectionBar } from './SelectionBar';
+import { useCaseSelection, useSelectionDownload } from './selection';
 import { failureText } from './failure';
 import { saveFile } from './save';
 
@@ -40,6 +42,39 @@ function LibraryPager({
   return <Pager page={page} full={full} onChange={onChange} />;
 }
 
+/** Три состояния библиотеки, в которых таблицы нет: грузится, не загрузилась,
+ *  пуста. Каждое отвечает по-своему — «пусто» говорит, чем это лечится, а
+ *  «не загрузилась» отдаёт слова сервера: он называет причину точнее нас. */
+function LibraryState({
+  pending,
+  error,
+  rows,
+}: {
+  pending: boolean;
+  error: unknown;
+  rows: CaseRow[] | undefined;
+}) {
+  if (pending) return <Text size="sm">Загружаем библиотеку…</Text>;
+  if (error) {
+    return (
+      <Alert color="red" variant="light">
+        <Text size="sm">{failureText(error, 'библиотека не загрузилась')}</Text>
+      </Alert>
+    );
+  }
+  if (rows?.length === 0) {
+    return (
+      <Alert color="yellow" variant="light">
+        <Text size="sm">
+          Кейсов ещё нет. Они собираются по классифицированным проектам — «Пересобрать кейсы»
+          соберёт их по текущим вердиктам.
+        </Text>
+      </Alert>
+    );
+  }
+  return null;
+}
+
 export function CaseLibrary() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +88,8 @@ export function CaseLibrary() {
     queryFn: () => fetchCases(PAGE_SIZE, allVersions, page * PAGE_SIZE),
   });
 
+  const selection = useCaseSelection(cases.data ?? []);
+
   const take = useMutation({
     mutationFn: (row: CaseRow) => downloadCase(row.id, row.filename ?? `кейс-${row.id}.pdf`),
     onMutate: (row: CaseRow) => {
@@ -63,6 +100,11 @@ export function CaseLibrary() {
     onError: (failure: unknown) => setError(failureText(failure, 'кейс не скачался')),
     onSettled: () => setBusyId(null),
   });
+
+  const chosen = selection.chosen;
+  const takeChosen = useSelectionDownload(chosen, cases.data ?? [], (failure: unknown) =>
+    setError(failureText(failure, 'выборка не скачалась')),
+  );
 
   return (
     <Stack gap="md">
@@ -91,25 +133,22 @@ export function CaseLibrary() {
         />
       </Group>
 
-      {cases.isPending && <Text size="sm">Загружаем библиотеку…</Text>}
+      <SelectionBar
+        count={chosen.length}
+        busy={takeChosen.isPending}
+        onTake={() => takeChosen.mutate()}
+        onClear={selection.clear}
+      />
 
-      {cases.isError && (
-        <Alert color="red" variant="light">
-          <Text size="sm">{failureText(cases.error, 'библиотека не загрузилась')}</Text>
-        </Alert>
-      )}
-
-      {cases.data && cases.data.length === 0 && (
-        <Alert color="yellow" variant="light">
-          <Text size="sm">
-            Кейсов ещё нет. Они собираются по классифицированным проектам — «Пересобрать кейсы»
-            соберёт их по текущим вердиктам.
-          </Text>
-        </Alert>
-      )}
+      <LibraryState pending={cases.isPending} error={cases.error} rows={cases.data} />
 
       {cases.data && cases.data.length > 0 && (
-        <CasesTable rows={cases.data} busyId={busyId} onDownload={(row) => take.mutate(row)} />
+        <CasesTable
+          rows={cases.data}
+          busyId={busyId}
+          onDownload={(row) => take.mutate(row)}
+          selection={selection}
+        />
       )}
 
       <LibraryPager rows={cases.data} page={page} onChange={setPage} />

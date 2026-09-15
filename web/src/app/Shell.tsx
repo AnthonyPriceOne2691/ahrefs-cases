@@ -15,6 +15,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 
 import { NAV_SECTIONS, visibleSections } from './nav';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Shell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
@@ -56,7 +57,11 @@ export function Shell({ children }: { children: ReactNode }) {
       </AppShell.Header>
 
       <AppShell.Navbar p="sm">
-        <Stack gap={4}>
+        {/* Разделы забирают всю высоту, переключатель темы остаётся под ними:
+            он не раздел, и в одном ряду с ними читался бы восьмым пунктом
+            меню. Колонка у Mantine — флекс-столбец, поэтому «прижат к низу»
+            делается ростом списка, а не отступом на глаз. */}
+        <Stack gap={4} style={{ flexGrow: 1 }}>
           {sections.map((section) => (
             <NavLink
               key={section.path}
@@ -70,6 +75,9 @@ export function Shell({ children }: { children: ReactNode }) {
             />
           ))}
         </Stack>
+        <Group justify="flex-start" pt="xs" className="navFooter">
+          <ThemeToggle />
+        </Group>
       </AppShell.Navbar>
 
       <AppShell.Main>{children}</AppShell.Main>

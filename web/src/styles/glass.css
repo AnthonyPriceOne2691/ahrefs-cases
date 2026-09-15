@@ -32,18 +32,32 @@
   --glass-fill-strong: rgb(255 255 255 / 0.72);
   --glass-fill-quiet: rgb(255 255 255 / 0.32);
   --glass-edge: rgb(255 255 255 / 0.7);
+  /* Волосяная линия-разделитель. Отдельный токен от `--glass-edge`: кромка
+     стекла светлая (она рисует блик), а разделитель обязан быть темнее фона —
+     на светлой теме белая линия не видна вовсе. */
+  --hairline: rgb(30 25 60 / 0.14);
   --glass-shadow: 0 1px 1px -0.5px rgb(30 25 60 / 0.08), 0 4px 8px -3px rgb(30 25 60 / 0.1),
     0 20px 44px -20px rgb(30 25 60 / 0.28), 0 0 0 0.5px rgb(30 25 60 / 0.07);
   --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
 
   --ink: oklch(24% 0.03 285);
   --ink-soft: oklch(45% 0.025 285);
-  --ink-faint: oklch(58% 0.02 285);
+  /* Было 58 % — замерено 3.8 : 1 поверх стекла при норме 4.5. Этими чернилами
+     написана группа «данных не хватает», а это не украшение, а четвёртая
+     группа проекта: её читают и по ней решают докупать историю. 52 % дают
+     4.8 : 1 и остаются заметно тише `--ink-soft` (6.5 : 1) — тишина
+     сохранена, неразличимость убрана. В тёмной теме свои чернила, светлее
+     фона, и их это не касается. */
+  --ink-faint: oklch(52% 0.02 285);
 
   --status-accent-ink: oklch(42% 0.17 285);
   --status-mint-ink: oklch(44% 0.13 165);
   --status-amber-ink: oklch(48% 0.13 75);
   --status-rose-ink: oklch(48% 0.18 15);
+  /* Две чернильницы к тем же четырём: ими красятся пилюли Mantine, у которых
+     своего значения в сервисе нет — «идёт» (синий) и «потрачено» (сиреневый). */
+  --status-sky-ink: oklch(40% 0.17 250);
+  --status-plum-ink: oklch(42% 0.2 320);
 
   --canvas: radial-gradient(90% 90% at 10% 0%, oklch(84% 0.11 285) 0%, transparent 60%),
     radial-gradient(80% 80% at 95% 5%, oklch(86% 0.1 205) 0%, transparent 55%),
@@ -52,36 +66,147 @@
     linear-gradient(160deg, oklch(94% 0.03 285) 0%, oklch(91% 0.04 255) 100%);
 }
 
+/* --- какая тема действует ------------------------------------------------
+   Решает Mantine, а не система. Тема переключается значком внизу бокового
+   меню, и выбор хранится (`localStorage`), поэтому единственный честный
+   признак «сейчас темно» — атрибут `data-mantine-color-scheme` на `<html>`,
+   который провайдер ставит первым же кадром.
+
+   До переключателя здесь стоял `@media (prefers-color-scheme: dark)`, и это
+   ломалось ровно наполовину: Mantine уходил в светлую тему, а полотно, чернила
+   и стекло оставались тёмными — тёмный текст на тёмном фоне у человека с
+   тёмной системой. Медиазапрос остался ниже одним куском и только для кадра
+   ДО запуска скриптов, где атрибута ещё нет.
+
+   `color-scheme` тоже переезжает сюда: он красит полосы прокрутки и поля
+   ввода браузера, и оставленный на `light dark` оставлял бы их системными —
+   светлые полосы в выбранной руками тёмной теме.  */
+
+/* `html:root[...]`, а не просто `[...]` — это не украшение, а вес правила.
+   Свои переменные Mantine печатает в `<style>`, который создаётся в голове
+   документа уже на запуске, селектором `:root[data-mantine-color-scheme=...]`.
+   Такой же селектор здесь проигрывал бы по порядку (его стиль приходит позже),
+   а более короткий — ещё и по весу: первая попытка перекрасить чернила ушла в
+   никуда молча, плашки остались бледными. Лишнее `html` даёт ровно на один
+   вес больше. */
+html:root[data-mantine-color-scheme='light'] {
+  color-scheme: light;
+
+  /* --- чернила Mantine на светлой теме -----------------------------------
+     Третье решение шапки этого файла («у статусов свои чернила») до сих пор
+     исполнялось только для СВОИХ плашек — групп проекта. Пилюли, кнопки и
+     поводы Mantine брали свой цвет сами, и на светлой теме это замерено
+     негодным: цвет шестого оттенка (`#fa5252` и родня) даёт поверх стекла
+     2.2–3.5 : 1 при норме 4.5. Живьём на экране «Расход units» это выглядело
+     так, что четыре повода — критический, серьёзный, предупреждение и
+     «всё хорошо» — стали четырьмя одинаковыми бледными полосами: степень
+     перестала читаться вовсе, хотя ради неё их и четыре.
+
+     Поэтому чернила светлых вариантов переводятся на те же статусные, что и у
+     своих плашек: 5.8–8.3 : 1 на том же фоне. Тёмной темы это не касается —
+     там белый по тёмному и так проходит с запасом, а вторая правка вслепую
+     сломала бы то, в чём сервис живёт.
+
+     Заливка поднята с 0.10 до 0.18: на стекле (белое 0.55 поверх цветного
+     полотна) десятая доля цвета не доживает до экрана. */
+
+  --mantine-color-dimmed: var(--ink-soft);
+  --mantine-color-anchor: var(--status-accent-ink);
+
+  --mantine-color-red-text: var(--status-rose-ink);
+  --mantine-color-red-light: rgb(250 82 82 / 0.18);
+  --mantine-color-red-light-hover: rgb(250 82 82 / 0.24);
+  --mantine-color-red-light-color: var(--status-rose-ink);
+
+  --mantine-color-orange-text: var(--status-amber-ink);
+  --mantine-color-orange-light: rgb(253 126 20 / 0.18);
+  --mantine-color-orange-light-hover: rgb(253 126 20 / 0.24);
+  --mantine-color-orange-light-color: var(--status-amber-ink);
+
+  /* Жёлтый не доводится до нормы собственным оттенком ни на одном шаге
+     палитры (лучший даёт 2.6 : 1) — поэтому он и предупреждение красятся одной
+     амбровой чернильницей, разведённой заливкой. */
+  --mantine-color-yellow-text: var(--status-amber-ink);
+  --mantine-color-yellow-light: rgb(250 176 5 / 0.22);
+  --mantine-color-yellow-light-hover: rgb(250 176 5 / 0.3);
+  --mantine-color-yellow-light-color: var(--status-amber-ink);
+
+  --mantine-color-teal-text: var(--status-mint-ink);
+  --mantine-color-teal-light: rgb(18 184 134 / 0.18);
+  --mantine-color-teal-light-hover: rgb(18 184 134 / 0.24);
+  --mantine-color-teal-light-color: var(--status-mint-ink);
+
+  --mantine-color-green-text: var(--status-mint-ink);
+  --mantine-color-green-light: rgb(64 192 87 / 0.18);
+  --mantine-color-green-light-hover: rgb(64 192 87 / 0.24);
+  --mantine-color-green-light-color: var(--status-mint-ink);
+
+  --mantine-color-blue-text: var(--status-sky-ink);
+  --mantine-color-blue-light: rgb(34 139 230 / 0.18);
+  --mantine-color-blue-light-hover: rgb(34 139 230 / 0.24);
+  --mantine-color-blue-light-color: var(--status-sky-ink);
+
+  --mantine-color-grape-text: var(--status-plum-ink);
+  --mantine-color-grape-light: rgb(190 75 219 / 0.18);
+  --mantine-color-grape-light-hover: rgb(190 75 219 / 0.24);
+  --mantine-color-grape-light-color: var(--status-plum-ink);
+
+  --mantine-color-indigo-text: var(--status-accent-ink);
+  --mantine-color-indigo-light: rgb(76 110 245 / 0.18);
+  --mantine-color-indigo-light-hover: rgb(76 110 245 / 0.24);
+  --mantine-color-indigo-light-color: var(--status-accent-ink);
+
+  --mantine-color-gray-text: var(--ink-soft);
+  --mantine-color-gray-light: rgb(30 25 60 / 0.1);
+  --mantine-color-gray-light-hover: rgb(30 25 60 / 0.16);
+  --mantine-color-gray-light-color: var(--ink-soft);
+}
+
+[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+}
+
+[data-mantine-color-scheme='dark'] {
+  /* Заливка плотнее, чем просит чистый рецепт стекла, и это замер, а не
+     вкус: при 0.08 сквозь панель просвечивало яркое пятно `--canvas`, и на
+     длинной странице это читалось как светлая полоса за шапкой — будто
+     заголовок чем-то выделен. Фон у страницы закреплён
+     (`background-attachment: fixed`), поэтому пятно стоит на месте, а панели
+     по нему едут: полоса появлялась то у одной панели, то у другой. Панель
+     обязана читаться как одна поверхность. */
+  --glass-fill: rgb(255 255 255 / 0.12);
+  --glass-fill-strong: rgb(255 255 255 / 0.17);
+  --glass-fill-quiet: rgb(255 255 255 / 0.07);
+  --glass-edge: rgb(255 255 255 / 0.16);
+  --hairline: rgb(255 255 255 / 0.14);
+  --glass-shadow: 0 20px 56px -24px rgb(0 0 0 / 0.7), 0 0 0 0.5px rgb(255 255 255 / 0.06);
+  --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.12);
+
+  --ink: oklch(96% 0.01 285);
+  --ink-soft: oklch(80% 0.015 285);
+  --ink-faint: oklch(65% 0.02 285);
+
+  --status-accent-ink: oklch(84% 0.13 285);
+  --status-mint-ink: oklch(84% 0.13 165);
+  --status-amber-ink: oklch(86% 0.12 75);
+  --status-rose-ink: oklch(80% 0.14 15);
+
+  --canvas: radial-gradient(90% 90% at 10% 0%, oklch(42% 0.14 285) 0%, transparent 60%),
+    radial-gradient(80% 80% at 95% 5%, oklch(38% 0.12 205) 0%, transparent 55%),
+    radial-gradient(100% 100% at 70% 100%, oklch(36% 0.12 330) 0%, transparent 60%),
+    radial-gradient(70% 70% at 25% 95%, oklch(32% 0.07 205) 0%, transparent 55%),
+    linear-gradient(160deg, oklch(16% 0.03 285) 0%, oklch(12% 0.03 255) 100%);
+}
+
+/* Кадр до запуска скриптов: атрибута ещё нет, и белое полотно у человека с
+   тёмной системой вспыхивает на всю страницу. Красится только фон — остальное
+   через мгновение придёт из блока выше, а дублировать здесь весь набор
+   токенов значило бы держать две копии темы, расходящиеся при первой правке. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* Заливка плотнее, чем просит чистый рецепт стекла, и это замер, а не
-       вкус: при 0.08 сквозь панель просвечивало яркое пятно `--canvas`, и на
-       длинной странице это читалось как светлая полоса за шапкой — будто
-       заголовок чем-то выделен. Фон у страницы закреплён
-       (`background-attachment: fixed`), поэтому пятно стоит на месте, а панели
-       по нему едут: полоса появлялась то у одной панели, то у другой. Панель
-       обязана читаться как одна поверхность. */
-    --glass-fill: rgb(255 255 255 / 0.12);
-    --glass-fill-strong: rgb(255 255 255 / 0.17);
-    --glass-fill-quiet: rgb(255 255 255 / 0.07);
-    --glass-edge: rgb(255 255 255 / 0.16);
-    --glass-shadow: 0 20px 56px -24px rgb(0 0 0 / 0.7), 0 0 0 0.5px rgb(255 255 255 / 0.06);
-    --glass-inner: inset 0 1px 0 0 rgb(255 255 255 / 0.12);
-
+  :root:not([data-mantine-color-scheme]) {
+    color-scheme: dark;
     --ink: oklch(96% 0.01 285);
-    --ink-soft: oklch(80% 0.015 285);
-    --ink-faint: oklch(65% 0.02 285);
-
-    --status-accent-ink: oklch(84% 0.13 285);
-    --status-mint-ink: oklch(84% 0.13 165);
-    --status-amber-ink: oklch(86% 0.12 75);
-    --status-rose-ink: oklch(80% 0.14 15);
-
-    --canvas: radial-gradient(90% 90% at 10% 0%, oklch(42% 0.14 285) 0%, transparent 60%),
-      radial-gradient(80% 80% at 95% 5%, oklch(38% 0.12 205) 0%, transparent 55%),
-      radial-gradient(100% 100% at 70% 100%, oklch(36% 0.12 330) 0%, transparent 60%),
-      radial-gradient(70% 70% at 25% 95%, oklch(32% 0.07 205) 0%, transparent 55%),
-      linear-gradient(160deg, oklch(16% 0.03 285) 0%, oklch(12% 0.03 255) 100%);
+    --canvas: linear-gradient(160deg, oklch(16% 0.03 285) 0%, oklch(12% 0.03 255) 100%);
   }
 }
 
@@ -139,4 +264,10 @@ body {
 .glassSlot:hover {
   background: var(--glass-fill-quiet);
   border-color: var(--glass-edge);
+}
+
+/* Подвал левой колонки: там живёт переключатель темы. Отделён линией, потому
+   что он не раздел — без неё значок читается восьмым пунктом меню. */
+.navFooter {
+  border-top: 1px solid var(--hairline);
 }
