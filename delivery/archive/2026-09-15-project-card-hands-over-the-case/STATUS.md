@@ -7,9 +7,9 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/card.test.tsx
 - **diagnosis:** n/a reason=часть работы — недостающая возможность, названная владельцем; часть — дефект смены шага, причина найдена чтением и записана в decisions
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 15.09.2026 — «Верные, подписываю» под дайджестом утверждений)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («нужно добавить кнопку скачать pdf в каждый проект»; «перебрасывает на верх страницы… нет плавной анимации смены графиков»)
 - **human_ok_plan:** n/a reason=правка одного экрана плюс фильтр в уже существующей ручке
 - **shape-oracles:** cqg-deployed
