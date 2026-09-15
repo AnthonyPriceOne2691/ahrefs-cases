@@ -7,9 +7,9 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/cases.test.tsx
 - **diagnosis:** n/a reason=две названные владельцем возможности; попутный дефект темы разобран в decisions
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 15.09.2026)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («в кейсы нужно добавить чек боксы… либо один, либо несколько, либо все pdf»; «сделай переключатель темы, расположи слева внизу — значком»)
 - **human_ok_plan:** n/a reason=два независимых экранных куска, каждый в своих файлах
 - **shape-oracles:** cqg-deployed
