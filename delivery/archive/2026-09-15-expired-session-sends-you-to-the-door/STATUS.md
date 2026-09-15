@@ -7,9 +7,9 @@
 - **kind:** bugfix
 - **repro_test:** web/src/auth/__tests__/session-expiry.test.tsx
 - **diagnosis:** n/a reason=причина найдена чтением слоя и записана как Z23: `ApiError.needsLogin` не вызывается ни одним экраном, а проверка «кто я» идёт только на монтировании
-- **phase:** verify
+- **phase:** accepted
 - **builder:** agent:claude
-- **verifier:** human:anthony
+- **verifier:** human:anthony (принято 15.09.2026 — «Три поставки»)
 - **human_ok_spec:** yes at=2026-09-15 by=human:anthony («вот я после ночи открыл ноут и требуется действующий токен, давай поправим этот момент»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
