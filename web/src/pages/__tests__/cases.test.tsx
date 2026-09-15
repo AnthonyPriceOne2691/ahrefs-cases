@@ -393,12 +393,31 @@ describe('выбор кейсов для скачивания', () => {
     expect(screen.getByLabelText('выбрать кейс site-2.example')).toBeDisabled();
   });
 
-  it('пока ничего не выбрано, панели выбора нет', async () => {
+  it('пока ничего не выбрано, кнопок выбора нет', async () => {
     library([caseRow(1)]);
     show();
     await screen.findByText('site-1.example');
 
     expect(screen.queryByRole('button', { name: /Скачать выбранные/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Снять выделение' })).not.toBeInTheDocument();
+  });
+
+  it('место под панель занято и до выбора — таблица не прыгает', async () => {
+    library([caseRow(1), caseRow(2)]);
+    show();
+    await screen.findByText('site-1.example');
+
+    // Пустой `null` убирал панель из потока, и первая же отметка сдвигала вниз
+    // всю таблицу: строка уезжала из-под курсора, а следующую человек отмечал
+    // вслепую. Место занято всегда — меняется только содержимое.
+    const before = document.querySelector('[data-selection-bar]');
+    expect(before).not.toBeNull();
+    expect(before?.getAttribute('data-selection-bar')).toBe('empty');
+
+    await userEvent.click(screen.getByLabelText('выбрать кейс site-1.example'));
+
+    const after = document.querySelector('[data-selection-bar]');
+    expect(after?.getAttribute('data-selection-bar')).toBe('filled');
+    expect(document.querySelectorAll('[data-selection-bar]')).toHaveLength(1);
   });
 });

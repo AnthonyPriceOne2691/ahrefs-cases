@@ -114,6 +114,7 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
     case = CaseData(
         title=_title(project, anonymized=anonymized),
         anonymized=anonymized,
+        domain=project.domain,
         geo=project.geo,
         niche=project.niche,
         service=project.service_type,

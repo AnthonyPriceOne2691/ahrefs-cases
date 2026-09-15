@@ -48,12 +48,41 @@ def test_public_case_is_named_by_the_site() -> None:
     assert filename(_case()) == "example.com — Кейс.pdf"
 
 
-def test_anonymous_case_is_named_by_the_niche() -> None:
-    """E2: домена в имени файла нет — его нет и в самом кейсе."""
-    name = filename(_case(title="сайт в нише travel", anonymized=True, niche="travel"))
+def test_anonymous_case_is_also_named_by_the_domain() -> None:
+    """Файл скрытого проекта тоже зовётся доменом — решение владельца 15.09.2026.
 
-    assert name == "сайт в нише travel — Кейс.pdf"
-    assert "example" not in name
+    Правило ТЗ («название сайта», а у скрытого это «сайт в нише X») на живом
+    стенде дало десяток одинаковых имён, разведённых счётчиком: «сайт в нише
+    travel — Кейс (2).pdf», «(4)». Счётчик говорит о порядке совпадений и
+    ничего — о самом файле, и нужный среди них не найти.
+
+    Анонимность от этого не страдает: она живёт **внутри листа**, и её стережёт
+    `test_anonymous_case_never_names_the_domain_on_the_sheet`.
+    """
+    name = filename(
+        _case(title="сайт в нише travel", anonymized=True, niche="travel", domain="secret.example")
+    )
+
+    assert name == "secret.example — Кейс.pdf"
+
+
+def test_version_separates_rebuilds_instead_of_a_counter() -> None:
+    """Номер сборки в имени — вместо «(2)», «(4)».
+
+    Пересборки одного проекта раньше различал счётчик `unique_name`, и он
+    зависел от порядка обхода: один и тот же кейс в разных пачках получал
+    разные скобки. Версия принадлежит самому кейсу и не меняется от соседей.
+    """
+    assert filename(_case(version=51)) == "example.com — Кейс v51.pdf"
+    assert filename(_case(version=0)) == "example.com — Кейс.pdf"
+
+
+def test_case_built_before_the_rule_keeps_its_old_name() -> None:
+    """Пустой `domain` — кейсы, собранные до правки: имя падает на заголовок.
+
+    Без этого старые записи в библиотеке остались бы с именем «— Кейс.pdf».
+    """
+    assert filename(_case(domain="")) == "example.com — Кейс.pdf"
 
 
 def test_unsafe_characters_are_cleaned() -> None:

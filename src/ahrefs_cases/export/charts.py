@@ -29,6 +29,7 @@ from datetime import date
 from ahrefs_cases.cases.model import KW_TOTAL, CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10
 from ahrefs_cases.export.grouping import Grouping, regroup, regroup_window
+from ahrefs_cases.export.grouping import period_start as grouping_start
 from ahrefs_cases.storage._enums import Metric
 
 SUBJECT_COLORS: Mapping[str, str] = {
@@ -371,10 +372,16 @@ def curve_blocks(
     # «поток складывается, запас берётся на конец» принадлежит метрике.
     folded = {item.subject: item for item in regroup(series, grouping)}
     bands = (regroup_window(window_a, grouping), regroup_window(window_b, grouping))
+    # Дата старта работ сворачивается ТЕМ ЖЕ правилом, что ось. Без этого она
+    # оставалась месяцем, а ось после свёртки состоит из начал периодов: метка
+    # «старт работ» и пунктир вставали не туда и переезжали при каждой смене
+    # шага — на годовом шаге уползали к правому краю рисунка. Найдено владельцем
+    # 15.09.2026 на `etymonline.com`: три шага, три разных места старта.
+    folded_start = grouping_start(period_start, grouping)
     blocks: list[dict[str, str]] = []
     for title, subjects in CHART_BLOCKS:
         rows = [folded[name] for name in subjects if name in folded]
-        svg = curves_svg(rows, period_start=period_start, window_a=bands[0], window_b=bands[1])
+        svg = curves_svg(rows, period_start=folded_start, window_a=bands[0], window_b=bands[1])
         if svg:
             blocks.append({"title": title, "svg": svg})
     return blocks

@@ -9,12 +9,13 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from typing import TextIO
 
 from ahrefs_cases.cases.builder import build_cases
 from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, CaseReport, Change
 from ahrefs_cases.cases.stoplist import ContentBlockedError
-from ahrefs_cases.cases.store import store_artifact, store_case
+from ahrefs_cases.cases.store import next_version, store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.cli.source import reading_source
@@ -117,8 +118,12 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
         for attempt in built:
             if attempt.case is None or attempt.project_id is None or attempt.verdict_id is None:
                 continue
+            # Номер сборки спрашивается ДО рисования, потому что он попал в имя
+            # файла (решение владельца 15.09.2026). Это чтение, а не запись:
+            # `store_case` ниже спросит то же число в той же транзакции.
+            case = replace(attempt.case, version=await next_version(session, attempt.project_id))
             try:
-                rendered = render_pdf(attempt.case)
+                rendered = render_pdf(case)
             except ContentBlockedError as exc:
                 print(f"{attempt.domain}: {exc}", file=sys.stderr)
                 return EXIT_CONTENT_BLOCKED
@@ -128,7 +133,7 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
                 session,
                 project_id=attempt.project_id,
                 verdict_id=attempt.verdict_id,
-                case=attempt.case,
+                case=case,
             )
             artifact = await store_artifact(session, case_id=case_row.id, path=rendered.path)
             print(
@@ -153,8 +158,14 @@ async def pack_cases(source: MetricSource | None = None) -> int:
         print("\n".join(report.as_lines()))
         _print_refusals(report)
 
+        # Номера сборок — до упаковки: они в именах файлов внутри архива.
+        numbered = {
+            item.domain: replace(item.case, version=await next_version(session, item.project_id))
+            for item in built
+            if item.case is not None and item.project_id is not None
+        }
         try:
-            bundle = pack([(item.domain, item.case) for item in built if item.case])
+            bundle = pack(list(numbered.items()))
         except EmptyArchiveError as exc:
             print(str(exc), file=sys.stderr)
             return EXIT_BAD_SOURCE
@@ -166,7 +177,10 @@ async def pack_cases(source: MetricSource | None = None) -> int:
             if item.project_id is None or item.verdict_id is None:
                 continue
             case_row = await store_case(
-                session, project_id=item.project_id, verdict_id=item.verdict_id, case=item.case
+                session,
+                project_id=item.project_id,
+                verdict_id=item.verdict_id,
+                case=numbered.get(item.domain, item.case),
             )
             path = next(one.path for one in bundle.packed if one.domain == item.domain)
             await store_artifact(session, case_id=case_row.id, path=path)
