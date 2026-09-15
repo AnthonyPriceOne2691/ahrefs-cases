@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { ApiError } from './api/client';
 import { App } from './App';
 import { glassTheme } from './theme';
 
@@ -17,7 +18,12 @@ const queryClient = new QueryClient({
       // Прогон идёт часами, а метрики за закрытые месяцы не меняются —
       // агрессивная инвалидация здесь только дёргает бэкенд.
       staleTime: 30_000,
-      retry: 1,
+      // Повтор имеет смысл там, где второй заход может ответить иначе. На
+      // протухшем токене он не может: сервер ответит тем же `401`. Живьём это
+      // выглядело как мигание белым — каждый повтор снимал карточку и ставил
+      // заглушку загрузки заново (найдено 15.09.2026 вместе с самим протуханием).
+      retry: (failureCount, error) =>
+        !(error instanceof ApiError && error.needsLogin) && failureCount < 1,
     },
   },
 });

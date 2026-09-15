@@ -20,7 +20,7 @@ import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, expired } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +49,11 @@ export function LoginPage() {
         <form onSubmit={submit}>
           <Stack gap="md">
             <Title order={2}>Вход</Title>
+            {expired && !error && (
+              <Alert color="yellow" variant="light">
+                Сессия истекла, войдите заново
+              </Alert>
+            )}
             <TextInput
               label="Почта"
               value={email}

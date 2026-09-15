@@ -34,6 +34,59 @@ export class ApiError extends Error {
 
 export const TOKEN_KEY = 'ahrefs-cases.token';
 
+/**
+ * Кого звать, когда сервер ответил «войдите заново».
+ *
+ * Обработчик ОДИН и живёт здесь, а не на экранах. Причина найдена 15.09.2026
+ * живьём: вкладку оставили открытой на ночь, токен протух, и каждый экран
+ * показал в карточке строку сервера «нужен действующий токен» — при том что в
+ * шапке человек по-прежнему числился вошедшим. Признак `needsLogin` у
+ * `ApiError` существовал с самого начала, и его не звал НИ ОДИН экран: все
+ * рисовали `error.message`. Признак без потребителя — обещание, а не поведение
+ * (тот же класс, что Z17).
+ *
+ * `AuthProvider` подписывается сюда, потому что состояние «кто вошёл» держит
+ * он; клиент же знает про `401` раньше всех и обязан не дать этому ответу
+ * разойтись по экранам сырым текстом.
+ */
+type SessionEndedHandler = () => void;
+
+let sessionEnded: SessionEndedHandler | null = null;
+
+export function onSessionEnded(handler: SessionEndedHandler | null): void {
+  sessionEnded = handler;
+}
+
+/**
+ * Сессия кончилась: токен выброшен, подписчик извещён.
+ *
+ * Зовётся из ОБОИХ путей к серверу — обычного запроса и скачивания файла:
+ * протухший токен не различает, за чем шли.
+ */
+function sessionIsOver(): void {
+  forgetToken();
+  sessionEnded?.();
+}
+
+/**
+ * Отказ сервера: собрать ошибку и, если сессия кончилась, объявить об этом.
+ *
+ * Отдельной функцией, а не двумя ветками на местах, по двум причинам. Первая —
+ * оба пути к серверу обязаны вести себя одинаково: `401` на скачивании файла
+ * заканчивает сессию ровно так же, как на обычном запросе, и разъехаться этим
+ * веткам нельзя. Вторая — сложность: с разбором `401` внутри `request`
+ * счётчик переваливал за десятку, и ратчет предупреждений (baseline 0)
+ * справедливо краснел.
+ *
+ * `anonymous` — это вход, и там `401` означает «неверная почта или пароль»:
+ * гасить сессию, которой ещё нет, нечего.
+ */
+async function failure(response: Response, anonymous = false): Promise<ApiError> {
+  const error = new ApiError(response.status, await readDetail(response));
+  if (error.needsLogin && !anonymous) sessionIsOver();
+  return error;
+}
+
 export function storedToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -73,7 +126,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   });
 
   if (response.status === 204) return undefined as T;
-  if (!response.ok) throw new ApiError(response.status, await readDetail(response));
+  if (!response.ok) throw await failure(response, options.anonymous);
   return (await response.json()) as T;
 }
 
@@ -97,7 +150,7 @@ export async function download(path: string, fallbackName: string): Promise<Down
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const response = await fetch(path, { headers });
-  if (!response.ok) throw new ApiError(response.status, await readDetail(response));
+  if (!response.ok) throw await failure(response);
   return { blob: await response.blob(), filename: nameFromHeaders(response) ?? fallbackName };
 }
 
