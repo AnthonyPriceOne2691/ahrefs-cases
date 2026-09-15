@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 from datetime import date
+
+from dateutil.relativedelta import relativedelta
 from pathlib import Path
 
 from ahrefs_cases.cases.builder import VerdictView, build_case
@@ -272,3 +274,37 @@ def test_empty_series_draw_no_paper() -> None:
     from ahrefs_cases.export.charts import curves_svg
 
     assert curves_svg([], period_start=date(2025, 1, 1)) == ""
+
+
+def test_axis_step_is_recognisable_and_the_last_month_is_named() -> None:
+    """Подписи оси идут узнаваемым шагом, и конец периода назван.
+
+    Владелец смотрел `ahrefs.com` на шаге «месяц» и увидел снизу 01.24, 05.24,
+    09.24 — каждый четвёртый месяц: «стоит месяц, а снизу не месяц»
+    (15.09.2026). Шаг считался как «примерно пять подписей на ось» и попадал в
+    число, которое не читается ни как месяц, ни как квартал.
+
+    Проверяется два свойства: шаг взят из лестницы узнаваемых (месяц, два,
+    квартал, полгода, год) и последний месяц подписан — без него ось
+    обрывалась молча, и период приходилось достраивать в уме.
+    """
+    months = [date(2024, 1, 1) + relativedelta(months=index) for index in range(18)]
+    values = [1000.0 + index * 100 for index in range(18)]
+    svg = curves_svg([_series("org_traffic", values, months)], period_start=months[0])
+
+    # Сортировка по ВРЕМЕНИ, а не по паре (месяц, год): иначе январь 2025-го
+    # встаёт между январём и мартом 2024-го, и шаг считается по мусору.
+    ordered = sorted(
+        date(2000 + int(year), int(month), 1)
+        for month, year in re.findall(r">(\d{2})\.(\d{2})</text>", svg)
+    )
+    assert ordered, "подписей оси нет вовсе"
+
+    # Первый и последний месяцы названы: это границы периода.
+    assert ordered[0] == months[0]
+    assert ordered[-1] == months[-1]
+    gaps = {
+        (later.year - earlier.year) * 12 + later.month - earlier.month
+        for earlier, later in zip(ordered, ordered[1:], strict=False)
+    }
+    assert gaps <= {1, 2, 3, 6, 12}, f"шаг подписей не узнаётся: {sorted(gaps)}"

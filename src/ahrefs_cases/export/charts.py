@@ -300,8 +300,49 @@ def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> str:
     )
 
 
+_LABEL_WIDTH = 26.0
+"""Место под подпись «01.24» вместе с зазором, в единицах холста."""
+
+_NICE_STEPS = (1, 2, 3, 6, 12)
+"""Шаги подписей, которые человек узнаёт: месяц, два, квартал, полгода, год."""
+
+
+def _label_step(count: int) -> int:
+    """Через сколько точек подписывать ось.
+
+    Прежде шаг считался как «примерно пять подписей на ось»
+    (`round(len(months) / 4)`), и на восемнадцати месяцах выходил каждый
+    четвёртый: 01.24, 05.24, 09.24… Такой ритм не читается ни как месяц, ни как
+    квартал — владелец так и сказал: «стоит месяц, а снизу не месяц» (15.09.2026).
+
+    Теперь шаг берётся из лестницы узнаваемых (1, 2, 3, 6, 12) — наименьший, чей
+    ряд подписей влезает по ширине. На восемнадцати месяцах это каждый второй,
+    на трёх годах — полугодие.
+    """
+    room = max(1, int((_WIDTH - _LEFT - _RIGHT) // _LABEL_WIDTH))
+    for step in _NICE_STEPS:
+        if -(-count // step) <= room:
+            return step
+    return max(1, -(-count // room))
+
+
 def _month_labels(months: Sequence[date]) -> str:
-    every = max(1, round(len(months) / 4))
+    """Подписи оси. Последний месяц подписан ВСЕГДА.
+
+    Без него ось обрывалась молча: конец кривой подписан значением (83 184), а
+    каким месяцем — нет, и период приходилось достраивать в уме. Если ближайшая
+    подпись слева мешает последней, она уступает: две налезающие подписи хуже
+    одной.
+    """
+    if not months:
+        return ""
+    step = _label_step(len(months))
+    shown = [month for index, month in enumerate(months) if index % step == 0]
+    last = months[-1]
+    if shown and shown[-1] != last:
+        if _x(last, months) - _x(shown[-1], months) < _LABEL_WIDTH:
+            shown.pop()
+        shown.append(last)
     return "".join(
         _text(
             _x(month, months),
@@ -311,8 +352,7 @@ def _month_labels(months: Sequence[date]) -> str:
             fill=MUTED,
             anchor="middle",
         )
-        for index, month in enumerate(months)
-        if index % every == 0
+        for month in shown
     )
 
 

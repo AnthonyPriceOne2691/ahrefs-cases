@@ -10,7 +10,8 @@
 | Справка о таблице | `vitest run src/pages/__tests__/intake.test.tsx` | 16 passed (3 новых) |
 | Таблица условий вердикта | `vitest run src/pages/__tests__/card.test.tsx` | 25 passed (2 новых, оба падали до правки) |
 | Фронт целиком | `vitest run` | 164 passed |
-| Бэкенд целиком | `pytest -q` | 587 passed, 1 skipped |
+| Подписи оси | `pytest tests/test_cases_charts.py -k axis_step` | passed; падал до правки |
+| Бэкенд целиком | `pytest -q` | 588 passed, 1 skipped |
 | Типы и стиль | `tsc`, `eslint`, `prettier` | чисто; 0 предупреждений при планке 0 |
 
 ## Что пришлось поправить в существующих тестах
