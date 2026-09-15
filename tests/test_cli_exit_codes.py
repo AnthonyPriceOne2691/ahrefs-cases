@@ -7,14 +7,39 @@ stderr — это и есть его контракт, и проверить и�
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "run_collect.py"
+_ROOT = Path(__file__).resolve().parents[1]
+_SCRIPT = _ROOT / "scripts" / "run_collect.py"
 _EXIT_BAD_SOURCE = 2
+
+
+def _env_that_counts_the_child() -> dict[str, str]:
+    """Окружение, в котором дочерний процесс тоже попадает в замер покрытия.
+
+    Родительский `coverage` дочерний процесс не видит: считается только то, что
+    исполнил он сам. Двенадцать тестов ниже гоняют настоящую команду, то есть
+    исполняют CLI целиком, — а `cli/collect_commands.py` показывал 36 %, и ровно
+    столько давал один импорт модуля. Гейт покрытия читал это как дыру в тестах
+    и краснел на коде, который исполняется каждым прогоном (15.09.2026).
+
+    Переменную читает хук `a1_coverage.pth` из site-packages и зовёт
+    `coverage.process_startup()`. Ставим её ТОЛЬКО когда замер идёт: иначе
+    обычный `pytest` начал бы сорить файлами `.coverage.*` в корне.
+    """
+    env = dict(os.environ)
+    try:
+        import coverage
+    except ImportError:
+        return env
+    if coverage.Coverage.current() is not None:
+        env["COVERAGE_PROCESS_START"] = str(_ROOT / "pyproject.toml")
+    return env
 
 
 def _cli_module() -> object:
@@ -40,6 +65,7 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
         timeout=60,
+        env=_env_that_counts_the_child(),
     )
 
 

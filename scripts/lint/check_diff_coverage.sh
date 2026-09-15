@@ -51,6 +51,21 @@ fi
 
 red=$(printf '\033[31m'); yellow=$(printf '\033[33m'); green=$(printf '\033[32m'); reset=$(printf '\033[0m')
 
+# Интерпретатор РЕЗОЛВИТСЯ, а не берётся из $VENV вслепую. Гейт законно зовут из
+# окружения без venv — джоба CI ставит проект прямо в системный питон, — и там
+# `$VENV/bin/python` давал сырую ошибку шелла: «No such file or directory», то
+# есть гейт отказывал вместо того, чтобы судить. Тот же приём и по той же причине
+# стоит в `scripts/merge_guard.sh`; сюда он перенесён не был.
+PYBIN="$REPO_ROOT/$BE_DIR/$VENV/bin/python"
+if [[ ! -x "$PYBIN" ]]; then
+  [[ -x "$VENV/bin/python" ]] && PYBIN="$VENV/bin/python" || PYBIN=$(command -v python3 || command -v python || true)
+fi
+if [[ -z "$PYBIN" ]]; then
+  printf '%s⚠ diff-coverage: питон не найден — покрытие НЕ измерено.%s\n' "$yellow" "$reset"
+  printf 'Задай LINT_VENV или поставь python3. Отметь непокрытость в verify-report.md.\n'
+  exit 0
+fi
+
 # Каталога backend нет (другой layout, не-Python проект) — назвать и пропустить.
 # Без этой проверки `cd` печатал СЫРУЮ ошибку шелла и ронял коммит на exit 1 —
 # ровно то, что уже было починено у eslint-ратчета и не перенесено сюда. Нашлось
@@ -79,8 +94,16 @@ fi
 cd "$REPO_ROOT/$BE_DIR" || exit 1
 
 # git diff — от repo-root (git -C): pathspec от корня не матчится из cwd backend/.
+#
+# `--diff-filter=ACMR` — добавленные, скопированные, изменённые, переименованные;
+# УДАЛЁННЫХ здесь нет намеренно. Удалённый файл в отчёте покрытия отсутствует, и
+# гейт числил его «не исполнялся тестами вовсе» — то есть требовал покрыть то,
+# чего больше нет. Выхода у такого требования не существует ни одного: тест
+# написать не к чему, а `omit` пишется для живых путей. Первый же дифф с удалением
+# (`collect/funnel.py`, коммит fa052c2) сделал гейт непроходимым — §4.3b, и такие
+# гейты снимают вместе с пользой (Z21, 15.09.2026).
 list_changed() { # $1 = base-реф; закоммиченный дифф prod-файлов (без тестов)
-  git -C "$REPO_ROOT" diff --name-only "$1"...HEAD -- "$PY_SRC/*.py" 2>/dev/null \
+  git -C "$REPO_ROOT" diff --name-only --diff-filter=ACMR "$1"...HEAD -- "$PY_SRC/*.py" 2>/dev/null \
     | grep -vE '(^|/)(test|tests|__tests__|spec|specs)/|(^|/)conftest\.py$|(^|/)test[_-]|[_-](test|spec)\.|(Test|Tests|Spec|Specs)\.|\.(test|spec)\.' \
     | sed "s#^$BE_DIR/##"
 }
@@ -88,7 +111,7 @@ list_changed() { # $1 = base-реф; закоммиченный дифф prod-ф
 # Незакоммиченные правки — их дифф-списком не увидеть, а сьют их исполняет:
 # источник ложного зелёного.
 dirty=$(git -C "$REPO_ROOT" status --porcelain -- "$PY_SRC/*.py" 2>/dev/null \
-  | cut -c4- | grep -vE '(^|/)(test|tests|__tests__|spec|specs)/|(^|/)conftest\.py$|(^|/)test[_-]|[_-](test|spec)\.|(Test|Tests|Spec|Specs)\.|\.(test|spec)\.' || true)
+  | grep -vE '^ ?D' | cut -c4- | grep -vE '(^|/)(test|tests|__tests__|spec|specs)/|(^|/)conftest\.py$|(^|/)test[_-]|[_-](test|spec)\.|(Test|Tests|Spec|Specs)\.|\.(test|spec)\.' || true)
 
 changed=$(list_changed "$BASE")
 
@@ -161,21 +184,34 @@ if [[ "$SKIP_TESTS" != "1" ]]; then
   # пропускается («инструмента нет»). Один класс — два разных ответа; найдено
   # независимым развёртыванием (lab-4). Отсутствие инструмента — не нарушение
   # правила, а непокрытая область: об этом предупреждают, а не роняют DoD-шаг.
-  if ! "$VENV/bin/python" -c 'import pytest_cov' >/dev/null 2>&1; then
+  if ! "$PYBIN" -c 'import pytest_cov' >/dev/null 2>&1; then
     printf '%s⚠ pytest-cov не установлен — diff-coverage пропущен.%s\n' "$yellow" "$reset"
     printf 'Установка: pip install pytest-cov. Покрытие изменённого кода НЕ измерено —\n'
     printf 'отметь это в verify-report.md, иначе DoD §3.2 закрывается на непроверенном.\n'
     exit 0
   fi
-  "$VENV/bin/python" -m pytest -q --cov="$COV_PKG" --cov-report=json:coverage.json >/dev/null 2>&1
+  # Вывод СОХРАНЯЕТСЯ, а не глушится. Раньше здесь стояло `>/dev/null 2>&1`, и
+  # на обрыве сьюта гейт печатал «сьют не отработал?» — со знаком вопроса,
+  # потому что сам не знал: pytest называл причину, и её выбрасывали. Диагноз
+  # Z18 (сьют не стартует без дев-базы) пришлось доставать сравнением с логом
+  # позапрошлого прогона CI, хотя он был написан в этом (Z19).
+  SUITE_LOG=$(mktemp)
+  "$PYBIN" -m pytest -q --cov="$COV_PKG" --cov-report=json:coverage.json >"$SUITE_LOG" 2>&1 || true
 fi
 if [[ ! -f coverage.json ]]; then
-  echo "${red}coverage.json не найден (сьют не отработал?)${reset}"
+  echo "${red}coverage.json не найден — сьют не отработал. Его последние строки:${reset}"
+  if [[ -n "${SUITE_LOG:-}" && -s "$SUITE_LOG" ]]; then
+    tail -25 "$SUITE_LOG" | sed 's/^/  │ /'
+  else
+    printf '  │ (вывода нет: сьют не запускался — SKIP_TESTS=%s)\n' "$SKIP_TESTS"
+    printf '%sПри SKIP_TESTS=1 coverage.json обязан быть создан ШАГОМ ВЫШЕ:%s\n' "$yellow" "$reset"
+    printf '  pytest --cov=%s --cov-report=json:coverage.json\n' "$COV_PKG"
+  fi
   exit 1
 fi
 
 # changed — через env: пайп в `python - <<heredoc` не работает (heredoc занимает stdin).
-CHANGED="$changed" "$VENV/bin/python" - "$MIN_PCT" "$STRICT" <<'PY'
+CHANGED="$changed" "$PYBIN" - "$MIN_PCT" "$STRICT" <<'PY'
 import json
 import os
 import sys

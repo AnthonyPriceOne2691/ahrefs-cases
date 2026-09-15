@@ -1,0 +1,29 @@
+# Verify report: gates-judge-or-say-why-not
+
+## Чем проверено
+
+| Что | Чем | Результат |
+|---|---|---|
+| Сьют целиком | `pytest -q --cov=src/ahrefs_cases --cov-report=json:coverage.json` | 574 passed, 1 skipped, 89 s |
+| Гейт покрытия на готовом отчёте | `SKIP_TESTS=1 STRICT=1 BASE=origin/main` с окружением CI | печатает таблицу по 25 файлам, код возврата 1 — вердикт по существу (Z22) |
+| Оракулы поставки | `pytest tests/test_ci_gates_judge.py -q` | 5 passed |
+| Оракул падал до правки | логика `test_suite_runner_job_has_a_database` на `git show HEAD:.github/workflows/quality.yml` | `gates: поднимает сьют, Postgres=НЕТ` — то есть до правки гейт краснел |
+| Гейт мутаций | `check_mutation_gate.sh` с окружением CI | область читается (25 файлов), вердикта нет, выход 0 — честное молчание |
+| Мутации доходят до тестов | пробный `mutmut run` по `classify/` | трассировка идёт через `src/mutants/ahrefs_cases/…` — подход рабочий (Z20) |
+| Раскладка варианта D | `python3 extract_payload.py --check-local .` | 0 и 0 |
+| Канон | `okf_sync_gate.py --base origin/main`, `okf_validate.py` | 9 концептов, 0 ошибок; 17 файлов, 0/0 |
+| Типы | `mypy` | Success: no issues found in 111 source files |
+
+## Что проверено НЕ было
+
+- **Прогон CI на этих правках.** Он и есть следующий шаг: пробный PR #2.
+- **Вердикт мутационного гейта.** Его нет и не будет до отдельной поставки (Z20).
+- **Покрытие TS-половины.** Гейт про Python; про фронт он говорит вслух, что не судит.
+
+## Наблюдение, не вошедшее в поставку
+
+Локальный `.venv/bin/ruff` находит 9 замечаний в `tests/conftest.py` и
+`tests/test_api_charts.py` — файлах, которых эта поставка не трогала, — при том
+что `pre-commit` в CI на них зелёный. Это расхождение версий ruff между venv и
+хуком pre-commit. Названо здесь, не чинилось: к предмету поставки отношения не
+имеет, а молча оставлять расхождение двух проверок одного инструмента нельзя.
