@@ -10,7 +10,7 @@ import { Link } from 'react-router-dom';
 
 import type { ProjectCard } from '../../api/types';
 import { GroupBadge } from '../projects/GroupBadge';
-import { months, num } from '../format';
+import { months } from '../format';
 
 export function CardHeader({ card }: { card: ProjectCard }) {
   const { project, verdict } = card;
@@ -28,15 +28,16 @@ export function CardHeader({ card }: { card: ProjectCard }) {
         </Stack>
         <Group gap="xs" align="center">
           <GroupBadge group={project.group} />
+          {/* Счёта в шапке нет намеренно (решение владельца 16.09.2026): это
+              взвешенная сумма процентов и визитов без единиц измерения —
+              «−19 745» у проекта, где трафик упал на 100 % и на 65 683
+              визита. Число работает только там, где сравнивают соседей, то
+              есть в сортировке списка; в карточке одного проекта сравнивать
+              не с чем, и оно читалось как оценка, которой не является. */}
           {verdict && (
-            <>
-              <Badge variant="light" color="gray">
-                счёт {num(verdict.score)}
-              </Badge>
-              <Badge variant="light" color="gray" data-ruleset={verdict.ruleset_version}>
-                пороги {verdict.ruleset_version}
-              </Badge>
-            </>
+            <Badge variant="light" color="gray" data-ruleset={verdict.ruleset_version}>
+              пороги {verdict.ruleset_version}
+            </Badge>
           )}
           {project.publishable ? null : (
             <Badge variant="light" color="gray">

@@ -137,16 +137,16 @@ afterEach(() => {
 });
 
 describe('карточка проекта: основание вердикта', () => {
-  it('E1: шапка называет проект, группу, счёт и версию порогов', async () => {
+  it('E1: шапка называет проект, группу и версию порогов', async () => {
     cardServer();
 
     renderCard();
 
     expect(await screen.findByText('klinika.example')).toBeInTheDocument();
     expect(screen.getByText('хороший')).toBeInTheDocument();
-    // Счёт округляется, версия порогов стоит рядом: вердикт принадлежит версии,
-    // и число без неё ничего не значит.
-    expect(screen.getByText('счёт 1 400')).toBeInTheDocument();
+    // Версия порогов обязательна: вердикт принадлежит версии, и группа без неё
+    // не сказала бы, чем судили. Счёт из шапки снят 16.09.2026 — он сравнивает
+    // соседей, а в карточке одного проекта соседей нет.
     expect(screen.getByText('пороги 0.0.0-default')).toBeInTheDocument();
   });
 
@@ -660,7 +660,7 @@ describe('пустой факт в таблице условий', () => {
     );
   }
 
-  it('пустой факт говорит, не покупали или не отдали', async () => {
+  it('пустой факт говорит, не собирали или не отдали', async () => {
     // Z25: прочерк означал два разных случая, и разница в деньгах — «не
     // покупали» можно докупить, «нет данных» докупать нечем. Вопрос владельца
     // на `callmefred.com`: «а где мы фиксируем, покупали мы ссылки или нет?»
@@ -689,7 +689,7 @@ describe('пустой факт в таблице условий', () => {
     });
     renderCard();
 
-    expect(await screen.findByText('не покупали')).toBeInTheDocument();
+    expect(await screen.findByText('не собирали')).toBeInTheDocument();
     expect(screen.getByText('нет данных')).toBeInTheDocument();
   });
 
@@ -712,7 +712,40 @@ describe('пустой факт в таблице условий', () => {
     renderCard();
 
     await screen.findByText('рост ссылающихся доменов');
-    expect(screen.queryByText('не покупали')).not.toBeInTheDocument();
+    expect(screen.queryByText('не собирали')).not.toBeInTheDocument();
     expect(screen.queryByText('нет данных')).not.toBeInTheDocument();
+  });
+});
+
+describe('шапка карточки', () => {
+  it('счёта в шапке нет: сравнивать его в карточке не с чем', async () => {
+    // Решение владельца 16.09.2026. Счёт — взвешенная сумма процентов и
+    // визитов без единиц: у `allthedifferences.com` он равен −19 745 при
+    // падении трафика на 100 % и на 65 683 визита. Число работает только
+    // там, где сравнивают соседей, — в сортировке списка проектов.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) return new Response(JSON.stringify(CHARTS), { status: 200 });
+        if (url.includes('/api/cases')) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict: { ...VERDICT, score: -19745 },
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    renderCard();
+
+    // Пороги в шапке остаются: версия объясняет, чем судили.
+    await screen.findByText(/пороги/);
+    expect(screen.queryByText(/счёт/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/19\s?745/)).not.toBeInTheDocument();
   });
 });
