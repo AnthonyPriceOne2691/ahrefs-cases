@@ -73,9 +73,14 @@
     padding-bottom: 4mm;
   }
   .hero__value { font-size: 44pt; font-weight: 700; color: var(--accent); line-height: 1; }
-  .hero__body { margin-left: 6mm; }
-  .hero__label { font-size: 11pt; font-weight: 600; }
-  .hero__detail { color: var(--ink-2); font-size: 9pt; margin-top: 1mm; }
+  /* Блок прижат к НИЗУ большого процента, а не к его базовой линии: `flex` с
+     `align-items: baseline` ровнял по букве, и пара «название + было → стало»
+     провисала под цифрой, отрываясь от неё (замечание владельца 15.09.2026). */
+  .hero__body { margin-left: 6mm; align-self: flex-end; padding-bottom: 1mm; }
+  .hero__label { font-size: 11pt; font-weight: 600; line-height: 1.2; }
+  /* Подпись — продолжение названия метрики, а не отдельная строка листа:
+     полуторный миллиметр вместо полного отрывал её от того, что она поясняет. */
+  .hero__detail { color: var(--ink-2); font-size: 9pt; margin-top: 0.4mm; }
 
   .tiles { display: flex; margin-top: 5mm; break-inside: avoid; }
   .tile {

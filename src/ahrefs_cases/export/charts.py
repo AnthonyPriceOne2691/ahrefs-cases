@@ -48,7 +48,10 @@ SUBJECT_COLORS: Mapping[str, str] = {
 FONT = "Arial, Helvetica, sans-serif"
 INK, MUTED, HAIRLINE, SURFACE = "#0b0b0b", "#898781", "#e1e0d9", "#fcfcfb"
 _WIDTH, _HEIGHT = 420.0, 210.0
-_LEFT, _RIGHT, _TOP, _BOTTOM = 44.0, 46.0, 22.0, 30.0
+"""Поле слева шире правого: там живут и подписи шкалы, и величина в точке
+старта работ. Считали 44 — семизначное «3 596 464» в точке старта не помещалось
+и падало внутрь рисунка, на саму кривую (замечание владельца 15.09.2026)."""
+_LEFT, _RIGHT, _TOP, _BOTTOM = 54.0, 46.0, 22.0, 30.0
 """Пропорции под колонку в половину листа: два графика ТЗ стоят рядом, потому
 что в столбик они уводят кейс на вторую страницу — замерено на готовом PDF."""
 _HEADROOM = 1.12
@@ -93,7 +96,9 @@ def curves_svg(
     for index, item in enumerate(drawable):
         parts.append(_curve(item, months, top, filled=index == 0))
     parts.append(_start_mark(months, period_start))
+    parts.extend(_start_label(item, months, top, period_start) for item in drawable)
     parts.extend(_end_label(item, months, top) for item in drawable)
+    parts.append(_month_ticks(months, _label_step(len(months))))
     parts.append(_month_labels(months))
     if len(drawable) > 1:
         parts.append(_legend(drawable))
@@ -276,6 +281,37 @@ def _start_mark(months: Sequence[date], period_start: date) -> str:
     )
 
 
+def _start_label(item: CaseSeries, months: Sequence[date], top: float, period_start: date) -> str:
+    """Точка старта работ на кривой и её значение.
+
+    Конец кривой подписан числом с самого начала, а начало — нет, и величину «с
+    чего начали» приходилось искать в таблице под рисунком (вопрос владельца
+    15.09.2026: «почему нет числа со старта работ? в конце есть»). Рисунок
+    обещает сравнение А → Б, и обе стороны обязаны быть названы.
+
+    Подпись уходит ВЛЕВО, если там есть место: справа от точки идёт сама
+    кривая, и число легло бы на неё. Левое поле холста для этого и есть.
+    """
+    after = [point for point in item.points if point[0] >= period_start]
+    if not after:
+        return ""
+    month, value = after[0]
+    x, y = _x(month, months), _y(value, top)
+    color = SUBJECT_COLORS[item.subject]
+    text = _number(value)
+    # ВСЕГДА слева, без запасного варианта справа: справа от точки идёт сама
+    # кривая, и число легло бы на неё — владелец показал это на «36 980»
+    # (15.09.2026). Если подпись упирается в край холста, она прижимается к
+    # нему, а не переезжает внутрь рисунка.
+    anchor_x = max(x - 9, len(text) * _DIGIT_WIDTH + 1)
+    label = _text(anchor_x, y + 3.5, text, size=9, fill=INK, weight="700", anchor="end")
+    return (
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="{color}" opacity="0.18"/>'
+        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.8" fill="#ffffff" stroke="{color}" '
+        'stroke-width="1.8"/>' + label
+    )
+
+
 def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> str:
     """Последняя точка кривой и её значение.
 
@@ -324,6 +360,23 @@ def _label_step(count: int) -> int:
         if -(-count // step) <= room:
             return step
     return max(1, -(-count // room))
+
+
+def _month_ticks(months: Sequence[date], step: int) -> str:
+    """Короткая риска под КАЖДЫМ месяцем, подписанные — длиннее.
+
+    Подписей на оси меньше, чем месяцев: они не влезают. Без рисок месяцы между
+    подписями не видно вовсе — владелец так и сказал: «81 месяц, потом 10, потом
+    12-й, а 9 и 11-й как будто и не видны» (15.09.2026). Риска возвращает им
+    место на оси, не занимая ширины подписи.
+    """
+    base = _HEIGHT - _BOTTOM
+    return "".join(
+        f'<line x1="{_x(month, months):.1f}" y1="{base:.1f}" '
+        f'x2="{_x(month, months):.1f}" y2="{base + (4.5 if index % step == 0 else 2.5):.1f}" '
+        f'stroke="{MUTED}" stroke-width="{0.9 if index % step == 0 else 0.6}" opacity="0.7"/>'
+        for index, month in enumerate(months)
+    )
 
 
 def _month_labels(months: Sequence[date]) -> str:

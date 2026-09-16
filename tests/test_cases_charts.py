@@ -14,15 +14,16 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from itertools import pairwise
+from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
-from pathlib import Path
 
 from ahrefs_cases.cases.builder import VerdictView, build_case
 from ahrefs_cases.cases.model import CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10, Point
 from ahrefs_cases.export import pdf_renderer
-from ahrefs_cases.export.charts import SUBJECT_COLORS, curves_svg
+from ahrefs_cases.export.charts import _LEFT, SUBJECT_COLORS, curves_svg
 from ahrefs_cases.export.html_renderer import render_html
 from ahrefs_cases.storage._enums import Group, Metric
 from ahrefs_cases.storage.models.project import Project
@@ -305,6 +306,52 @@ def test_axis_step_is_recognisable_and_the_last_month_is_named() -> None:
     assert ordered[-1] == months[-1]
     gaps = {
         (later.year - earlier.year) * 12 + later.month - earlier.month
-        for earlier, later in zip(ordered, ordered[1:], strict=False)
+        for earlier, later in pairwise(ordered)
     }
     assert gaps <= {1, 2, 3, 6, 12}, f"шаг подписей не узнаётся: {sorted(gaps)}"
+
+
+def test_start_of_works_is_labelled_outside_the_curve() -> None:
+    """Величина в точке старта названа, и подпись стоит СЛЕВА от точки.
+
+    Конец кривой подписан числом с самого начала, а начало — нет, и «с чего
+    начали» приходилось искать в таблице под рисунком (вопрос владельца
+    15.09.2026). Рисунок обещает сравнение А → Б, и обе стороны обязаны быть
+    названы.
+
+    Сторона не «по месту», а всегда левая: справа от точки идёт сама кривая, и
+    число легло бы на неё — владелец показал это на «36 980». Проверяется
+    именно это: подпись есть и она левее точки старта.
+    """
+    months = _months(6)
+    svg = curves_svg(
+        [_series("org_traffic", [36980.0, 40000.0, 52000.0, 61000.0, 74000.0, 83184.0], months)],
+        period_start=months[0],
+    )
+
+    # Разряды разделены НЕРАЗРЫВНЫМ пробелом: в разметке это `\xa0`, и поиск
+    # с обычным пробелом ничего не находит, хотя подпись на месте.
+    number = "36\u00a0980"
+    assert number in svg, "величина в точке старта не подписана"
+
+    # `anchor="end"` у подписи означает, что текст растёт ВЛЕВО от своей точки:
+    # справа от неё идёт сама кривая, и число легло бы на неё.
+    start_label = re.search(
+        rf'<text[^>]*x="([\d.]+)"[^>]*text-anchor="end"[^>]*>{number}</text>', svg
+    )
+    assert start_label, "подпись старта не прижата влево — значит может лечь на кривую"
+    assert float(start_label.group(1)) <= _LEFT, "подпись старта стоит правее точки старта"
+
+
+def test_every_month_gets_a_tick_even_without_a_label() -> None:
+    """Под каждым месяцем — риска, даже если подписи у него нет.
+
+    Подписей на оси меньше, чем месяцев: они не влезают. Без рисок месяцы между
+    подписями не видно вовсе — «9 и 11-й как будто и не видны» (15.09.2026).
+    """
+    months = _months(12)
+    svg = curves_svg([_series("org_traffic", [float(i + 1) * 100 for i in range(12)])], period_start=months[0])
+
+    base = 210.0 - 30.0  # _HEIGHT - _BOTTOM
+    ticks = re.findall(rf'<line[^>]*y1="{base:.1f}"[^>]*y2="(?:18[0-9]|1[89][0-9])[.\d]*"', svg)
+    assert len(ticks) >= 12, f"рисок меньше, чем месяцев: {len(ticks)}"
