@@ -5,7 +5,7 @@
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
-- **repro_test:** web/src/pages/__tests__/card.test.tsx::пустой факт говорит, не покупали или не отдали
+- **repro_test:** web/src/pages/__tests__/card.test.tsx::пустой факт говорит, не собирали или не отдали
 - **diagnosis:** measured reason=журнал расхода units различает случаи поимённо; замер по всем 95 вердиктам стенда — 160 прочерков «не покупали» против 16 «нет данных»
 - **phase:** verify
 - **builder:** agent:claude
