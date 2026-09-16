@@ -250,3 +250,17 @@ def _fits(
         left < other_right and other_left < right and top < other_bottom and other_top < bottom
         for other_left, other_right, other_top, other_bottom in taken
     )
+
+
+def mark_glyph(at: float, y: float, color: str) -> str:
+    """Кружок на узле кривой — и только он.
+
+    Горизонтального штриха у отметки больше нет: он тянулся от подписи к точке
+    поверх самой кривой и закрывал её («убери эту палку», владелец 16.09.2026).
+    Узел линии и так виден, а подпись стоит рядом.
+    """
+    return (
+        f'<circle cx="{at:.1f}" cy="{y:.1f}" r="5.5" fill="{color}" opacity="0.18"/>'
+        f'<circle cx="{at:.1f}" cy="{y:.1f}" r="3.4" fill="#ffffff" '
+        f'stroke="{color}" stroke-width="2"/>'
+    )

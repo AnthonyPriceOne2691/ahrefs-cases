@@ -111,8 +111,11 @@ def test_long_value_label_stays_inside_the_frame() -> None:
 
     x, anchor_kind = _label_x(svg, "3\u00a0596\u00a0464")
 
-    assert anchor_kind == "start", "подпись точки Б растёт вправо"
-    assert x + len("3 596 464") * 5.8 <= 420.0, "и остаётся внутри viewBox шириной 420"
+    # Справа места нет — подпись переходит на другую сторону отметки, но
+    # остаётся целиком внутри `viewBox`: срезает её растеризация, а не разметка.
+    width = len("3 596 464") * 5.8
+    left = x - width if anchor_kind == "end" else x
+    assert left >= 0.0 and left + width <= 420.0, "подпись вышла за холст"
 
 
 def test_missing_month_is_not_interpolated() -> None:
@@ -396,7 +399,7 @@ def _point_centres(svg: str) -> list[float]:
     """Центры отметок А и Б: к ним подписи обязаны остаться близко."""
     return [
         float(found.group(1))
-        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="3\.2"', svg)
+        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="3\.4"', svg)
     ]
 
 
@@ -533,3 +536,44 @@ def test_labels_keep_the_order_of_their_values() -> None:
     starts = {box.body: box.top for box in _boxes(svg) if box.body in {bigger, smaller}}
     assert len(starts) == 2, "подписаны обе точки старта"
     assert starts[bigger] < starts[smaller], "подпись большей величины обязана стоять выше"
+
+
+def test_scale_makes_room_for_points_a_and_b() -> None:
+    """Потолок шкалы считается и по точкам А и Б, а не только по месяцам.
+
+    Крайние узлы кривой — это они: у `engoo.com` точка Б равна 454 при
+    месячном максимуме 400, и кружок вылезал за верхнюю кромку холста
+    (квартальный и годовой шаг, 16.09.2026).
+    """
+    months = _months(4)
+    svg = curves_svg(
+        [_series("org_traffic", [100.0, 300, 400, 380], months)],
+        period_start=months[0],
+        window_b=months[-2:],
+        point_b={"org_traffic": 454.0},
+    )
+
+    tops = [
+        float(found.group(1))
+        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="3\.4"', svg)
+    ]
+    assert tops, "отметка не нарисована"
+    assert all(value >= 22.0 for value in tops), "отметка вышла за верхнюю кромку"
+
+
+def test_window_band_does_not_swallow_the_chart() -> None:
+    """После свёртки окно раздувается до периода — полосу тогда не рисуем.
+
+    На годовом шаге полоса А закрывала половину рисунка и переставала значить
+    «здесь усреднено»; остаётся одна буква у кромки.
+    """
+    months = _months(4)
+    svg = curves_svg(
+        [_series("org_traffic", [100.0, 200, 300, 400], months)],
+        period_start=months[0],
+        window_a=months,
+    )
+
+    assert ">А</text>" in svg, "буква окна осталась"
+    wide = re.findall(r'<rect x="[\d.]+" y="22.0" width="([\d.]+)"', svg)
+    assert all(float(width) <= (420.0 - 62.0 - 62.0) / 3 for width in wide), "полоса съела рисунок"

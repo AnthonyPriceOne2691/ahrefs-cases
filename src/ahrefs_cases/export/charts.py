@@ -28,10 +28,10 @@ from datetime import date
 
 from ahrefs_cases.cases.model import KW_TOTAL, CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10
-from ahrefs_cases.export.axis import label_step, month_labels, month_ticks
+from ahrefs_cases.export.axis import label_step, month_labels, month_ticks, window_band
 from ahrefs_cases.export.grouping import Grouping, regroup, regroup_window
 from ahrefs_cases.export.grouping import period_start as grouping_start
-from ahrefs_cases.export.labels import DIGIT_WIDTH, INK, Mark, spread
+from ahrefs_cases.export.labels import DIGIT_WIDTH, INK, Mark, mark_glyph, spread
 from ahrefs_cases.export.labels import text as _text
 from ahrefs_cases.storage._enums import Metric
 
@@ -52,14 +52,22 @@ MUTED, HAIRLINE, SURFACE = "#898781", "#e1e0d9", "#fcfcfb"
 """Чернила (`INK`) и шрифт (`FONT`) живут в `export.labels`: подпись и её
 раскладка — одно хозяйство."""
 _WIDTH, _HEIGHT = 420.0, 210.0
-"""Поле слева шире правого: там живут и подписи шкалы, и величина в точке
-старта работ. Считали 44 — семизначное «3 596 464» в точке старта не помещалось
-и падало внутрь рисунка, на саму кривую (замечание владельца 15.09.2026)."""
-_LEFT, _RIGHT, _TOP, _BOTTOM = 54.0, 46.0, 22.0, 30.0
+"""Поля под подписи точек А и Б — по 62 с каждой стороны.
+
+Ширина считана, а не подобрана: самое длинное число кейса девятизначное
+(«3 596 464»), при кегле 10 это 52 единицы по оценке `DIGIT_WIDTH`, плюс 8 на
+отступ от кружка. Было 54 и 46 — и на `ebsco.com` подписи «440 322» и
+«101 470» не помещались справа, переходили на другую сторону точки и ложились
+прямо на кривую (замечание владельца 16.09.2026). Слева в этом же поле стоят
+ещё и деления шкалы, но они кеглем 8 и короче."""
+_LEFT, _RIGHT, _TOP, _BOTTOM = 62.0, 62.0, 22.0, 30.0
 """Пропорции под колонку в половину листа: два графика ТЗ стоят рядом, потому
 что в столбик они уводят кейс на вторую страницу — замерено на готовом PDF."""
 _HEADROOM = 1.12
 """Запас над максимумом, чтобы метка последнего значения не упиралась в рамку."""
+
+_FIELD_WIDTH = _WIDTH - _LEFT - _RIGHT
+"""Ширина поля графика без полей под подписи."""
 
 _FIELD = (_TOP, _HEIGHT - _BOTTOM + 5)
 """Полоса, в которой подписи величин имеют право стоять: ниже идут подписи
@@ -86,16 +94,39 @@ def curves_svg(
         return ""
 
     months = sorted({month for item in drawable for month, _ in item.points})
-    top = max(value for item in drawable for _, value in item.points) * _HEADROOM
+    # Потолок шкалы считается и по точкам А и Б: крайние узлы линии — это они,
+    # и «454» при месячном максимуме «400» вылезал за верхнюю кромку холста
+    # (найдено на `engoo.com`, квартальный и годовой шаг).
+    edges = [
+        value
+        for values in ((point_a or {}), (point_b or {}))
+        for item in drawable
+        if (value := values.get(item.subject)) is not None
+    ]
+    top = max([*(value for item in drawable for _, value in item.points), *edges]) * _HEADROOM
+    at = {month: _x(month, months) for month in months}
     parts = [
         _paper(),
         _grid(top),
         _before_start(months, period_start),
-        _window_band(months, window_a, "А"),
-        _window_band(months, window_b, "Б"),
+        window_band(
+            at, window_a, "А", top=_TOP, height=_HEIGHT - _BOTTOM - _TOP, field=_FIELD_WIDTH
+        ),
+        window_band(
+            at, window_b, "Б", top=_TOP, height=_HEIGHT - _BOTTOM - _TOP, field=_FIELD_WIDTH
+        ),
     ]
     for index, item in enumerate(drawable):
-        parts.append(_curve(item, months, top, filled=index == 0))
+        parts.append(
+            _curve(
+                item,
+                months,
+                top,
+                filled=index == 0,
+                starts_at=(point_a or {}).get(item.subject),
+                ends_at=(point_b or {}).get(item.subject),
+            )
+        )
     start_mark, start_hint = _start_mark(months, period_start)
     parts.append(start_mark)
     # Подписи величин собираются вместе и размещаются одной раскладкой: порознь
@@ -235,45 +266,34 @@ def _before_start(months: Sequence[date], period_start: date) -> str:
     )
 
 
-def _window_band(months: Sequence[date], window: Sequence[date], label: str) -> str:
-    """Окно, по которому усреднена точка А или Б, и само её значение.
+def _curve(
+    item: CaseSeries,
+    months: Sequence[date],
+    top: float,
+    *,
+    filled: bool,
+    starts_at: float | None = None,
+    ends_at: float | None = None,
+) -> str:
+    """Кривая от точки А к точке Б: края — величины вердикта, середина — месяцы.
 
-    Показывается, потому что последний месяц кривой и точка Б различаются по
-    построению: без окна это выглядит как ошибка в одном из двух чисел.
-
-    Значение подписывается рядом с буквой (16.09.2026). Раньше рисунок нёс
-    только реальные месяцы, а таблица — средние по окну, и связать их можно
-    было лишь в уме: у `cazoo.co.uk` в таблице «371 292», а конец кривой —
-    «262 170». Теперь оба числа стоят на рисунке: среднее у полосы, месяц у
-    точки (Z32).
+    Решение владельца 16.09.2026: «график рисуется линией, которая ломается по
+    данным по месяцам, от точки А к точке Б». Прежде линия начиналась первым
+    измеренным месяцем и кончалась последним, а таблица показывала средние по
+    окнам — и числа под рисунком не находили себе места на нём. Теперь крайние
+    узлы линии это ровно точки А и Б, то есть те же числа, что в таблице; всё,
+    что между ними, по-прежнему измеренные месяцы без сглаживания.
     """
-    present = [month for month in window if month in months]
-    if not present:
-        return ""
-    left = _x(present[0], months)
-    right = _x(present[-1], months)
-    width = max(right - left, 3.0)
-    middle = left + width / 2
-    band = (
-        f'<rect x="{left:.1f}" y="{_TOP}" width="{width:.1f}" '
-        f'height="{_HEIGHT - _BOTTOM - _TOP:.1f}" fill="{INK}" opacity="0.05"/>'
-    )
-    body = label
-    # Подпись стоит НАД полосой, а не под осью: внизу живут подписи месяцев и
-    # легенда, и «39 127» у окна Б садилось прямо на «ключи в топ-10» — первая
-    # же сборка это показала. Наверху пусто, и место там своё.
-    #
-    # Полоса Б прижата к правому краю, полоса А — к левому, поэтому текст
-    # удерживается внутри холста: центрирование по полосе увело бы половину
-    # числа за `viewBox`, где его срежет растеризация (тот же класс, что L84).
-    half = len(body) * DIGIT_WIDTH * 0.8 / 2
-    anchored = min(max(middle, half + 2), _WIDTH - half - 2)
-    return band + _text(anchored, _TOP - 6, body, size=8, fill=MUTED, anchor="middle", weight="700")
-
-
-def _curve(item: CaseSeries, months: Sequence[date], top: float, *, filled: bool) -> str:
     color = SUBJECT_COLORS[item.subject]
-    coords = [(_x(month, months), _y(value, top)) for month, value in item.points]
+    values = [value for _, value in item.points]
+    if starts_at is not None and values:
+        values[0] = starts_at
+    if ends_at is not None and values:
+        values[-1] = ends_at
+    coords = [
+        (_x(month, months), _y(value, top))
+        for (month, _), value in zip(item.points, values, strict=True)
+    ]
     line = " ".join(
         f"{'M' if index == 0 else 'L'}{x:.1f},{y:.1f}" for index, (x, y) in enumerate(coords)
     )
@@ -346,31 +366,27 @@ def _point_mark(
     present = [month for month in window if month in months]
     if not present or value is None:
         return "", None
-    # Середина окна, но НИКОГДА не за полем графика: после свёртки в кварталы и
-    # годы окно схлопывается к краю, и метка уезжала за ось вместе с подписью —
-    # показано владельцем 16.09.2026 на квартальном и годовом шаге.
     field_left, field_right = _LEFT, _WIDTH - _RIGHT
-    middle = (_x(present[0], months) + _x(present[-1], months)) / 2
-    centre = min(max(middle, field_left + 4), field_right - 4)
+    window_left = min(max(_x(present[0], months), field_left), field_right)
     y = _y(value, top)
     color = SUBJECT_COLORS[item.subject]
     body = _number(value)
-    # Штрих короткий и всегда вокруг своего кружка: во всю ширину окна он на
-    # годовом шаге растягивался через полполотна и терял связь с точкой.
-    half = 9.0
-    left_end = max(centre - half, field_left)
-    right_end = min(centre + half, field_right)
-    # Подпись уходит туда, где есть место: у окна Б справа, у окна А слева.
-    if side == "end":
-        anchor_x = max(left_end - 5, len(body) * DIGIT_WIDTH + 2)
+    width = len(body) * DIGIT_WIDTH
+    # А стоит в начале кривой, Б — в её конце: линия ведёт от одной точки к
+    # другой, и узлы у неё именно эти.
+    edge = window_left if side == "end" else _x(months[-1], months)
+    glyph = mark_glyph(edge, y, color)
+    # Подпись уходит от линии: у конца — вправо, в свободное поле; у начала —
+    # влево, потому что справа от него сразу идёт кривая. Не помещается —
+    # переходит на другую сторону, но за холст не уезжает (класс L84).
+    if side == "start":
+        anchor_x = edge + 8
+        if anchor_x + width > _WIDTH - 2:
+            return glyph, Mark(edge - 8, y + 3.5, body, size=10, anchor="end")
     else:
-        anchor_x = min(right_end + 5, _WIDTH - len(body) * DIGIT_WIDTH - 2)
-    glyph = (
-        f'<line x1="{left_end:.1f}" y1="{y:.1f}" x2="{right_end:.1f}" y2="{y:.1f}" '
-        f'stroke="{color}" stroke-width="2.4" stroke-linecap="round"/>'
-        f'<circle cx="{centre:.1f}" cy="{y:.1f}" r="3.2" fill="#ffffff" '
-        f'stroke="{color}" stroke-width="2"/>'
-    )
+        anchor_x = edge - 8
+        if anchor_x - width < 2:
+            return glyph, Mark(edge + 8, y + 3.5, body, size=10, anchor="start")
     return glyph, Mark(anchor_x, y + 3.5, body, size=10, anchor=side)
 
 

@@ -7,10 +7,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 
-from ahrefs_cases.export.labels import text
+from ahrefs_cases.export.labels import INK, text
 
 LABEL_WIDTH = 26.0
 """Место под подпись «01.24» вместе с зазором, в единицах холста."""
@@ -85,4 +85,39 @@ def month_labels(months: Sequence[date], xs: Sequence[float], *, baseline: float
             anchor="middle",
         )
         for month in shown
+    )
+
+
+def window_band(
+    at: Mapping[date, float],
+    window: Sequence[date],
+    label: str,
+    *,
+    top: float,
+    height: float,
+    field: float,
+) -> str:
+    """Окно, по которому усреднена точка А или Б.
+
+    Показывается, потому что число вердикта — среднее по окну, а не месяц: без
+    полосы человек ищет его на кривой как отдельную точку.
+
+    После свёртки в кварталы и годы окно раздувается до целого периода. Шире
+    трети поля полоса перестаёт значить «здесь усреднено» — на годовом шаге она
+    закрывала рисунок целиком (`engoo.com`, 16.09.2026), — и остаётся одна
+    буква у кромки.
+    """
+    present = [month for month in window if month in at]
+    if not present:
+        return ""
+    left = at[present[0]]
+    width = max(at[present[-1]] - left, 3.0)
+    letter = text(
+        left + width / 2, top - 6, label, size=8, fill=MUTED, anchor="middle", weight="700"
+    )
+    if width > field / 3:
+        return letter
+    return (
+        f'<rect x="{left:.1f}" y="{top}" width="{width:.1f}" '
+        f'height="{height:.1f}" fill="{INK}" opacity="0.05"/>' + letter
     )
