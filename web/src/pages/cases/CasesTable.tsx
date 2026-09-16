@@ -13,6 +13,7 @@ import type { CaseRow } from '../../api/types';
 import { caseWord } from '../status';
 
 import type { Selection } from './selection';
+import { staleWords } from './stale';
 import { takeable } from './selection';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -90,7 +91,7 @@ export function CasesTable({ rows, busyId, onDownload, selection }: Props) {
               <Table.Td>
                 <Checkbox
                   aria-label={`выбрать кейс ${row.domain}`}
-                  disabled={row.filename === null}
+                  disabled={row.filename === null || Boolean(row.outdated)}
                   checked={selection.has(row.id)}
                   onChange={(event) => selection.pick(row.id, event.currentTarget.checked)}
                 />
@@ -110,8 +111,8 @@ export function CasesTable({ rows, busyId, onDownload, selection }: Props) {
               <Table.Td ta="center">
                 <Publishing anonymized={row.anonymized} />
               </Table.Td>
-              <Table.Td ta="center">
-                {row.filename ? (
+              <Table.Td ta="center" data-outdated={row.outdated ?? undefined}>
+                {row.filename && !row.outdated ? (
                   <Button
                     size="compact-sm"
                     variant="light"
@@ -122,9 +123,12 @@ export function CasesTable({ rows, busyId, onDownload, selection }: Props) {
                   </Button>
                 ) : (
                   // Кейс есть, файла нет: так бывает, когда каталог выгрузки
-                  // почистили. Неактивная кнопка молчала бы о причине.
+                  // почистили. Или файл есть, но он уже не про эту группу
+                  // (Z30) — тогда отдавать его нельзя тем более: числа в нём
+                  // чужие, а имя проекта своё. Неактивная кнопка молчала бы
+                  // о причине.
                   <Text size="xs" c="dimmed">
-                    файла нет — пересоберите кейсы
+                    {row.filename ? staleWords(row).short : 'файла нет — пересоберите кейсы'}
                   </Text>
                 )}
                 {row.filename && (

@@ -33,6 +33,8 @@ const VERDICT = {
   score: 1400.4,
   ruleset_version: '0.0.0-default',
   decided_at: '2026-09-11T10:00:00Z',
+  points_note:
+    'Точки А и Б — средние по окну на границах периода, а не отдельные месяцы: последний месяц на кривой может отличаться от «стало».',
   reasons: [
     {
       subject: 'org_traffic',
@@ -309,54 +311,54 @@ describe('карточка проекта: состояния', () => {
   });
 });
 
-describe('смена шага кривой', () => {
-  /** Ответ по графикам держится, пока тест не разрешит его отдать: без паузы
-   *  новые кривые приезжают в том же тике, и проверять «что видно во время
-   *  загрузки» становится нечего. */
-  function serverWithHeldCharts() {
-    let release: (() => void) | null = null;
-    let hold = false;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        if (url.includes('/charts')) {
-          if (hold) {
-            await new Promise<void>((resolve) => {
-              release = resolve;
-            });
-          }
-          const step = url.split('grouping=')[1] ?? 'month';
-          return new Response(
-            JSON.stringify([
-              { title: 'Динамика органического трафика', svg: `<svg data-step="${step}"></svg>` },
-            ]),
-            { status: 200 },
-          );
+/** Ответ по графикам держится, пока тест не разрешит его отдать: без паузы
+ *  новые кривые приезжают в том же тике, и проверять «что видно во время
+ *  загрузки» становится нечего. */
+function serverWithHeldCharts() {
+  let release: (() => void) | null = null;
+  let hold = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/charts')) {
+        if (hold) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
         }
+        const step = url.split('grouping=')[1] ?? 'month';
         return new Response(
-          JSON.stringify({
-            project: PROJECT,
-            verdict: VERDICT,
-            series: [],
-            series_source: 'fixture',
-            source_mismatch: null,
-          }),
+          JSON.stringify([
+            { title: 'Динамика органического трафика', svg: `<svg data-step="${step}"></svg>` },
+          ]),
           { status: 200 },
         );
-      }),
-    );
-    return {
-      holdNext: () => {
-        hold = true;
-      },
-      let_go: () => {
-        hold = false;
-        release?.();
-      },
-    };
-  }
+      }
+      return new Response(
+        JSON.stringify({
+          project: PROJECT,
+          verdict: VERDICT,
+          series: [],
+          series_source: 'fixture',
+          source_mismatch: null,
+        }),
+        { status: 200 },
+      );
+    }),
+  );
+  return {
+    holdNext: () => {
+      hold = true;
+    },
+    let_go: () => {
+      hold = false;
+      release?.();
+    },
+  };
+}
 
+describe('смена шага кривой', () => {
   it('прежние кривые остаются на экране, пока едут новые', async () => {
     const net = serverWithHeldCharts();
     renderCard();
@@ -717,6 +719,75 @@ describe('пустой факт в таблице условий', () => {
   });
 });
 
+describe('кнопка PDF в карточке', () => {
+  function cardWithCase(row: Record<string, unknown> | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) return new Response(JSON.stringify(CHARTS), { status: 200 });
+        if (url.includes('/api/cases'))
+          return new Response(JSON.stringify(row === null ? [] : [row]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict: VERDICT,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+  }
+
+  const READY = {
+    id: 7,
+    project_id: 1,
+    domain: 'klinika.example',
+    version: 24,
+    anonymized: true,
+    status: 'ready',
+    created_at: '2026-09-15T14:29:00Z',
+    filename: 'klinika.example — Кейс v24.pdf',
+    checksum: 'abc',
+    case_group: 'medium',
+    current_group: 'medium',
+    outdated: null,
+  };
+
+  it('файл про сегодняшнюю группу — скачать можно', async () => {
+    cardWithCase(READY);
+    renderCard();
+
+    // Кнопка выключена, пока список кейсов грузится, — ждём ответа.
+    const button = await screen.findByRole('button', { name: 'Скачать PDF' });
+    await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it('файл от прежней группы не отдаётся и объясняет себя', async () => {
+    // Z30: на экране `allthedifferences.com` стояло «плохой, −99,9 %», а
+    // кнопка отдавала прежний лист «+69 %». Отдать такое клиенту — отдать
+    // чужие числа под именем этого проекта.
+    cardWithCase({ ...READY, case_group: 'medium', current_group: 'poor', outdated: 'group' });
+    renderCard();
+
+    expect(await screen.findByText(/кейс этой группе не положен/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скачать PDF' })).toBeDisabled();
+  });
+
+  it('пересчитанные числа названы отдельной причиной', async () => {
+    // Тот же `verdict_id`, другие числа: вердикт пишется upsert'ом и при
+    // пересчёте сохраняет прежний id — сверка по нему молчала.
+    cardWithCase({ ...READY, outdated: 'numbers' });
+    renderCard();
+
+    expect(await screen.findByText(/вердикт с тех пор пересчитали/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скачать PDF' })).toBeDisabled();
+  });
+});
+
 describe('шапка карточки', () => {
   it('счёта в шапке нет: сравнивать его в карточке не с чем', async () => {
     // Решение владельца 16.09.2026. Счёт — взвешенная сумма процентов и
@@ -747,5 +818,36 @@ describe('шапка карточки', () => {
     await screen.findByText(/пороги/);
     expect(screen.queryByText(/счёт/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/19\s?745/)).not.toBeInTheDocument();
+  });
+});
+
+describe('таблица А → Б объясняет себя', () => {
+  it('под таблицей сказано, почему конец кривой другой', async () => {
+    // Z32: владелец сравнил `cazoo.co.uk` — «стало 371 292» в таблице против
+    // «262 170» в конце кривой — и увидел расхождение там, где его нет.
+    // Фраза приходит с сервера: та же печатается в PDF.
+    cardServer();
+    renderCard();
+
+    expect(await screen.findByText(/средние по окну на границах периода/)).toBeInTheDocument();
+  });
+});
+
+describe('место под кривые на первой загрузке', () => {
+  it('на первой загрузке место под кривые занято заранее', async () => {
+    // Z23 всплыл второй раз, уже в «Динамике» (владелец 16.09.2026): блок
+    // держал высоту одной строки «Рисуем кривые…», и приход графиков двигал
+    // страницу на несколько сотен пикселей — это читается как мигание.
+    // Правило одно на все экраны: место держится, содержимое подменяется.
+    const net = serverWithHeldCharts();
+    net.holdNext();
+    renderCard();
+
+    await waitFor(() => expect(document.querySelector('[data-drawing="true"]')).not.toBeNull());
+    expect(screen.queryByText('Рисуем кривые…')).not.toBeInTheDocument();
+
+    net.let_go();
+    await waitFor(() => expect(document.querySelector('[data-step="month"]')).not.toBeNull());
+    expect(document.querySelector('[data-drawing="true"]')).toBeNull();
   });
 });

@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -22,12 +23,16 @@ import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import MAX_PAGE, CaseRow, PackView
+from ahrefs_cases.cases.freshness import case_mismatch
+from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.storage.models.case import Case, CaseArtifact
 from ahrefs_cases.storage.models.project import Project
+from ahrefs_cases.storage.models.verdict import Verdict
 
 router = APIRouter(
     prefix="/api/cases",
@@ -77,6 +82,8 @@ async def list_cases(
         # одной секунды дали бы два «свежих» кейса одного проекта.
         newest = select(func.max(Case.id)).group_by(Case.project_id).scalar_subquery()
         stmt = stmt.where(Case.id.in_(newest))
+    found = (await session.execute(stmt)).all()
+    judged = await _verdicts_behind(session, [case for case, _, _ in found])
     return [
         CaseRow(
             id=case.id,
@@ -88,9 +95,59 @@ async def list_cases(
             created_at=case.created_at,
             filename=artifact.filename if artifact is not None else None,
             checksum=artifact.checksum if artifact is not None else None,
+            **judged(case),
         )
-        for case, project, artifact in (await session.execute(stmt)).all()
+        for case, project, artifact in found
     ]
+
+
+async def _verdicts_behind(
+    session: AsyncSession, cases: Sequence[Case]
+) -> Callable[[Case], dict[str, object]]:
+    """Чем судили кейс и чем судят проект сегодня.
+
+    Кейс принадлежит вердикту, а экран показывает действующий; между ними
+    помещается целый пересчёт. У `allthedifferences.com` карточка говорила
+    «плохой, −99,9 %», а кнопка отдавала файл «+69 %», собранный по фикстурным
+    рядам ещё до живого прогона — числа чужие, имя проекта своё (Z30).
+
+    Оба вердикта берутся двумя запросами на страницу, а не по одному на кейс:
+    библиотека отдаёт до ста строк, и запрос в цикле превратил бы её в сто
+    первых.
+    """
+    if not cases:
+        return lambda _: {}
+    ruleset = await active_ruleset(session)
+    mine = {case.verdict_id for case in cases}
+    projects = {case.project_id for case in cases}
+    by_id = {
+        verdict.id: verdict
+        for verdict in (
+            await session.execute(select(Verdict).where(Verdict.id.in_(mine)))
+        ).scalars()
+    }
+    # Действующий вердикт проекта — последний по этой версии порогов: пересчёт
+    # пишет новую строку, а не правит прежнюю.
+    current: dict[int, Verdict] = {}
+    for verdict in (
+        await session.execute(
+            select(Verdict)
+            .where(Verdict.project_id.in_(projects), Verdict.ruleset_id == ruleset.id)
+            .order_by(Verdict.id)
+        )
+    ).scalars():
+        current[verdict.project_id] = verdict
+
+    def judge(case: Case) -> dict[str, object]:
+        mine_verdict = by_id.get(case.verdict_id)
+        now = current.get(case.project_id)
+        return {
+            "case_group": mine_verdict.group.value if mine_verdict else None,
+            "current_group": now.group.value if now else None,
+            "outdated": case_mismatch(case, now),
+        }
+
+    return judge
 
 
 def _newest_pack() -> Path | None:

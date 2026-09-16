@@ -6,7 +6,7 @@
  * четыре. Остаток, которого не узнали, — слово, а не ноль: ноль означал бы
  * «квота кончилась» и читался бы как запрет.
  */
-import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Container, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '../api/client';
@@ -26,7 +26,7 @@ export function UsagePage() {
 
         <Paper className="glass" p="lg">
           <Stack gap="md">
-            {usage.isPending && <Text size="sm">Считаем расход…</Text>}
+            {usage.isPending && <Skeleton height={96} radius="md" />}
 
             {usage.isError && (
               <Alert color="red" variant="light">
@@ -43,7 +43,7 @@ export function UsagePage() {
         <Paper className="glass" p="lg">
           <Stack gap="sm">
             <Title order={3}>Поводы</Title>
-            {alerts.isPending && <Text size="sm">Проверяем…</Text>}
+            {alerts.isPending && <Skeleton height={64} radius="md" />}
             {alerts.data && <Alerts rows={alerts.data} />}
           </Stack>
         </Paper>

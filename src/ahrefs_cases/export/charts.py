@@ -73,6 +73,8 @@ def curves_svg(
     period_start: date,
     window_a: Sequence[date] = (),
     window_b: Sequence[date] = (),
+    point_a: Mapping[str, float] | None = None,
+    point_b: Mapping[str, float] | None = None,
 ) -> str:
     """Один график: одна или несколько кривых на общей шкале месяцев.
 
@@ -101,8 +103,8 @@ def curves_svg(
     marks: list[Mark] = []
     for item in drawable:
         for point, mark in (
-            _start_label(item, months, top, period_start),
-            _end_label(item, months, top),
+            _point_mark(item, months, top, window_a, (point_a or {}).get(item.subject), "end"),
+            _point_mark(item, months, top, window_b, (point_b or {}).get(item.subject), "start"),
         ):
             parts.append(point)
             if mark is not None:
@@ -234,10 +236,16 @@ def _before_start(months: Sequence[date], period_start: date) -> str:
 
 
 def _window_band(months: Sequence[date], window: Sequence[date], label: str) -> str:
-    """Окно, по которому усреднена точка А или Б.
+    """Окно, по которому усреднена точка А или Б, и само её значение.
 
     Показывается, потому что последний месяц кривой и точка Б различаются по
     построению: без окна это выглядит как ошибка в одном из двух чисел.
+
+    Значение подписывается рядом с буквой (16.09.2026). Раньше рисунок нёс
+    только реальные месяцы, а таблица — средние по окну, и связать их можно
+    было лишь в уме: у `cazoo.co.uk` в таблице «371 292», а конец кривой —
+    «262 170». Теперь оба числа стоят на рисунке: среднее у полосы, месяц у
+    точки (Z32).
     """
     present = [month for month in window if month in months]
     if not present:
@@ -245,13 +253,22 @@ def _window_band(months: Sequence[date], window: Sequence[date], label: str) -> 
     left = _x(present[0], months)
     right = _x(present[-1], months)
     width = max(right - left, 3.0)
-    return (
+    middle = left + width / 2
+    band = (
         f'<rect x="{left:.1f}" y="{_TOP}" width="{width:.1f}" '
         f'height="{_HEIGHT - _BOTTOM - _TOP:.1f}" fill="{INK}" opacity="0.05"/>'
-        + _text(
-            left + width / 2, _TOP - 6, label, size=8, fill=MUTED, anchor="middle", weight="700"
-        )
     )
+    body = label
+    # Подпись стоит НАД полосой, а не под осью: внизу живут подписи месяцев и
+    # легенда, и «39 127» у окна Б садилось прямо на «ключи в топ-10» — первая
+    # же сборка это показала. Наверху пусто, и место там своё.
+    #
+    # Полоса Б прижата к правому краю, полоса А — к левому, поэтому текст
+    # удерживается внутри холста: центрирование по полосе увело бы половину
+    # числа за `viewBox`, где его срежет растеризация (тот же класс, что L84).
+    half = len(body) * DIGIT_WIDTH * 0.8 / 2
+    anchored = min(max(middle, half + 2), _WIDTH - half - 2)
+    return band + _text(anchored, _TOP - 6, body, size=8, fill=MUTED, anchor="middle", weight="700")
 
 
 def _curve(item: CaseSeries, months: Sequence[date], top: float, *, filled: bool) -> str:
@@ -305,62 +322,56 @@ def _start_mark(months: Sequence[date], period_start: date) -> tuple[str, Mark |
     )
 
 
-def _start_label(
-    item: CaseSeries, months: Sequence[date], top: float, period_start: date
+def _point_mark(
+    item: CaseSeries,
+    months: Sequence[date],
+    top: float,
+    window: Sequence[date],
+    value: float | None,
+    side: str,
 ) -> tuple[str, Mark | None]:
-    """Точка старта работ на кривой и её значение.
+    """Точка А или Б на рисунке: уровень среднего по окну, а не месяц.
 
-    Конец кривой подписан числом с самого начала, а начало — нет, и величину «с
-    чего начали» приходилось искать в таблице под рисунком (вопрос владельца
-    15.09.2026: «почему нет числа со старта работ? в конце есть»). Рисунок
-    обещает сравнение А → Б, и обе стороны обязаны быть названы.
+    До 16.09.2026 кривая выделяла крайние МЕСЯЦЫ, а таблица показывала средние
+    по окну, и рядом это читалось как ошибка сервиса: у `bad.org.uk` в таблице
+    «102 478», а подписанная точка на кривой — «68 961». Владелец: «зачем нам
+    средние?» Средние нужны методу — один удачный месяц иначе делает рост из
+    ничего (`classify/points.py`), — поэтому рисунок стал показывать ТО ЖЕ, что
+    таблица: уровень точки внутри своего окна (Z32).
 
-    Подпись уходит ВЛЕВО, если там есть место: справа от точки идёт сама
-    кривая, и число легло бы на неё. Левое поле холста для этого и есть.
+    Отметка — горизонтальный штрих во всю ширину окна, а не кружок на кривой:
+    среднее двух месяцев на линии не лежит, и кружок обещал бы измерение там,
+    где его нет.
     """
-    after = [point for point in item.points if point[0] >= period_start]
-    if not after:
+    present = [month for month in window if month in months]
+    if not present or value is None:
         return "", None
-    month, value = after[0]
-    x, y = _x(month, months), _y(value, top)
+    # Середина окна, но НИКОГДА не за полем графика: после свёртки в кварталы и
+    # годы окно схлопывается к краю, и метка уезжала за ось вместе с подписью —
+    # показано владельцем 16.09.2026 на квартальном и годовом шаге.
+    field_left, field_right = _LEFT, _WIDTH - _RIGHT
+    middle = (_x(present[0], months) + _x(present[-1], months)) / 2
+    centre = min(max(middle, field_left + 4), field_right - 4)
+    y = _y(value, top)
     color = SUBJECT_COLORS[item.subject]
     body = _number(value)
-    # ВСЕГДА слева, без запасного варианта справа: справа от точки идёт сама
-    # кривая, и число легло бы на неё — владелец показал это на «36 980»
-    # (15.09.2026). Если подпись упирается в край холста, она прижимается к
-    # нему, а не переезжает внутрь рисунка.
-    anchor_x = max(x - 9, len(body) * DIGIT_WIDTH + 1)
-    point = (
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="{color}" opacity="0.18"/>'
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.8" fill="#ffffff" stroke="{color}" '
-        'stroke-width="1.8"/>'
+    # Штрих короткий и всегда вокруг своего кружка: во всю ширину окна он на
+    # годовом шаге растягивался через полполотна и терял связь с точкой.
+    half = 9.0
+    left_end = max(centre - half, field_left)
+    right_end = min(centre + half, field_right)
+    # Подпись уходит туда, где есть место: у окна Б справа, у окна А слева.
+    if side == "end":
+        anchor_x = max(left_end - 5, len(body) * DIGIT_WIDTH + 2)
+    else:
+        anchor_x = min(right_end + 5, _WIDTH - len(body) * DIGIT_WIDTH - 2)
+    glyph = (
+        f'<line x1="{left_end:.1f}" y1="{y:.1f}" x2="{right_end:.1f}" y2="{y:.1f}" '
+        f'stroke="{color}" stroke-width="2.4" stroke-linecap="round"/>'
+        f'<circle cx="{centre:.1f}" cy="{y:.1f}" r="3.2" fill="#ffffff" '
+        f'stroke="{color}" stroke-width="2"/>'
     )
-    return point, Mark(anchor_x, y + 3.5, body, size=9, anchor="end")
-
-
-def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> tuple[str, Mark | None]:
-    """Последняя точка кривой и её значение.
-
-    Сторона подписи выбирается по месту: справа, если она туда влезает, иначе
-    слева от точки. Длинное число иначе уходит за край рисунка — и это видно
-    только на растре, не в разметке.
-    """
-    month, value = item.points[-1]
-    x, y = _x(month, months), _y(value, top)
-    color = SUBJECT_COLORS[item.subject]
-    body = _number(value)
-    fits_right = x + 9 + len(body) * DIGIT_WIDTH <= _WIDTH - 2
-    mark = (
-        Mark(x + 9, y + 3.5, body, size=10, anchor="start")
-        if fits_right
-        else Mark(x - 9, y + 3.5, body, size=10, anchor="end")
-    )
-    point = (
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{color}" opacity="0.18"/>'
-        f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.4" fill="#ffffff" stroke="{color}" '
-        'stroke-width="2"/>'
-    )
-    return point, mark
+    return glyph, Mark(anchor_x, y + 3.5, body, size=10, anchor=side)
 
 
 def _legend(series: Sequence[CaseSeries]) -> str:
@@ -400,6 +411,8 @@ def curve_blocks(
     window_a: Sequence[date] = (),
     window_b: Sequence[date] = (),
     grouping: Grouping = Grouping.MONTH,
+    point_a: Mapping[str, float] | None = None,
+    point_b: Mapping[str, float] | None = None,
 ) -> list[dict[str, str]]:
     """Готовые блоки «заголовок + рисунок» — и для PDF, и для веб-карточки.
 
@@ -428,7 +441,17 @@ def curve_blocks(
     blocks: list[dict[str, str]] = []
     for title, subjects in CHART_BLOCKS:
         rows = [folded[name] for name in subjects if name in folded]
-        svg = curves_svg(rows, period_start=folded_start, window_a=bands[0], window_b=bands[1])
+        # Значения передаются ПО ВСЕМ метрикам блока: на графике позиций две
+        # кривые — топ-10 и топ-3, — и у каждой своя точка А и своя Б. Взять
+        # только главную значило бы подписать одну кривую и промолчать о второй.
+        svg = curves_svg(
+            rows,
+            period_start=folded_start,
+            window_a=bands[0],
+            window_b=bands[1],
+            point_a=point_a,
+            point_b=point_b,
+        )
         if svg:
             blocks.append({"title": title, "svg": svg})
     return blocks

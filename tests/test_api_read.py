@@ -487,3 +487,22 @@ def test_usage_reports_spend_and_remaining(client: TestClient) -> None:
     assert body["spent"] >= 0
     assert body["reserved"] >= 0
     assert body["remaining"] == 10_000  # fixture-остаток: бюджет первичного прогона
+
+
+def test_card_explains_why_the_curve_ends_elsewhere(
+    client: TestClient, seeded: dict[str, int]
+) -> None:
+    """Карточка объясняет, почему «стало» и конец кривой — разные числа (Z32).
+
+    Владелец сравнил `cazoo.co.uk`: в таблице «371 292», на кривой «262 170», —
+    и увидел расхождение там, где его нет. Точка Б усредняет окно, кривая
+    рисует каждый месяц; в PDF эта фраза стояла с самого начала, на экране её
+    не было. Формулировка одна на лист и на экран — иначе они начнут объяснять
+    одно и то же разными словами.
+    """
+    from ahrefs_cases.export.html_renderer import POINTS_NOTE
+
+    card = client.get(f"/api/projects/{seeded['project']}", headers=_token(client)).json()
+
+    assert card["verdict"]["points_note"] == POINTS_NOTE
+    assert "средние по окну" in card["verdict"]["points_note"]

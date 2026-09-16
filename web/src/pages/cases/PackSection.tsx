@@ -5,7 +5,7 @@
  * «что собрано», пачка — «что можно забрать целиком». Сведённые в один
  * компонент, они и в коде выглядели как одна (гейт поймал это длиной функции).
  */
-import { Alert, Text } from '@mantine/core';
+import { Alert, Skeleton, Text } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -45,7 +45,9 @@ export function PackSection() {
     onError: (failure: unknown) => setError(failureText(failure, 'сборка не начата')),
   });
 
-  if (pack.isPending) return <Text size="sm">Смотрим, что собрано…</Text>;
+  // Карточка пачки высокая, а строка «Смотрим…» — в одну строку: без
+  // заглушки той же высоты страница подпрыгивала (класс Z23).
+  if (pack.isPending) return <Skeleton height={120} radius="md" />;
   if (pack.isError || !pack.data) {
     return (
       <Alert color="red" variant="light">

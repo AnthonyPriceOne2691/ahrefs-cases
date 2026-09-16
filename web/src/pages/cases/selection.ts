@@ -24,9 +24,15 @@ export interface Selection {
   clear: () => void;
 }
 
-/** Отмечать нечего у строк без файла: кейс в базе есть, а скачивать нечего. */
+/**
+ * Строки, которые можно отметить и забрать.
+ *
+ * Без файла отмечать нечего: кейс в базе есть, а скачивать нечего. Устаревший
+ * файл (Z30) не отмечается по другой причине — он про прежнюю группу проекта,
+ * и «выбрать все» иначе положило бы его в общий ZIP вместе с годными.
+ */
 export function takeable(rows: readonly CaseRow[]): CaseRow[] {
-  return rows.filter((row) => row.filename !== null);
+  return rows.filter((row) => row.filename !== null && !row.outdated);
 }
 
 export function useCaseSelection(rows: readonly CaseRow[]): Selection {

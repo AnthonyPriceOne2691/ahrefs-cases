@@ -18,14 +18,23 @@ import { downloadCase, fetchCasesOfProject } from '../../api/cases';
 import type { CaseRow } from '../../api/types';
 import { failureText } from '../cases/failure';
 import { saveFile } from '../cases/save';
+import { staleWords } from '../cases/stale';
 
-/** Почему скачать нельзя — словами, а не серой кнопкой без объяснения. */
+/**
+ * Почему скачать нельзя — словами, а не серой кнопкой без объяснения.
+ *
+ * Отдельный случай — файл, который больше не про эту группу (Z30). На экране
+ * `allthedifferences.com` стояло «плохой, −99,9 %», а кнопка отдавала прежний
+ * лист «+69 %»: вердикт пересчитали по живым рядам, а файл остался от
+ * фикстурных. Такой файл нельзя отдавать молча — числа в нём чужие, а имя
+ * проекта своё; замер 16.09.2026 нашёл 51 такой проект из 62.
+ */
 function obstacle(rows: CaseRow[] | undefined): string | null {
   if (rows === undefined) return null;
   const row = rows[0];
   if (row === undefined) return 'Кейс ещё не собран. Сборка идёт пачкой на экране «Кейсы».';
   if (row.filename === null) return 'Кейс в базе есть, а файла к нему нет — собрать заново.';
-  return null;
+  return row.outdated ? staleWords(row).full : null;
 }
 
 export function CasePdf({ projectId }: { projectId: number }) {
@@ -40,7 +49,8 @@ export function CasePdf({ projectId }: { projectId: number }) {
   // всех: кнопка выключена ровно тогда, когда качать нечего, и обработчику
   // не приходится доверять этому на слово.
   const row = cases.data?.[0];
-  const ready = row?.filename ? row : null;
+  // Скачать можно только файл, который объясняет сегодняшнюю группу.
+  const ready = row?.filename && !row.outdated ? row : null;
   const why = obstacle(cases.data);
 
   const take = useMutation({

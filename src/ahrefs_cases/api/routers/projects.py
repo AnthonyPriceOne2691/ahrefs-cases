@@ -37,6 +37,7 @@ from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
+from ahrefs_cases.export.html_renderer import POINTS_NOTE
 from ahrefs_cases.storage import Group, Metric, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -184,6 +185,10 @@ async def project_charts(
         period_start=project.period_start,
         window_a=_window(verdict.point_a if verdict else None, forward=True),
         window_b=_window(verdict.point_b if verdict else None, forward=False),
+        # Полосы окон подписываются теми же числами, что стоят в таблице А → Б:
+        # рисунок и таблица на одном экране обязаны говорить одно (Z32).
+        point_a=_point(verdict.point_a) if verdict else None,
+        point_b=_point(verdict.point_b) if verdict else None,
         # Шаг кривой — перечисление: опечатка в параметре отвечает `422`, а не
         # молча показывает месяцы человеку, выбравшему кварталы.
         grouping=grouping,
@@ -236,6 +241,7 @@ def _verdict_view(
         ruleset_version=ruleset.version,
         decided_at=verdict.decided_at,
         reasons=[_reason(check, bought) for check in checks],
+        points_note=POINTS_NOTE,
         source=verdict.source.value if verdict.source is not None else None,
         point_a=_point(verdict.point_a),
         point_b=_point(verdict.point_b),

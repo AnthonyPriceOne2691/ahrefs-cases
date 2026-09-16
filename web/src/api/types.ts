@@ -148,6 +148,13 @@ export interface ReasonRow {
 
 export interface VerdictView {
   group: string;
+  /**
+   * Почему «стало» в таблице и конец кривой — разные числа.
+   *
+   * Приходит с сервера: та же строка печатается в PDF, и вторая копия на
+   * фронте разошлась бы с первой (Z32).
+   */
+  points_note?: string;
   score: number;
   ruleset_version: string;
   decided_at: string;
@@ -193,6 +200,18 @@ export interface CaseRow {
   /** `null` — кейс в базе есть, файла к нему нет: скачивать нечего. */
   filename: string | null;
   checksum: string | null;
+  /** Группа, которой файл собран, и группа проекта сейчас. */
+  case_group?: string | null;
+  current_group?: string | null;
+  /**
+   * Почему файл больше не объясняет сегодняшнюю группу (Z30).
+   *
+   * `group` — проекту кейс больше не положен, `verdict` — файл собран другим
+   * расчётом, `numbers` — расчёт тот же, а числа в файле другие (вердикт
+   * пересчитан поверх), `gone` — действующего вердикта нет. `null`/отсутствие —
+   * файл и экран об одном.
+   */
+  outdated?: 'group' | 'verdict' | 'numbers' | 'gone' | null;
 }
 
 export interface PackView {

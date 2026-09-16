@@ -9,12 +9,13 @@ HTTP, обязан совпадать с тем, который уходит в 
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
 
 import pytest
-from tests.owned_rows import active_versions, make_active, restore_active
 from fastapi.testclient import TestClient
+from tests.owned_rows import active_versions, make_active, restore_active
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -244,6 +245,7 @@ def test_web_and_pdf_draw_the_same_picture(client: TestClient) -> None:
     расхождение в шкале или подписи глазами не ловится, а клиенту показывают
     именно эти кривые.
     """
+    from ahrefs_cases.api.routers.projects import _active_verdict, _point
     from ahrefs_cases.cases.builder import chart_series
     from ahrefs_cases.classify.points import window_from
     from ahrefs_cases.classify.series import load_series
@@ -256,11 +258,18 @@ def test_web_and_pdf_draw_the_same_picture(client: TestClient) -> None:
     async def _direct() -> list[dict[str, str]]:
         async with get_sessionmaker()() as session:
             series = await load_series(session, project_id, MetricSource.FIXTURE)
+            # Точки А и Б подписывают полосы окон, и в прямой вызов они идут те
+            # же, что берёт обработчик: иначе сравнение поймало бы не
+            # расхождение рисунков, а разницу аргументов.
+            verdict = await _active_verdict(session, project_id)
+            assert verdict is not None
             return curve_blocks(
                 chart_series(series),
                 period_start=date(2025, 2, 1),
                 window_a=window_from(date(2025, 2, 1), 2, forward=True),
                 window_b=window_from(date(2025, 4, 1), 2, forward=False),
+                point_a=_point(verdict.point_a),
+                point_b=_point(verdict.point_b),
             )
 
     assert over_http == asyncio.run(_direct())
@@ -275,9 +284,12 @@ def test_verdict_windows_are_drawn(client: TestClient) -> None:
     """E4: полосы окон А и Б берутся из записанного вердикта (L41)."""
     traffic = _charts(client, WITH_VERDICT)[0]["svg"]
 
-    # Полоса подписана одной буквой — так она и стоит на рисунке в PDF.
-    assert ">А</text>" in traffic
-    assert ">Б</text>" in traffic
+    # Полоса подписана буквой, а под осью — её значением: рисунок обязан
+    # называть то же число, что стоит в таблице А → Б (Z32). Раньше на рисунке
+    # были только реальные месяцы, и «стало 371 292» рядом с концом кривой
+    # «262 170» читалось как ошибка сервиса.
+    assert re.search(r">А(\s|<)", traffic), "полоса А не подписана"
+    assert re.search(r">Б(\s|<)", traffic), "полоса Б не подписана"
 
 
 def test_charts_without_verdict_keep_curves(client: TestClient) -> None:
@@ -305,8 +317,8 @@ def test_grouping_changes_the_picture(client: TestClient) -> None:
 
     assert monthly[0]["svg"] != quarterly[0]["svg"]
     # Полосы окон переехали вместе с точками, а не исчезли (E7).
-    assert ">А</text>" in quarterly[0]["svg"]
-    assert ">Б</text>" in quarterly[0]["svg"]
+    assert re.search(r">А(\s|<)", quarterly[0]["svg"])
+    assert re.search(r">Б(\s|<)", quarterly[0]["svg"])
 
 
 def test_unknown_grouping_is_refused(client: TestClient) -> None:

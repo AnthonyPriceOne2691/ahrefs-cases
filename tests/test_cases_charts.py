@@ -94,39 +94,25 @@ def _label_x(svg: str, text: str) -> tuple[float, str]:
     return float(x.group(1)), anchor.group(1) if anchor else "start"
 
 
-def test_long_end_value_label_stays_inside_the_frame() -> None:
-    """Подпись последнего значения не уезжает за край рисунка.
+def test_long_value_label_stays_inside_the_frame() -> None:
+    """Подпись точки Б не уезжает за край рисунка.
 
-    Найдено глазами на готовом PDF живого прогона: у `ahrefs.com` последнее
-    значение семизначное, и «3 596 464» превратилось в «3 596 46…». В разметке
-    SVG обрезания нет — режет `viewBox` при растеризации, поэтому проверять
-    надо **геометрию**, а не наличие текста (тот же класс, что L84).
+    Найдено глазами на готовом PDF: у `ahrefs.com` величина семизначная, и
+    «3 596 464» превратилось в «3 596 46…». В разметке обрезания нет — режет
+    `viewBox` при растеризации, поэтому проверяется геометрия (класс L84).
     """
+    months = _months(3)
     svg = curves_svg(
-        [_series("org_traffic", [900_000.0, 2_000_000.0, 3_596_464.0])],
-        period_start=START,
+        [_series("org_traffic", [900_000.0, 2_000_000.0, 3_596_464.0], months)],
+        period_start=months[0],
+        window_b=months[-1:],
+        point_b={"org_traffic": 3_596_464.0},
     )
 
     x, anchor_kind = _label_x(svg, "3\u00a0596\u00a0464")
 
-    assert anchor_kind == "end", "справа места нет — подпись разворачивается влево"
-    assert x <= 420.0, "и остаётся внутри viewBox шириной 420"
-
-
-def test_short_end_value_label_stays_on_the_right() -> None:
-    """Короткому числу места хватает, и оно остаётся справа от точки.
-
-    Разворачивать подпись всегда было бы проще и хуже: слева от точки идёт
-    кривая, и подпись легла бы на неё.
-    """
-    svg = curves_svg(
-        [_series("org_traffic", [100.0, 200.0, 320.0])],
-        period_start=START,
-    )
-
-    _, anchor_kind = _label_x(svg, "320")
-
-    assert anchor_kind == "start"
+    assert anchor_kind == "start", "подпись точки Б растёт вправо"
+    assert x + len("3 596 464") * 5.8 <= 420.0, "и остаётся внутри viewBox шириной 420"
 
 
 def test_missing_month_is_not_interpolated() -> None:
@@ -312,36 +298,31 @@ def test_axis_step_is_recognisable_and_the_last_month_is_named() -> None:
     assert gaps <= {1, 2, 3, 6, 12}, f"шаг подписей не узнаётся: {sorted(gaps)}"
 
 
-def test_start_of_works_is_labelled_outside_the_curve() -> None:
-    """Величина в точке старта названа, и подпись стоит СЛЕВА от точки.
+def test_point_a_is_marked_with_its_own_value() -> None:
+    """Точка А подписана СВОИМ значением — средним по окну, а не месяцем.
 
-    Конец кривой подписан числом с самого начала, а начало — нет, и «с чего
-    начали» приходилось искать в таблице под рисунком (вопрос владельца
-    15.09.2026). Рисунок обещает сравнение А → Б, и обе стороны обязаны быть
-    названы.
-
-    Сторона не «по месту», а всегда левая: справа от точки идёт сама кривая, и
-    число легло бы на неё — владелец показал это на «36 980». Проверяется
-    именно это: подпись есть и она левее точки старта.
+    До 16.09.2026 рисунок выделял крайние месяцы, а таблица показывала средние
+    по окну: у `bad.org.uk` в таблице «102 478», а на кривой «68 961», и это
+    читалось как ошибка сервиса. Владелец: «зачем нам средние?» Средние нужны
+    методу (один месяц-выброс иначе делает рост из ничего), поэтому рисунок
+    стал показывать то же, что таблица (Z32).
     """
     months = _months(6)
     svg = curves_svg(
         [_series("org_traffic", [36980.0, 40000.0, 52000.0, 61000.0, 74000.0, 83184.0], months)],
         period_start=months[0],
+        window_a=months[:2],
+        window_b=months[-2:],
+        point_a={"org_traffic": 38_490.0},
+        point_b={"org_traffic": 78_592.0},
     )
 
-    # Разряды разделены НЕРАЗРЫВНЫМ пробелом: в разметке это `\xa0`, и поиск
-    # с обычным пробелом ничего не находит, хотя подпись на месте.
-    number = "36\u00a0980"
-    assert number in svg, "величина в точке старта не подписана"
-
-    # `anchor="end"` у подписи означает, что текст растёт ВЛЕВО от своей точки:
-    # справа от неё идёт сама кривая, и число легло бы на неё.
-    start_label = re.search(
-        rf'<text[^>]*x="([\d.]+)"[^>]*text-anchor="end"[^>]*>{number}</text>', svg
-    )
-    assert start_label, "подпись старта не прижата влево — значит может лечь на кривую"
-    assert float(start_label.group(1)) <= _LEFT, "подпись старта стоит правее точки старта"
+    # Разряды разделены НЕРАЗРЫВНЫМ пробелом: поиск с обычным ничего не найдёт.
+    assert "38\u00a0490" in svg, "точка А не подписана своим значением"
+    assert "78\u00a0592" in svg, "точка Б не подписана своим значением"
+    # Подпись точки А растёт ВЛЕВО: справа от её окна идёт сама кривая.
+    left = re.search(r'<text[^>]*x="([\d.]+)"[^>]*text-anchor="end"[^>]*>38\u00a0490</text>', svg)
+    assert left, "подпись точки А не прижата влево — значит может лечь на кривую"
 
 
 def test_every_month_gets_a_tick_even_without_a_label() -> None:
@@ -412,10 +393,10 @@ def _collisions(svg: str) -> list[tuple[str, str]]:
 
 
 def _point_centres(svg: str) -> list[float]:
-    """Центры кружков на кривой: точки, к которым подписи обязаны остаться близко."""
+    """Центры отметок А и Б: к ним подписи обязаны остаться близко."""
     return [
         float(found.group(1))
-        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="(?:2\.8|3\.4)"', svg)
+        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="3\.2"', svg)
     ]
 
 
@@ -467,12 +448,17 @@ def test_labels_stay_next_to_their_points_when_nobody_is_in_the_way() -> None:
     svg = curves_svg(
         [_series("org_traffic", [10_000.0, 20_000, 30_000, 45_000, 60_000, 90_000], months)],
         period_start=months[0],
+        window_a=months[:1],
+        window_b=months[-1:],
+        point_a={"org_traffic": 10_000.0},
+        point_b={"org_traffic": 90_000.0},
     )
 
     centres = _point_centres(svg)
-    # Деления шкалы носят те же числа, но кеглем 8: подписи величин крупнее.
-    values = [box for box in _boxes(svg) if box.body in {"10 000", "90 000"} and box.size >= 9]
-    assert len(values) == 2, "подписаны обе стороны кривой"
+    values = [
+        box for box in _boxes(svg) if box.body in {"10\u00a0000", "90\u00a0000"} and box.size >= 9
+    ]
+    assert len(values) == 2, "подписаны обе точки"
     for box in values:
         baseline = box.bottom - box.size * 0.05
         assert any(abs(baseline - 3.5 - centre) < 0.2 for centre in centres), (
@@ -538,6 +524,8 @@ def test_labels_keep_the_order_of_their_values() -> None:
             _series("kw_top3", [2_383.0, 20_000, 60_000, 90_000, 100_000, 101_470], months),
         ],
         period_start=months[0],
+        window_a=months[:1],
+        point_a={KW_TOP10: 8_286.0, "kw_top3": 2_383.0},
     )
 
     # Разряды разделены неразрывным пробелом — в разметке это `\xa0`.

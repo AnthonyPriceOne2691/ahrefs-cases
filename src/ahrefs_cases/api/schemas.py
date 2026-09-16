@@ -83,6 +83,13 @@ class VerdictView(BaseModel):
     score: float
     ruleset_version: str
     decided_at: datetime
+    points_note: str = ""
+    """Почему «стало» в таблице и конец кривой — разные числа.
+
+    Фраза приходит с сервера, а не пишется на фронте: она же печатается в PDF
+    (`export.html_renderer.POINTS_NOTE`), и вторая копия разошлась бы с первой —
+    лист и экран начали бы объяснять одно и то же разными словами (Z32)."""
+
     reasons: list[ReasonRow]
     point_a: dict[str, float]
     point_b: dict[str, float]
@@ -125,6 +132,27 @@ class CaseRow(BaseModel):
     created_at: datetime
     filename: str | None = None
     checksum: str | None = None
+    case_group: str | None = None
+    """Группа, которой кейс собран: файл объясняет ЕЁ, а не сегодняшнюю."""
+
+    current_group: str | None = None
+    """Группа проекта по действующему вердикту. `None` — вердикта нет."""
+
+    outdated: Literal["group", "verdict", "numbers", "gone"] | None = None
+    """Почему файл больше не объясняет сегодняшнюю группу (Z30).
+
+    Кейс принадлежит вердикту (`Case.verdict_id`), а карточка и библиотека
+    показывают действующий. Разойтись им достаточно одного пересчёта: у
+    `allthedifferences.com` на экране стояло «плохой, −99,9 %», а файл к нему
+    прилагался прежний — «+69 %», собранный по фикстурным рядам. Отдать такой
+    клиенту значит отдать чужие числа под именем этого проекта.
+
+    `group` — проекту кейс больше не положен, `verdict` — файл собран другим
+    расчётом, `numbers` — расчёт тот же, а числа в нём другие (вердикт
+    пересчитан поверх: он пишется upsert'ом и сохраняет прежний `id`),
+    `gone` — действующего вердикта у проекта нет. `None` — файл и экран об
+    одном.
+    """
 
 
 class PackView(BaseModel):

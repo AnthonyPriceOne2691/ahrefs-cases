@@ -4,7 +4,7 @@
  * Скачивание живёт здесь, а не в таблице: таблица показывает строки, а запрос
  * с токеном и сохранение файла — работа экрана.
  */
-import { Alert, Group, Stack, Switch, Text } from '@mantine/core';
+import { Alert, Group, Skeleton, Stack, Switch, Text } from '@mantine/core';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -54,7 +54,10 @@ function LibraryState({
   error: unknown;
   rows: CaseRow[] | undefined;
 }) {
-  if (pending) return <Text size="sm">Загружаем библиотеку…</Text>;
+  // Место держится, пока грузится: строка «Загружаем…» роняла высоту таблицы
+  // до одной строки, и появление данных дёргало страницу (класс Z23 — блок,
+  // снятый на время загрузки, читается как мигание).
+  if (pending) return <Skeleton height={320} radius="md" />;
   if (error) {
     return (
       <Alert color="red" variant="light">

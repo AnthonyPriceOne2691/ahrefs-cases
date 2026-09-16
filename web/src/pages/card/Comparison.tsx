@@ -9,7 +9,7 @@ import { Table, Text } from '@mantine/core';
 import type { ComparisonRow } from '../../api/types';
 import { growth, num } from '../format';
 
-export function Comparison({ rows }: { rows: ComparisonRow[] }) {
+export function Comparison({ rows, note }: { rows: ComparisonRow[]; note?: string }) {
   if (rows.length === 0) {
     return (
       <Text size="sm" c="dimmed">
@@ -39,6 +39,18 @@ export function Comparison({ rows }: { rows: ComparisonRow[] }) {
           ))}
         </Table.Tbody>
       </Table>
+      {/*
+        Пояснение стоит под таблицей, а не в сноске страницы: вопрос возникает
+        ровно здесь. Владелец сравнил `cazoo.co.uk` — «стало 371 292» в
+        таблице против «262 170» в конце кривой — и увидел расхождение там,
+        где его нет: точка Б усредняет два месяца, а кривая рисует каждый.
+        В PDF эта фраза стояла с самого начала, на экране её не было (Z32).
+      */}
+      {note && (
+        <Text size="xs" c="dimmed" mt="xs">
+          {note}
+        </Text>
+      )}
     </Table.ScrollContainer>
   );
 }

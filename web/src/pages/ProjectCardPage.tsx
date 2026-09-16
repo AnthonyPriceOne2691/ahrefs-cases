@@ -88,7 +88,7 @@ export function ProjectCardPage() {
             <Paper className="glass" p="lg">
               <Stack gap="md">
                 <Hero rows={verdict.comparison} />
-                <Comparison rows={verdict.comparison} />
+                <Comparison rows={verdict.comparison} note={verdict.points_note} />
               </Stack>
             </Paper>
 
