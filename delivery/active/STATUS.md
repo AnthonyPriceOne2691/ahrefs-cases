@@ -1,30 +1,30 @@
 # Active delivery status
 
-- **slug:** labels-on-the-chart-do-not-collide
+- **slug:** the-dash-says-which-case-it-is
 - **stack:** delivery@1.88, cqg@2.32, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
-- **repro_test:** tests/test_cases_charts.py::test_value_labels_of_two_curves_do_not_overlap
-- **diagnosis:** measured reason=пробник собрал настоящий PDF теми же средствами, что кейс (WeasyPrint), и показал все три механизма наслоения; замер по 72 рисункам собранного набора — 20 со столкновениями до правки, 0 после
+- **repro_test:** web/src/pages/__tests__/card.test.tsx::пустой факт говорит, не покупали или не отдали
+- **diagnosis:** measured reason=журнал расхода units различает случаи поимённо; замер по всем 95 вердиктам стенда — 160 прочерков «не покупали» против 16 «нет данных»
 - **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-09-15 by=human:anthony («числа на рисунке наслаиваются друг на друга»; «двигать можно подпись, но не точку»)
+- **human_ok_spec:** yes at=2026-09-15 by=human:anthony («а где мы фиксируем, покупали мы ссылки или нет?»; «даже в плохих проектах выглядит странно»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** pdf reason=кейсы пересобраны и осмотрены на настоящем PDF
+- **artifact_oracle:** n/a reason=артефактов не производит, таблица живёт только на экране
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель, прямые коммиты в main
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no
-- **runtime_paths:** n/a reason=рисование SVG, сеть и база не затронуты; `pack` читает уже собранное
+- **runtime_paths:** db reason=карточка проекта дополнительно читает журнал расхода (`units_ledger`) одним запросом на домен
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на кейсах с кривыми у дна шкалы подписи стоят врозь и в порядке величин — смотреть на готовом PDF, а не в разметке
+- **observe_signal:** в карточке проекта без шага 2 стоит «не покупали», у проекта с шагом 2 и пустой историей — «нет данных»; смотреть на живом стенде, оракулы вида не проверяют

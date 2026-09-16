@@ -603,10 +603,116 @@ describe('таблица «Почему эта группа»', () => {
     renderCard();
 
     // Половина условий повторяется дважды — у «хорошего» и у «среднего», с
-    // одной формулировкой и разными порогами. Убрать ключ и не дать взамен
-    // ничего значило бы показать две одинаковые строки с порогами 100 и 20.
+    // одной формулировкой и разными порогами. Различает их теперь заголовок
+    // блока, а не слово в каждой строке: порог 100 стоит под «Условиями
+    // хорошего», порог 20 — под «Условиями среднего».
     await screen.findAllByText('рост органического трафика в процентах');
-    expect(document.querySelector('[data-group="хороший"]')).not.toBeNull();
-    expect(document.querySelector('[data-group="средний"]')).not.toBeNull();
+    const good = document.querySelector('[data-conditions="good"]');
+    const medium = document.querySelector('[data-conditions="medium"]');
+    expect(good?.textContent).toContain('Условия хорошего');
+    expect(medium?.textContent).toContain('Условия среднего');
+    expect(good?.textContent).toContain('100');
+    expect(medium?.textContent).toContain('20');
+  });
+
+  it('слово группы не повторяется в каждой строке', async () => {
+    cardWith(TWO_GROUPS);
+    renderCard();
+
+    // Z26: колонка «Группа» писала одно и то же слово у каждого условия — у
+    // `cleverfiles.com` шесть «хороший» подряд, потом пять «средний».
+    // Владелец: «даже в плохих проектах выглядит странно».
+    await screen.findAllByText('рост органического трафика в процентах');
+    // Слово группы ищется ВНУТРИ блоков условий: в шапке карточки оно стоит
+    // законно — там оно сказано один раз и про проект целиком.
+    const conditions = [...document.querySelectorAll('[data-conditions]')];
+    expect(conditions).toHaveLength(2);
+    for (const block of conditions) {
+      expect(block.textContent).not.toContain('Группа');
+      expect(block.textContent).not.toContain('хороший');
+      expect(block.textContent).not.toContain('средний');
+    }
+  });
+});
+
+/** Пустое место в колонке «Факт» — отдельная тема: это про деньги, а не про вид
+ *  таблицы. Прочерк означал два разных случая, и заказчик спрашивает, какой
+ *  именно (Z25). */
+describe('пустой факт в таблице условий', () => {
+  function cardWith(verdict: unknown) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/charts')) return new Response(JSON.stringify(CHARTS), { status: 200 });
+        if (url.includes('/api/cases')) return new Response(JSON.stringify([]), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            project: PROJECT,
+            verdict,
+            series: [],
+            series_source: 'fixture',
+            source_mismatch: null,
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+  }
+
+  it('пустой факт говорит, не покупали или не отдали', async () => {
+    // Z25: прочерк означал два разных случая, и разница в деньгах — «не
+    // покупали» можно докупить, «нет данных» докупать нечем. Вопрос владельца
+    // на `callmefred.com`: «а где мы фиксируем, покупали мы ссылки или нет?»
+    cardWith({
+      ...VERDICT,
+      reasons: [
+        {
+          subject: 'good.refdomains_pct',
+          fact: null,
+          threshold: 30,
+          passed: false,
+          decisive: false,
+          note: 'рост ссылающихся доменов',
+          fact_missing: 'not_bought',
+        },
+        {
+          subject: 'good.kw_top10_pct',
+          fact: null,
+          threshold: 15,
+          passed: false,
+          decisive: false,
+          note: 'рост числа ключей в топ-10',
+          fact_missing: 'no_data',
+        },
+      ],
+    });
+    renderCard();
+
+    expect(await screen.findByText('не покупали')).toBeInTheDocument();
+    expect(screen.getByText('нет данных')).toBeInTheDocument();
+  });
+
+  it('без ответа журнала экран не выдумывает причину', async () => {
+    // Страж от перегиба: `fact_missing` не пришёл — значит журнал расхода про
+    // домен молчит (данные старше журнала). Прочерк честнее догадки.
+    cardWith({
+      ...VERDICT,
+      reasons: [
+        {
+          subject: 'good.refdomains_pct',
+          fact: null,
+          threshold: 30,
+          passed: false,
+          decisive: false,
+          note: 'рост ссылающихся доменов',
+        },
+      ],
+    });
+    renderCard();
+
+    await screen.findByText('рост ссылающихся доменов');
+    expect(screen.queryByText('не покупали')).not.toBeInTheDocument();
+    expect(screen.queryByText('нет данных')).not.toBeInTheDocument();
   });
 });

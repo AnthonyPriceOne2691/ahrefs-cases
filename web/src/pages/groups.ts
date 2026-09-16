@@ -21,3 +21,23 @@ export const GROUP_LABELS: Record<string, string> = {
 export function groupWord(group: string): string {
   return GROUP_LABELS[group] ?? group;
 }
+
+/**
+ * Заголовок блока условий в карточке.
+ *
+ * Отдельный словарь, а не склейка «Условия » + `groupWord`: русское название
+ * группы в заголовке стоит в родительном падеже («условия хорошего»), и
+ * склейка дала бы «Условия хороший».
+ */
+const CONDITION_TITLES: Record<string, string> = {
+  good: 'Условия хорошего',
+  medium: 'Условия среднего',
+  poor: 'Условия плохого',
+  insufficient_data: 'Условия «данных не хватает»',
+};
+
+/** Заголовок блока условий; для условий вне групп — «Общие условия». */
+export function conditionsTitle(group: string): string {
+  if (!group) return 'Общие условия';
+  return CONDITION_TITLES[group] ?? `Условия «${groupWord(group)}»`;
+}

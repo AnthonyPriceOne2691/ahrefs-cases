@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +45,19 @@ class ReasonRow(BaseModel):
     passed: bool
     decisive: bool
     note: str = ""
+    fact_missing: Literal["not_bought", "no_data"] | None = None
+    """Почему факта нет, если его нет.
+
+    Прочерк в карточке означал два разных случая (Z25): историю метрики **не
+    покупали** — шаг 2 платится только кандидатам в кейсы, — или купили, а
+    Ahrefs ничего не отдал. Заказчик спрашивает «вы не купили или не смогли?»,
+    и разница в деньгах: докупить можно только первое.
+
+    Ответ даёт журнал расхода (`collect.purchases.bought_metrics`), а не
+    догадка по пустому значению. `None` означает «сказать нечего»: либо факт
+    есть, либо условие не про метрику, либо журнал про этот домен молчит —
+    тогда экран оставляет прочерк, а не выдумывает причину.
+    """
 
 
 class ComparisonRow(BaseModel):

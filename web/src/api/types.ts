@@ -135,6 +135,15 @@ export interface ReasonRow {
   passed: boolean;
   decisive: boolean;
   note: string;
+  /**
+   * Почему факта нет, если его нет.
+   *
+   * `not_bought` — историю метрики не покупали (шаг 2 платится только
+   * кандидатам в кейсы), `no_data` — купили, а Ahrefs ничего не отдал.
+   * `null` — сказать нечего: либо факт есть, либо условие не про метрику,
+   * либо журнал расхода про этот домен молчит.
+   */
+  fact_missing?: 'not_bought' | 'no_data' | null;
 }
 
 export interface VerdictView {

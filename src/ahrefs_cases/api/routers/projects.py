@@ -29,13 +29,15 @@ from ahrefs_cases.cases.builder import chart_series
 from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS
 from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
+from ahrefs_cases.classify.rules import SUPPORTING_METRICS
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.series import load_series
 from ahrefs_cases.classify.verdicts import source_mismatch
 from ahrefs_cases.collect.factory import build_provider
+from ahrefs_cases.collect.purchases import bought_metrics
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
-from ahrefs_cases.storage import Group, MetricSource
+from ahrefs_cases.storage import Group, Metric, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -124,7 +126,11 @@ async def project_card(
     series = await load_series(session, project.id, shown)
     return ProjectCard(
         project=_row(project, verdict),
-        verdict=_verdict_view(verdict, ruleset) if verdict is not None else None,
+        verdict=(
+            _verdict_view(verdict, ruleset, await bought_metrics(session, project.domain))
+            if verdict is not None
+            else None
+        ),
         series=[
             SeriesRow(metric=metric.value, points=sorted(points.items()))
             for metric, points in sorted(series.items(), key=lambda item: item[0].value)
@@ -216,7 +222,9 @@ def _row(project: Project, verdict: Verdict | None) -> ProjectRow:
     )
 
 
-def _verdict_view(verdict: Verdict, ruleset: Ruleset) -> VerdictView:
+def _verdict_view(
+    verdict: Verdict, ruleset: Ruleset, bought: frozenset[Metric] | None = None
+) -> VerdictView:
     # `reasons` — JSONB: типизирован как `dict[str, object]`, и разбирать его
     # надо явно. Молчаливое `list(...)` на `object` — ровно то место, где
     # чужая форма притворяется нашей (урок L23).
@@ -227,12 +235,29 @@ def _verdict_view(verdict: Verdict, ruleset: Ruleset) -> VerdictView:
         score=verdict.score,
         ruleset_version=ruleset.version,
         decided_at=verdict.decided_at,
-        reasons=[ReasonRow(**check) for check in checks],
+        reasons=[_reason(check, bought) for check in checks],
         source=verdict.source.value if verdict.source is not None else None,
         point_a=_point(verdict.point_a),
         point_b=_point(verdict.point_b),
         comparison=_comparison(verdict),
     )
+
+
+def _reason(check: dict[str, Any], bought: frozenset[Metric] | None) -> ReasonRow:
+    """Условие вердикта, а к пустому факту — причина пустоты (Z25).
+
+    Причину знает журнал расхода, а не форма записи: прочерк одинаков и когда
+    историю метрики не покупали (шаг 2 платится только кандидатам в кейсы), и
+    когда купили, а Ahrefs ничего не отдал. Журнал молчит про домен — молчим и
+    мы: догадка здесь дороже прочерка.
+    """
+    row = ReasonRow(**check)
+    if row.fact is not None or bought is None:
+        return row
+    metric = SUPPORTING_METRICS.get(row.subject.rsplit(".", 1)[-1])
+    if metric is None:
+        return row
+    return row.model_copy(update={"fact_missing": "no_data" if metric in bought else "not_bought"})
 
 
 def _comparison(verdict: Verdict) -> list[ComparisonRow]:

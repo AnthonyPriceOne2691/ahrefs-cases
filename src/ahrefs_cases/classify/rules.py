@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from types import MappingProxyType
 from typing import Any
 
 from ahrefs_cases.classify.deltas import Deltas
@@ -21,6 +22,24 @@ from ahrefs_cases.classify.thresholds import GroupRule, Thresholds, Windows
 from ahrefs_cases.storage._enums import Group, Metric
 
 _TRAFFIC = Metric.ORG_TRAFFIC
+
+REFDOMAINS_CHECK = "refdomains_pct"
+TOP10_CHECK = "kw_top10_pct"
+
+SUPPORTING_METRICS = MappingProxyType(
+    {REFDOMAINS_CHECK: Metric.REFDOMAINS, TOP10_CHECK: Metric.KW_TOP3}
+)
+"""Условие подтверждающей метрики → метрика, историю которой для него покупают.
+
+Нужно тем, кто объясняет ПУСТОЕ условие: прочерк в факте означает либо
+«историю не покупали» (шаг 2 платится только кандидатам), либо «купили, а
+Ahrefs не отдал». Различает их журнал расхода (`collect.purchases`), но
+связать условие с метрикой он может только отсюда: в записанном вердикте от
+метрики остаётся имя правила.
+
+`kw_top10` собирается из двух корзин одним запросом `keywords-history`, поэтому
+достаточно спросить про `KW_TOP3`: куплены они всегда вместе.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,7 +353,7 @@ def _supporting(deltas: Deltas, rule: GroupRule, *, name: str) -> list[Reason]:
     top10 = deltas.top10()
     checks = [
         Reason(
-            subject=f"{name}.refdomains_pct",
+            subject=f"{name}.{REFDOMAINS_CHECK}",
             fact=refdomains.pct if refdomains else None,
             threshold=rule.supporting.refdomains_growth_pct_min,
             passed=bool(
@@ -346,7 +365,7 @@ def _supporting(deltas: Deltas, rule: GroupRule, *, name: str) -> list[Reason]:
             decisive=False,
         ),
         Reason(
-            subject=f"{name}.kw_top10_pct",
+            subject=f"{name}.{TOP10_CHECK}",
             fact=top10.pct if top10 else None,
             threshold=rule.supporting.kw_top10_growth_pct_min,
             passed=bool(
