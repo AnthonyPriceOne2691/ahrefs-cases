@@ -13,8 +13,9 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date
-from itertools import pairwise
+from itertools import combinations, pairwise
 from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
@@ -350,8 +351,197 @@ def test_every_month_gets_a_tick_even_without_a_label() -> None:
     подписями не видно вовсе — «9 и 11-й как будто и не видны» (15.09.2026).
     """
     months = _months(12)
-    svg = curves_svg([_series("org_traffic", [float(i + 1) * 100 for i in range(12)])], period_start=months[0])
+    svg = curves_svg(
+        [_series("org_traffic", [float(i + 1) * 100 for i in range(12)])], period_start=months[0]
+    )
 
     base = 210.0 - 30.0  # _HEIGHT - _BOTTOM
     ticks = re.findall(rf'<line[^>]*y1="{base:.1f}"[^>]*y2="(?:18[0-9]|1[89][0-9])[.\d]*"', svg)
     assert len(ticks) >= 12, f"рисок меньше, чем месяцев: {len(ticks)}"
+
+
+# --- Z28: подписи не наслаиваются друг на друга -----------------------------
+#
+# Мерка здесь СВОЯ, а не взятая у рисовальщика: оракул, считающий ширину той же
+# функцией, что и код, зеленеет вместе с ошибкой в ней. Знак Arial ужат до
+# 0,52 кегля (у цифры 0,556, у пробела 0,278) — оценка снизу, чтобы тест ловил
+# настоящие столкновения, а не законную тесноту.
+
+
+@dataclass(frozen=True)
+class _Box:
+    """Место, которое подпись занимает на холсте."""
+
+    left: float
+    right: float
+    top: float
+    bottom: float
+    body: str
+    size: float
+
+    def hits(self, other: _Box) -> bool:
+        return (
+            self.left < other.right
+            and other.left < self.right
+            and self.top < other.bottom
+            and other.top < self.bottom
+        )
+
+
+def _boxes(svg: str) -> list[_Box]:
+    """Прямоугольники всех подписей рисунка."""
+    boxes = []
+    for found in re.finditer(r"<text ([^>]*)>([^<]*)</text>", svg):
+        attributes, body = found.group(1), found.group(2)
+        x = float(re.search(r'x="(-?[\d.]+)"', attributes).group(1))
+        y = float(re.search(r'y="(-?[\d.]+)"', attributes).group(1))
+        size = float(re.search(r'font-size="([\d.]+)"', attributes).group(1))
+        anchor = re.search(r'text-anchor="(\w+)"', attributes)
+        kind = anchor.group(1) if anchor else "start"
+        width = len(body) * 0.52 * size
+        left = x - width if kind == "end" else x - width / 2 if kind == "middle" else x
+        boxes.append(_Box(left, left + width, y - size * 0.72, y + size * 0.05, body, size))
+    return boxes
+
+
+def _collisions(svg: str) -> list[tuple[str, str]]:
+    boxes = _boxes(svg)
+    return [
+        (first.body, second.body) for first, second in combinations(boxes, 2) if first.hits(second)
+    ]
+
+
+def _point_centres(svg: str) -> list[float]:
+    """Центры кружков на кривой: точки, к которым подписи обязаны остаться близко."""
+    return [
+        float(found.group(1))
+        for found in re.finditer(r'<circle cx="[\d.]+" cy="([\d.]+)" r="(?:2\.8|3\.4)"', svg)
+    ]
+
+
+def test_value_labels_of_two_curves_do_not_overlap() -> None:
+    """Близкие величины двух кривых не садятся друг на друга.
+
+    Показано владельцем 15.09.2026 на готовых кейсах (Z28): на графике позиций
+    две кривые, обе подписи старта прижаты влево к одному `x`, и при близких
+    значениях тексты сливались в кашу — «41 152» поверх «39 880». То же справа
+    у конечных величин.
+    """
+    months = _months(8)
+    top10 = _series(
+        KW_TOP10, [41_152.0, 41_600, 42_000, 42_400, 42_900, 43_200, 43_400, 43_600], months
+    )
+    top3 = _series(
+        "kw_top3", [39_880.0, 40_100, 40_500, 40_900, 41_400, 41_700, 41_900, 42_100], months
+    )
+
+    svg = curves_svg([top10, top3], period_start=months[0])
+
+    assert not _collisions(svg), f"подписи наслаиваются: {_collisions(svg)}"
+
+
+def test_value_label_does_not_land_on_the_axis_label() -> None:
+    """Подпись старта и деление шкалы делят левое поле — и расходятся.
+
+    Второй механизм Z28: величина в точке старта уходит влево (справа от точки
+    идёт кривая), а там же стоят подписи шкалы. Когда точка старта оказывается
+    на высоте линии сетки, два числа встают одно на другое.
+    """
+    months = _months(6)
+    # Старт почти на половине шкалы: деление шкалы встаёт на ту же высоту, но
+    # числа разные — наложение видно как каша, а не как одна подпись.
+    series = _series("refdomains", [42_300.0, 43_500, 44_000, 60_000, 75_000, 86_000], months)
+
+    svg = curves_svg([series], period_start=months[0])
+
+    assert not _collisions(svg), f"подписи наслаиваются: {_collisions(svg)}"
+
+
+def test_labels_stay_next_to_their_points_when_nobody_is_in_the_way() -> None:
+    """Раскладка не двигает то, что и так стоит свободно.
+
+    Страж от перегиба: разводить подписи, которым никто не мешает, значит
+    отрывать число от его точки — рисунок соврал бы про то, где измерено.
+    """
+    months = _months(6)
+    svg = curves_svg(
+        [_series("org_traffic", [10_000.0, 20_000, 30_000, 45_000, 60_000, 90_000], months)],
+        period_start=months[0],
+    )
+
+    centres = _point_centres(svg)
+    # Деления шкалы носят те же числа, но кеглем 8: подписи величин крупнее.
+    values = [box for box in _boxes(svg) if box.body in {"10 000", "90 000"} and box.size >= 9]
+    assert len(values) == 2, "подписаны обе стороны кривой"
+    for box in values:
+        baseline = box.bottom - box.size * 0.05
+        assert any(abs(baseline - 3.5 - centre) < 0.2 for centre in centres), (
+            f"подпись {box.body!r} уехала от своей точки без причины"
+        )
+
+
+def test_spread_labels_stay_close_to_their_points() -> None:
+    """Разведённая подпись остаётся у своей точки, а не уезжает на середину холста.
+
+    Двенадцать единиц — это строка с просветом плюс обход деления шкалы, если
+    оно попалось по дороге: больше значит, что подпись ищет себе место уже не
+    рядом с точкой, и связь числа с кривой теряется.
+    """
+    months = _months(8)
+    top10 = _series(
+        KW_TOP10, [41_152.0, 41_600, 42_000, 42_400, 42_900, 43_200, 43_400, 43_600], months
+    )
+    top3 = _series(
+        "kw_top3", [39_880.0, 40_100, 40_500, 40_900, 41_400, 41_700, 41_900, 42_100], months
+    )
+
+    svg = curves_svg([top10, top3], period_start=months[0])
+
+    centres = _point_centres(svg)
+    for box in _boxes(svg):
+        if " " not in box.body or box.size < 9:
+            continue  # деления шкалы кеглем 8 и подписи месяцев не двигаются
+        baseline = box.bottom - box.size * 0.05
+        assert min(abs(baseline - 3.5 - centre) for centre in centres) <= 12.0, (
+            f"подпись {box.body!r} оторвана от точки больше чем на 12 единиц"
+        )
+
+
+def test_labels_never_leave_the_canvas() -> None:
+    """Разведение не имеет права вытолкнуть подпись за рамку рисунка."""
+    months = _months(4)
+    # Обе кривые упираются в потолок шкалы: разводить некуда, кроме как вниз.
+    svg = curves_svg(
+        [
+            _series(KW_TOP10, [99_000.0, 99_200, 99_400, 99_600], months),
+            _series("kw_top3", [98_800.0, 98_900, 99_000, 99_100], months),
+        ],
+        period_start=months[0],
+    )
+
+    for box in _boxes(svg):
+        assert box.top >= 0.0 and box.bottom <= 210.0, f"подпись {box.body!r} вышла за холст"
+
+
+def test_labels_keep_the_order_of_their_values() -> None:
+    """Выше стоит подпись большей величины — даже когда обеим тесно.
+
+    У `ebsco.com` обе кривые стартуют у самого дна шкалы: места под делением
+    «0» не нашлось ни одной подписи, обе ушли вверх, и меньшая села выше
+    большей. Рисунок начал говорить неправду о том, какая кривая где
+    начинается, хотя наложения уже не было.
+    """
+    months = _months(6)
+    svg = curves_svg(
+        [
+            _series(KW_TOP10, [8_286.0, 60_000, 180_000, 300_000, 420_000, 440_322], months),
+            _series("kw_top3", [2_383.0, 20_000, 60_000, 90_000, 100_000, 101_470], months),
+        ],
+        period_start=months[0],
+    )
+
+    # Разряды разделены неразрывным пробелом — в разметке это `\xa0`.
+    bigger, smaller = "8\u00a0286", "2\u00a0383"
+    starts = {box.body: box.top for box in _boxes(svg) if box.body in {bigger, smaller}}
+    assert len(starts) == 2, "подписаны обе точки старта"
+    assert starts[bigger] < starts[smaller], "подпись большей величины обязана стоять выше"

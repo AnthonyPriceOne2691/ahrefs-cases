@@ -28,8 +28,11 @@ from datetime import date
 
 from ahrefs_cases.cases.model import KW_TOTAL, CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10
+from ahrefs_cases.export.axis import label_step, month_labels, month_ticks
 from ahrefs_cases.export.grouping import Grouping, regroup, regroup_window
 from ahrefs_cases.export.grouping import period_start as grouping_start
+from ahrefs_cases.export.labels import DIGIT_WIDTH, INK, Mark, spread
+from ahrefs_cases.export.labels import text as _text
 from ahrefs_cases.storage._enums import Metric
 
 SUBJECT_COLORS: Mapping[str, str] = {
@@ -45,8 +48,9 @@ SUBJECT_COLORS: Mapping[str, str] = {
 кривой она одного цвета. Один словарь на шаблон и на рисунок — второй экземпляр
 разошёлся бы с первым при первой правке."""
 
-FONT = "Arial, Helvetica, sans-serif"
-INK, MUTED, HAIRLINE, SURFACE = "#0b0b0b", "#898781", "#e1e0d9", "#fcfcfb"
+MUTED, HAIRLINE, SURFACE = "#898781", "#e1e0d9", "#fcfcfb"
+"""Чернила (`INK`) и шрифт (`FONT`) живут в `export.labels`: подпись и её
+раскладка — одно хозяйство."""
 _WIDTH, _HEIGHT = 420.0, 210.0
 """Поле слева шире правого: там живут и подписи шкалы, и величина в точке
 старта работ. Считали 44 — семизначное «3 596 464» в точке старта не помещалось
@@ -57,15 +61,10 @@ _LEFT, _RIGHT, _TOP, _BOTTOM = 54.0, 46.0, 22.0, 30.0
 _HEADROOM = 1.12
 """Запас над максимумом, чтобы метка последнего значения не упиралась в рамку."""
 
-_DIGIT_WIDTH = 5.8
-"""Ширина знака в Arial 10px, с запасом. Нужна, чтобы **посчитать**, влезает ли
-подпись последнего значения справа от точки.
-
-Найдено глазами на готовом PDF 12.09.2026: у `ahrefs.com` последнее значение —
-семизначное, и подпись «3 596 464» уехала за границу `viewBox`, превратившись в
-«3 596 46…». В разметке SVG она не обрезана — режет её растеризация, поэтому ни
-один тест на строку такого не увидит (тот же класс, что урок L84, где срезалась
-легенда)."""
+_FIELD = (_TOP, _HEIGHT - _BOTTOM + 5)
+"""Полоса, в которой подписи величин имеют право стоять: ниже идут подписи
+месяцев, выше — кромка холста. Раскладка берёт её параметром — границы знает
+рисунок, а не она."""
 
 
 def curves_svg(
@@ -95,11 +94,25 @@ def curves_svg(
     ]
     for index, item in enumerate(drawable):
         parts.append(_curve(item, months, top, filled=index == 0))
-    parts.append(_start_mark(months, period_start))
-    parts.extend(_start_label(item, months, top, period_start) for item in drawable)
-    parts.extend(_end_label(item, months, top) for item in drawable)
-    parts.append(_month_ticks(months, _label_step(len(months))))
-    parts.append(_month_labels(months))
+    start_mark, start_hint = _start_mark(months, period_start)
+    parts.append(start_mark)
+    # Подписи величин собираются вместе и размещаются одной раскладкой: порознь
+    # они садились друг на друга и на деления шкалы (Z28).
+    marks: list[Mark] = []
+    for item in drawable:
+        for point, mark in (
+            _start_label(item, months, top, period_start),
+            _end_label(item, months, top),
+        ):
+            parts.append(point)
+            if mark is not None:
+                marks.append(mark)
+    obstacles = [*_axis_marks(top), *([start_hint] if start_hint else [])]
+    parts.append(spread(marks, obstacles, field=_FIELD))
+    xs = [_x(month, months) for month in months]
+    room = _WIDTH - _LEFT - _RIGHT
+    parts.append(month_ticks(xs, label_step(len(months), room), base=_HEIGHT - _BOTTOM))
+    parts.append(month_labels(months, xs, baseline=_HEIGHT - _BOTTOM + 13))
     if len(drawable) > 1:
         parts.append(_legend(drawable))
 
@@ -122,24 +135,33 @@ def _y(value: float, top: float) -> float:
     return _HEIGHT - _BOTTOM - (value / top) * (_HEIGHT - _BOTTOM - _TOP)
 
 
-def _text(
-    x: float,
-    y: float,
-    body: str,
-    *,
-    size: float,
-    fill: str,
-    anchor: str = "start",
-    weight: str = "400",
-) -> str:
-    return (
-        f'<text x="{x:.1f}" y="{y:.1f}" font-family="{FONT}" font-size="{size}" '
-        f'font-weight="{weight}" fill="{fill}" text-anchor="{anchor}">{body}</text>'
-    )
-
-
 def _number(value: float) -> str:
     return f"{round(value):,}".replace(",", " ")
+
+
+def _axis_rows(top: float) -> list[tuple[float, str]]:
+    """Деления шкалы: базовая линия подписи и что на ней написано.
+
+    Один источник и для сетки, и для раскладки: второй экземпляр разошёлся бы с
+    первым, и раскладка обходила бы подписи там, где их нет.
+    """
+    axis_max = _axis_max(top / _HEADROOM)
+    return [
+        (_y(axis_max * fraction, top), _number(axis_max * fraction)) for fraction in (0.0, 0.5, 1.0)
+    ]
+
+
+_AXIS_DROP = 3.0
+"""На сколько базовая линия подписи шкалы ниже самой линии сетки: цифры стоят
+серединой на линии, а не висят над ней."""
+
+
+def _axis_marks(top: float) -> list[Mark]:
+    """Деления шкалы как препятствие для раскладки: место занято, двигать нельзя."""
+    return [
+        Mark(_LEFT - 7, y + _AXIS_DROP, body, size=8, anchor="end", fill=MUTED, weight="400")
+        for y, body in _axis_rows(top)
+    ]
 
 
 def _gradient(subject: str) -> str:
@@ -189,17 +211,13 @@ def _paper() -> str:
 
 
 def _grid(top: float) -> str:
-    axis_max = _axis_max(top / _HEADROOM)
     lines = []
-    for fraction in (0.0, 0.5, 1.0):
-        y = _y(axis_max * fraction, top)
+    for (y, _), mark in zip(_axis_rows(top), _axis_marks(top), strict=True):
         lines.append(
             f'<line x1="{_LEFT}" y1="{y:.1f}" x2="{_WIDTH - _RIGHT}" y2="{y:.1f}" '
             f'stroke="{HAIRLINE}" stroke-width="0.7"/>'
         )
-        lines.append(
-            _text(_LEFT - 7, y + 3, _number(axis_max * fraction), size=8, fill=MUTED, anchor="end")
-        )
+        lines.append(mark.draw(mark.y))
     return "".join(lines)
 
 
@@ -267,21 +285,29 @@ def _curve(item: CaseSeries, months: Sequence[date], top: float, *, filled: bool
     return "".join(parts)
 
 
-def _start_mark(months: Sequence[date], period_start: date) -> str:
+def _start_mark(months: Sequence[date], period_start: date) -> tuple[str, Mark | None]:
+    """Пунктир старта работ и его подпись.
+
+    Подпись возвращается наружу ещё и как препятствие: она стоит у верхней
+    кромки, и высокая точка старта целилась бы ровно в неё.
+    """
     after = [month for month in months if month >= period_start]
     if not after:
-        return ""
+        return "", None
     x = _x(after[0], months)
+    mark = Mark(x + 7, _TOP + 5, "старт работ", size=8, anchor="start", fill="#1c5cab")
     return (
         f'<line x1="{x:.1f}" y1="{_TOP}" x2="{x:.1f}" y2="{_HEIGHT - _BOTTOM:.1f}" '
         f'stroke="#1c5cab" stroke-width="1" stroke-dasharray="3 2.5"/>'
         f'<circle cx="{x:.1f}" cy="{_TOP + 2}" r="6" fill="#1c5cab" opacity="0.12"/>'
-        f'<circle cx="{x:.1f}" cy="{_TOP + 2}" r="2.6" fill="#1c5cab"/>'
-        + _text(x + 7, _TOP + 5, "старт работ", size=8, fill="#1c5cab", weight="700")
+        f'<circle cx="{x:.1f}" cy="{_TOP + 2}" r="2.6" fill="#1c5cab"/>' + mark.draw(mark.y),
+        mark,
     )
 
 
-def _start_label(item: CaseSeries, months: Sequence[date], top: float, period_start: date) -> str:
+def _start_label(
+    item: CaseSeries, months: Sequence[date], top: float, period_start: date
+) -> tuple[str, Mark | None]:
     """Точка старта работ на кривой и её значение.
 
     Конец кривой подписан числом с самого начала, а начало — нет, и величину «с
@@ -294,25 +320,25 @@ def _start_label(item: CaseSeries, months: Sequence[date], top: float, period_st
     """
     after = [point for point in item.points if point[0] >= period_start]
     if not after:
-        return ""
+        return "", None
     month, value = after[0]
     x, y = _x(month, months), _y(value, top)
     color = SUBJECT_COLORS[item.subject]
-    text = _number(value)
+    body = _number(value)
     # ВСЕГДА слева, без запасного варианта справа: справа от точки идёт сама
     # кривая, и число легло бы на неё — владелец показал это на «36 980»
     # (15.09.2026). Если подпись упирается в край холста, она прижимается к
     # нему, а не переезжает внутрь рисунка.
-    anchor_x = max(x - 9, len(text) * _DIGIT_WIDTH + 1)
-    label = _text(anchor_x, y + 3.5, text, size=9, fill=INK, weight="700", anchor="end")
-    return (
+    anchor_x = max(x - 9, len(body) * DIGIT_WIDTH + 1)
+    point = (
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="5.5" fill="{color}" opacity="0.18"/>'
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.8" fill="#ffffff" stroke="{color}" '
-        'stroke-width="1.8"/>' + label
+        'stroke-width="1.8"/>'
     )
+    return point, Mark(anchor_x, y + 3.5, body, size=9, anchor="end")
 
 
-def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> str:
+def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> tuple[str, Mark | None]:
     """Последняя точка кривой и её значение.
 
     Сторона подписи выбирается по месту: справа, если она туда влезает, иначе
@@ -322,91 +348,19 @@ def _end_label(item: CaseSeries, months: Sequence[date], top: float) -> str:
     month, value = item.points[-1]
     x, y = _x(month, months), _y(value, top)
     color = SUBJECT_COLORS[item.subject]
-    text = _number(value)
-    fits_right = x + 9 + len(text) * _DIGIT_WIDTH <= _WIDTH - 2
-    label = (
-        _text(x + 9, y + 3.5, text, size=10, fill=INK, weight="700")
+    body = _number(value)
+    fits_right = x + 9 + len(body) * DIGIT_WIDTH <= _WIDTH - 2
+    mark = (
+        Mark(x + 9, y + 3.5, body, size=10, anchor="start")
         if fits_right
-        else _text(x - 9, y + 3.5, text, size=10, fill=INK, weight="700", anchor="end")
+        else Mark(x - 9, y + 3.5, body, size=10, anchor="end")
     )
-    return (
+    point = (
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="{color}" opacity="0.18"/>'
         f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.4" fill="#ffffff" stroke="{color}" '
-        'stroke-width="2"/>' + label
+        'stroke-width="2"/>'
     )
-
-
-_LABEL_WIDTH = 26.0
-"""Место под подпись «01.24» вместе с зазором, в единицах холста."""
-
-_NICE_STEPS = (1, 2, 3, 6, 12)
-"""Шаги подписей, которые человек узнаёт: месяц, два, квартал, полгода, год."""
-
-
-def _label_step(count: int) -> int:
-    """Через сколько точек подписывать ось.
-
-    Прежде шаг считался как «примерно пять подписей на ось»
-    (`round(len(months) / 4)`), и на восемнадцати месяцах выходил каждый
-    четвёртый: 01.24, 05.24, 09.24… Такой ритм не читается ни как месяц, ни как
-    квартал — владелец так и сказал: «стоит месяц, а снизу не месяц» (15.09.2026).
-
-    Теперь шаг берётся из лестницы узнаваемых (1, 2, 3, 6, 12) — наименьший, чей
-    ряд подписей влезает по ширине. На восемнадцати месяцах это каждый второй,
-    на трёх годах — полугодие.
-    """
-    room = max(1, int((_WIDTH - _LEFT - _RIGHT) // _LABEL_WIDTH))
-    for step in _NICE_STEPS:
-        if -(-count // step) <= room:
-            return step
-    return max(1, -(-count // room))
-
-
-def _month_ticks(months: Sequence[date], step: int) -> str:
-    """Короткая риска под КАЖДЫМ месяцем, подписанные — длиннее.
-
-    Подписей на оси меньше, чем месяцев: они не влезают. Без рисок месяцы между
-    подписями не видно вовсе — владелец так и сказал: «81 месяц, потом 10, потом
-    12-й, а 9 и 11-й как будто и не видны» (15.09.2026). Риска возвращает им
-    место на оси, не занимая ширины подписи.
-    """
-    base = _HEIGHT - _BOTTOM
-    return "".join(
-        f'<line x1="{_x(month, months):.1f}" y1="{base:.1f}" '
-        f'x2="{_x(month, months):.1f}" y2="{base + (4.5 if index % step == 0 else 2.5):.1f}" '
-        f'stroke="{MUTED}" stroke-width="{0.9 if index % step == 0 else 0.6}" opacity="0.7"/>'
-        for index, month in enumerate(months)
-    )
-
-
-def _month_labels(months: Sequence[date]) -> str:
-    """Подписи оси. Последний месяц подписан ВСЕГДА.
-
-    Без него ось обрывалась молча: конец кривой подписан значением (83 184), а
-    каким месяцем — нет, и период приходилось достраивать в уме. Если ближайшая
-    подпись слева мешает последней, она уступает: две налезающие подписи хуже
-    одной.
-    """
-    if not months:
-        return ""
-    step = _label_step(len(months))
-    shown = [month for index, month in enumerate(months) if index % step == 0]
-    last = months[-1]
-    if shown and shown[-1] != last:
-        if _x(last, months) - _x(shown[-1], months) < _LABEL_WIDTH:
-            shown.pop()
-        shown.append(last)
-    return "".join(
-        _text(
-            _x(month, months),
-            _HEIGHT - _BOTTOM + 13,
-            f"{month.month:02d}.{month.year % 100:02d}",
-            size=7.5,
-            fill=MUTED,
-            anchor="middle",
-        )
-        for month in shown
-    )
+    return point, mark
 
 
 def _legend(series: Sequence[CaseSeries]) -> str:
