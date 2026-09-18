@@ -12,6 +12,7 @@ implementation:
   - src/ahrefs_cases/api/main.py
   - src/ahrefs_cases/workers/main.py
   - src/ahrefs_cases/config/__init__.py
+  - src/ahrefs_cases/logs/setup.py
   - pyproject.toml
   - src/pyproject.toml
 ---
@@ -31,7 +32,7 @@ implementation:
 
 Слои идут сверху вниз, и направление зависимостей проверяется import-linter:
 `api`/`workers`/`cli` → `export` → `cases` → `classify` → `collect`/`intake` →
-`storage` → `config`.
+`storage` → `logs` → `config`.
 
 | Каталог | Что в нём | Граница |
 |---|---|---|
@@ -44,6 +45,7 @@ implementation:
 | `src/ahrefs_cases/export/` | HTML-шаблон, графики, PDF и ZIP | **выше** `cases`: рендер знает структуру, кейс о рендере — нет |
 | `templates/` | `case.html.j2` — печатный лист и веб-карточка одновременно | коммитится: тест на него стоять обязан (L21) |
 | `src/ahrefs_cases/storage/` | модели и сессия | ничего не решает |
+| `src/ahrefs_cases/logs/` | настройка логирования: форматы и `run_id` прогона | поля из `extra` обязаны дожить до вывода — гейт `unstructured-log` судит только место вызова |
 | `src/ahrefs_cases/config/` | типизированные настройки | **единственное место `os.getenv`** |
 | `delivery/` | контур поставки: активная, архив, уроки | вне предохранителей размера |
 | `knowledge/` | этот канон | вне предохранителей размера |

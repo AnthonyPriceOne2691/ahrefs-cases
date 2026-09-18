@@ -26,6 +26,7 @@ source_modules =
     ahrefs_cases.cases
     ahrefs_cases.export
     ahrefs_cases.storage
+    ahrefs_cases.logs
     ahrefs_cases.config
 forbidden_modules =
     ahrefs_cases.api
@@ -50,4 +51,5 @@ layers =
     ahrefs_cases.classify
     ahrefs_cases.collect : ahrefs_cases.intake
     ahrefs_cases.storage
+    ahrefs_cases.logs
     ahrefs_cases.config

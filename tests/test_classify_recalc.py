@@ -228,10 +228,10 @@ async def test_version_asking_unbought_months_says_so_in_the_verdict(
     assert "2024-10" in report.skipped[0].reason, "месяцы названы, а не сосчитаны"
     assert report.by_group.get(Group.INSUFFICIENT_DATA) == 1
     written = (
-        await db_session.execute(
-            select(Verdict).where(Verdict.ruleset_id == ruleset.id)
-        )
-    ).scalars().all()
+        (await db_session.execute(select(Verdict).where(Verdict.ruleset_id == ruleset.id)))
+        .scalars()
+        .all()
+    )
     assert len(written) == 1, "вердикт этой версии есть у каждого проекта"
     assert written[0].group is Group.INSUFFICIENT_DATA
     assert "не куплены месяцы" in json.dumps(written[0].reasons, ensure_ascii=False)

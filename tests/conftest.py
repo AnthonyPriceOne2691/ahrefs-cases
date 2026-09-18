@@ -263,7 +263,7 @@ def _stand_verdicts() -> dict[tuple[int, int], str] | None:
                     _text("select project_id, ruleset_id, source from verdicts")
                 )
                 return {(row[0], row[1]): str(row[2]) for row in rows}
-        except Exception:  # noqa: BLE001 — сторож не имеет права ронять прогон
+        except Exception:  # сторож не имеет права ронять прогон
             import logging as _logging
 
             _logging.getLogger(__name__).warning("сторож вердиктов: таблица недоступна")

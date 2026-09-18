@@ -54,10 +54,10 @@ repos:
       # Судит payload его владелец — сьют канона (`test_payload_passes_own_gates`).
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-        files: ^src/
+        files: ^(src|tests)/
         exclude: ^(docs/canon/|scripts/(lint/|merge_guard\.sh|delivery_|okf_))
       - id: ruff-format
-        files: ^src/
+        files: ^(src|tests)/
         exclude: ^(docs/canon/|scripts/(lint/|merge_guard\.sh|delivery_|okf_))
 
   # -------------------------------------------------------------------------

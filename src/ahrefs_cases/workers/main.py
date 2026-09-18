@@ -13,6 +13,7 @@ from redis import Redis
 from rq import Queue, Worker
 
 from ahrefs_cases import config
+from ahrefs_cases.logs import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ def build_worker() -> Worker:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    setup_logging()
     logger.info(
         "worker: очередь=%s, провайдер Ahrefs=%s, прогонов одновременно=%s",
         config.storage.queue_name,

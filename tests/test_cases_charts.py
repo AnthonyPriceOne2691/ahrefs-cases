@@ -24,7 +24,7 @@ from ahrefs_cases.cases.builder import VerdictView, build_case
 from ahrefs_cases.cases.model import CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10, Point
 from ahrefs_cases.export import pdf_renderer
-from ahrefs_cases.export.charts import _LEFT, SUBJECT_COLORS, curves_svg
+from ahrefs_cases.export.charts import SUBJECT_COLORS, curves_svg
 from ahrefs_cases.export.html_renderer import render_html
 from ahrefs_cases.storage._enums import Group, Metric
 from ahrefs_cases.storage.models.project import Project
