@@ -51,7 +51,9 @@ def _starts_the_suite(command: str) -> bool:
     """
     if "check_diff_coverage.sh" in command:
         return True
-    return any(line.strip().startswith(("pytest", "python -m pytest")) for line in command.splitlines())
+    return any(
+        line.strip().startswith(("pytest", "python -m pytest")) for line in command.splitlines()
+    )
 
 
 def test_suite_runner_job_has_a_database() -> None:
@@ -103,8 +105,7 @@ def test_coverage_gate_shows_why_the_suite_stopped() -> None:
     ]
     assert suite_call, "в гейте покрытия не нашлось вызова сьюта — проверка смотрит не туда"
     assert not any(">/dev/null 2>&1" in line for line in suite_call), (
-        "вывод сьюта уходит в /dev/null: причина обрыва пропадёт ровно там, "
-        "где она нужна (Z19)"
+        "вывод сьюта уходит в /dev/null: причина обрыва пропадёт ровно там, где она нужна (Z19)"
     )
     missing = text.split("if [[ ! -f coverage.json ]]", 1)
     assert len(missing) == 2, "ветка «отчёта нет» в гейте покрытия не найдена"
@@ -185,10 +186,12 @@ def test_a_manifest_without_dependencies_is_not_a_dependency_decision() -> None:
     import sys
 
     sys.path.insert(0, str(_ROOT / "scripts" / "lint"))
-    from dependency_manifests import extractor_for  # noqa: PLC0415
+    from dependency_manifests import extractor_for
 
     extract = extractor_for("src/pyproject.toml")
-    assert extract is not None, "pyproject.toml перестал считаться манифестом — проверка смотрит не туда"
+    assert extract is not None, (
+        "pyproject.toml перестал считаться манифестом — проверка смотрит не туда"
+    )
     assert extract((_ROOT / "src" / "pyproject.toml").read_text(encoding="utf-8")) == set(), (
         "в src/pyproject.toml появились зависимости — тогда его и правда надо объявлять, "
         "а этот файл задуман только под область мутационного гейта"

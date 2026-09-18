@@ -22,6 +22,7 @@ from ahrefs_cases.api.routers import (
     users_router,
 )
 from ahrefs_cases.classify.thresholds import ThresholdsError
+from ahrefs_cases.logs import setup_logging
 from ahrefs_cases.storage import dispose_engine
 
 
@@ -40,6 +41,9 @@ def _assert_config_sane() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # Логи настраиваются здесь, а не в `uvicorn`: его конфиг про `extra`
+    # ничего не знает и выбросил бы поля, которые код старательно кладёт.
+    setup_logging()
     _assert_config_sane()
     yield
     await dispose_engine()

@@ -102,9 +102,7 @@ def test_short_period_is_bought_whole_and_long_one_by_points() -> None:
     даром; восемнадцать — наоборот. Профиль обязан звать то же правило, что
     прогон, иначе он считает другой прогон.
     """
-    short = {name: value for name, value in _TZ_PROFILE.items() if name != "months"} | {
-        "months": 6
-    }
+    short = {name: value for name, value in _TZ_PROFILE.items() if name != "months"} | {"months": 6}
 
     keywords_short = next(
         line

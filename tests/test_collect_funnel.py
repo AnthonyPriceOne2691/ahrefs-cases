@@ -21,10 +21,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.collect.endpoints import DOMAIN_RATING_HISTORY, PAGES_HISTORY, EndpointSpec
-from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.rulesets import seed_thresholds
+from ahrefs_cases.collect.endpoints import DOMAIN_RATING_HISTORY, PAGES_HISTORY, EndpointSpec
+from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.plan import stage2_specs
 from ahrefs_cases.collect.provider import HistoryRequest, HistoryResult
 from ahrefs_cases.collect.runner import collect_all, collect_stage2
@@ -96,7 +96,6 @@ async def test_stage2_asks_only_candidates(db_session: AsyncSession) -> None:
     """
     await _load(db_session, GROWING + FALLING)
     await collect_all(db_session, AhrefsFixture(), now=NOW)
-    ids = await _ids(db_session)
     candidates = await _candidates(db_session)
     provider = CountingFixture()
 
@@ -137,7 +136,6 @@ async def test_project_without_data_is_not_a_candidate(db_session: AsyncSession)
     """C9: платить за дорогие метрики там, где нет дешёвых, — покупать пустой кейс."""
     await _load(db_session, ["empty.example.com"])
     await collect_all(db_session, AhrefsFixture(), now=NOW)
-    ids = await _ids(db_session)
 
     candidates = await _candidates(db_session)
 

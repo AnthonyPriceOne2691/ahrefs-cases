@@ -41,11 +41,7 @@ def test_every_stateful_volume_is_named_in_the_backup() -> None:
     """
     script = _BACKUP.read_text(encoding="utf-8")
 
-    forgotten = {
-        volume
-        for volume in _volumes() - _REPRODUCIBLE
-        if volume not in script
-    }
+    forgotten = {volume for volume in _volumes() - _REPRODUCIBLE if volume not in script}
 
     assert not forgotten, f"тома есть в компоузе, но не в бэкапе: {', '.join(sorted(forgotten))}"
 
@@ -104,7 +100,7 @@ def test_a_failed_dump_cannot_destroy_the_previous_backup() -> None:
 
     assert 'PARTIAL="$TARGET.partial"' in script
     assert 'mv "$PARTIAL" "$TARGET"' in script
-    assert 'trap ' in script
+    assert "trap " in script
 
 
 def test_rotation_does_not_need_bash_four() -> None:
