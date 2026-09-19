@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** the-dash-says-which-case-it-is
-- **stack:** delivery@1.88, cqg@2.32, okf@0.2
+- **stack:** delivery@1.89, cqg@2.33, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
