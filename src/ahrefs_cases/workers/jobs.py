@@ -21,6 +21,7 @@ from sqlalchemy import select
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.collect.runner import collect_projects
+from ahrefs_cases.logs import run_context
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
@@ -82,16 +83,22 @@ async def _pack() -> str:
 
 
 async def _run_guarded(run_id: int, work: object) -> None:
-    """Выполнить работу и закрыть прогон — успехом или причиной падения."""
-    try:
-        summary = await work  # type: ignore[misc]
-        await _finish(run_id, RunStatus.DONE, str(summary), only_if_open=True)
-    except Exception as exc:
-        logger.exception("job_failed", extra={"run_id": run_id})
-        await _finish(run_id, RunStatus.FAILED, failure_reason(exc))
-        raise
-    finally:
-        await dispose_engine()
+    """Выполнить работу и закрыть прогон — успехом или причиной падения.
+
+    Всё внутри помечается идентификатором прогона: задачи идут параллельно,
+    и без метки их строки в логе не разделить. Ручной `extra={"run_id": …}`
+    ниже оставлен намеренно — он не мешает и читается на месте.
+    """
+    with run_context(run_id):
+        try:
+            summary = await work  # type: ignore[misc]
+            await _finish(run_id, RunStatus.DONE, str(summary), only_if_open=True)
+        except Exception as exc:
+            logger.exception("job_failed", extra={"run_id": run_id})
+            await _finish(run_id, RunStatus.FAILED, failure_reason(exc))
+            raise
+        finally:
+            await dispose_engine()
 
 
 async def _finish(run_id: int, status: RunStatus, note: str, *, only_if_open: bool = False) -> None:

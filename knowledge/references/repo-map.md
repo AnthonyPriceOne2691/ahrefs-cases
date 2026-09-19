@@ -22,7 +22,7 @@ implementation:
 | Что | Как запускается |
 |---|---|
 | Основная работа | `python scripts/run_collect.py <команда>`: `intake`, `collect`, `stage2`, `classify`, `recalc`, `preview`, `cases`, `render`, `pack`, `useradd`, `diagnose`, `explain`, `all` |
-| Тесты | `.venv/bin/python -m pytest -q` — нужна дев-база Postgres |
+| Тесты | `.venv/bin/python -m pytest -q` — нужна дев-база Postgres. Медленные проверки поведения под маркером `slow` в обычный прогон не входят: `pytest -m slow` при поднятом стеке (восстановление бэкапа) |
 | Гейты формы | `.venv/bin/python -m pre_commit run --all-files` (27 хуков) |
 | Контур поставки | `python scripts/delivery_check.py [--diff-base REF]` |
 | Канон знаний | `python scripts/okf_validate.py`, `python scripts/okf_sync_gate.py --staged` |
