@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, String, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,7 +37,17 @@ class User(Base, TimestampMixin):
     Учётка, за которой не числится ни одного прогона, удаляется по-настоящему:
     терять нечего, а почта освобождается для повторного заведения."""
 
-    permissions: Mapped[dict[str, bool]] = mapped_column(JSONB, nullable=False, default=dict)
+    permissions: Mapped[dict[str, bool]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        # Умолчание стоит и в базе: миграция обязана была его поставить,
+        # чтобы `nullable=False` пережил существующие строки, и снимать
+        # его незачем — вставка мимо ORM тоже не должна ронять таблицу.
+        # Модель обязана говорить о схеме правду, иначе сверка моделей
+        # с миграциями краснеет на пустом месте и её снимут.
+        server_default=text("'{}'::jsonb"),
+    )
     """Личные права поверх группы: `{"edit_thresholds": true}` даёт право, а
     `false` — отбирает, даже если группа его даёт.
 
