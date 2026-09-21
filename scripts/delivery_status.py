@@ -18,7 +18,8 @@ from delivery_diff import diff_identifiers, diff_stats
 from delivery_risk import risk_review_gaps, risky_classes
 from delivery_runtime import (breaker_value, declared_surfaces,
                               model_surface_gaps, rule_enforcer_gaps,
-                              runtime_proof_gaps, runtime_touched)
+                              runtime_proof_gaps, runtime_touched,
+                              unsigned_irreversible_gaps)
 
 def check_phase_and_class(raw_phase: str, raw_class: str, phase: str,
                           klass: str, allowed: set[str], errors: list[str],
@@ -122,6 +123,13 @@ def check_risky_diff(status: str, args, phase: str, verify,
 
     check_runtime_paths(status, args, phase, verify, errors, warnings)
     check_model_surface(status, args, phase, verify, errors, warnings)
+    # §3.4a. Зовётся БЕЗУСЛОВНО, не внутри соседа: красная черта не зависит
+    # ни от модели, ни от объявленных runtime_paths — проект может не иметь
+    # ни того, ни другого и всё равно дотягиваться до необратимого.
+    for g in unsigned_irreversible_gaps(status):
+        (errors if phase == "handoff" else warnings).append(
+            f"необратимое без человека: {g}"
+        )
 
 
 def check_runtime_paths(status: str, args, phase: str, verify,

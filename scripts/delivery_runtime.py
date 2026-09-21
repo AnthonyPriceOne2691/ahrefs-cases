@@ -11,7 +11,8 @@ import fnmatch
 import re
 from pathlib import Path
 
-from delivery_base import DEFAULT_BREAKERS, ROOT, field, is_placeholder
+from delivery_base import (BREAKER_EXCLUDE, DEFAULT_BREAKERS, ROOT, field,
+                           is_placeholder)
 
 # --- §12.6: путь, который проверяется только исполнением ---------------------
 # Есть класс отказов, невидимый ВСЕМ статическим оракулам и необрабатываемый в
@@ -257,6 +258,136 @@ def rule_enforcer_gaps(status: str, surfaces: set[str], root: Path = ROOT) -> li
     if not (root / path).exists():
         return [f"`rule_enforcers: {path}` — файла нет. Объявленный реестр без файла "
                 "это снятая проверка с видом усиления (§4.6)"]
+    return []
+
+
+# --- §3.4a: красная черта, а не переключатель --------------------------------
+# Все остальные breaker'ы считают накопление: файлы, строки, попытки, минуты.
+# Этот срабатывает на ПЕРЕХОД состояния — проект стал таким, где агент дотягивается
+# до необратимого, а человека в цепочке нет. Это случается один раз и мгновенно.
+#
+# Почему не опция с переключателем. Выключенная по умолчанию опция — это тот же
+# класс, ради которого всё затевалось: механизм есть, подключён, зелёный,
+# потребителя нет; про него просто забудут, и отсутствие подписи будет
+# неотличимо от решения её не ставить. Включённая всегда — мешает там, где не
+# нужна, и её снимут на третьем проекте (§4.3b). Поэтому ни того, ни другого:
+# пока черта не перейдена, механизма как бы не существует.
+
+#: Поверхности, которые видны по СОДЕРЖИМОМУ репозитория. Список по именам, а не
+#: «любой вызов» — тот же выбор и та же цена, что у рецепта §2.7a CQG: recall это
+#: список имён, он расширяется по мере встреч и обязан быть виден в диффе.
+_OUTWARD_MARKERS = ("sendgrid", "mailgun", "postmark", "smtplib", "aiosmtplib",
+                    "boto3.client(\"ses\"", "twilio", "telegram.bot")
+_DEPLOY_MARKERS = ("deploy:prod", "environment:\n      name: production",
+                   "stage: deploy")
+
+
+def _deploy_surface(root: Path) -> set[str]:
+    """Выкатка ищется в конфигах CI — и только там.
+
+    ⚠ Исключение `BREAKER_EXCLUDE` сюда НЕ применяется, хотя конфиги CI в нём
+    есть: джоба деплоя живёт ровно там, куда запрещено смотреть детектору
+    отправки. Общее исключение ослепило бы эту половину полностью.
+    """
+    for rel in (".gitlab-ci.yml", ".github/workflows"):
+        target = root / rel
+        files = sorted(target.rglob("*.yml")) if target.is_dir() else [target]
+        for f in files:
+            if f.is_file() and any(m in f.read_text(encoding="utf-8", errors="ignore")
+                                   for m in _DEPLOY_MARKERS):
+                return {"прод"}
+    return set()
+
+
+def _outward_surface(root: Path) -> set[str]:
+    """Отправка ищется в ПРОДУКТОВОМ коде, механика контура исключена.
+
+    ⚠ Население сужено не вкусом, а первым же прогоном: первая редакция краснела
+    НА САМОЙ СЕБЕ — список имён отправителей лежит строками в этом же файле, и
+    детектор честно находил в нём `sendgrid`. Ложное красное на механике контура
+    это случай, после которого проверку снимают целиком (§4.3b), и он же уже
+    стоил ревизии breaker'ам объёма. Исключение то же самое и по той же причине:
+    механика контура — не blast radius продукта.
+    """
+    for f in root.rglob("*.py"):
+        if f.relative_to(root).as_posix().startswith(BREAKER_EXCLUDE):
+            continue
+        if any(part in {".venv", "node_modules", "__pycache__"} for part in f.parts):
+            continue
+        low = f.read_text(encoding="utf-8", errors="ignore").lower()
+        if any(m in low for m in _OUTWARD_MARKERS):
+            return {"отправка наружу"}
+    return set()
+
+
+def _detected_surfaces(root: Path) -> set[str]:
+    """Что видно, не спрашивая человека. Остальное обязан назвать он сам.
+
+    Две половины разнесены не по длине, а потому что у них РАЗНОЕ население —
+    см. предупреждения в каждой.
+    """
+    return _deploy_surface(root) | _outward_surface(root)
+
+
+def _signature_is_valid(status: str, root: Path) -> bool:
+    """Подпись проверяется ИСПОЛНЕНИЕМ `ssh-keygen -Y verify`, а не наличием файла.
+
+    Файл рядом — это снова «объявленный реестр без файла» наоборот: подпись,
+    которую никто не проверил, неотличима от подделанной. Ключ обязан жить там,
+    куда агент не дотягивается (анклав, аппаратный токен): подпись из файла в
+    `~/.ssh` — это та же строка текста, только длиннее.
+    """
+    sig = root / "delivery" / "active" / "irreversible.sig"
+    signers = root / ".github" / "allowed_signers"
+    if not (sig.is_file() and signers.is_file()):
+        return False
+    import subprocess
+    declared = field(status, "irreversible_surfaces")
+    who = signers.read_text(encoding="utf-8").split()[0] if signers.read_text().split() else ""
+    proc = subprocess.run(
+        ["ssh-keygen", "-Y", "verify", "-f", str(signers), "-I", who,
+         "-n", "irreversible", "-s", str(sig)],
+        input=declared.encode("utf-8"), capture_output=True, check=False,
+    )
+    return proc.returncode == 0
+
+
+def unsigned_irreversible_gaps(status: str, root: Path = ROOT) -> list[str]:
+    """§3.4a: необратимое, до которого агент дотягивается без человека.
+
+    Три состояния, и они обязаны различаться. Поверхность видна детектором, но
+    не объявлена — молчание, и оно дороже ответа. Объявлена и не подписана —
+    остановка. Объявлена и подписана — тихо.
+    """
+    declared, answered = declared_surfaces(status, "irreversible_surfaces")
+    detected = _detected_surfaces(root)
+
+    silent = detected - declared
+    if silent and not answered:
+        return [f"поле `irreversible_surfaces:` в STATUS не отвечает про "
+                f"{', '.join(sorted(silent))} (§3.4a) — поверхность видно по коду, "
+                "а в объявлении её нет. «Не думали» и «подумали и нет» обязаны "
+                "различаться в тексте, а не в тишине"]
+    if silent:
+        return [f"`irreversible_surfaces:` не называет {', '.join(sorted(silent))} "
+                "(§3.4a) — детектор видит это в коде. Либо назови, либо объясни "
+                "в той же строке, почему это не необратимо"]
+    if not declared:
+        return []
+
+    low = status.lower()
+    if "max_unsigned_irreversible" in low:
+        return ["порог `max_unsigned_irreversible` поднят строкой (§3.4a) — "
+                "единственный breaker, у которого этого нельзя: он охраняет ровно "
+                "класс «письменное разрешение подделывается агентом». Здесь waiver "
+                "принимается только подписью"]
+    if not _signature_is_valid(status, root):
+        return [f"объявлено необратимое без человека в цепочке "
+                f"({', '.join(sorted(declared))}), подписи нет или она не сходится "
+                "(§3.4a). Это остановка, а не повод просить waiver: сначала "
+                "`escalation.md` с двумя вариантами и ценой — поставить человека "
+                "в цепочку или подписать. Подпись: `ssh-keygen -Y sign -f <ключ> "
+                "-n irreversible` над строкой объявления"]
     return []
 
 

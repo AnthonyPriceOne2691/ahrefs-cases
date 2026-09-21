@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** the-dash-says-which-case-it-is
-- **stack:** delivery@1.89, cqg@2.33, okf@0.2
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
@@ -21,6 +21,7 @@
 - **blockers:** none
 - **new_dependency:** no
 - **runtime_paths:** db reason=карточка проекта дополнительно читает журнал расхода (`units_ledger`) одним запросом на домен
+- **irreversible_surfaces:** none reason=автомерж в репозитории выключен, каждый PR сливает человек — он и стоит между агентом и тратой общих юнитов Ahrefs; отправки наружу и выкатки в прод в коде нет. Включат автомерж — причина перестанет быть верной
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
