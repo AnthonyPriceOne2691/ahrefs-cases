@@ -11,7 +11,7 @@ import { Badge, Table, Text } from '@mantine/core';
 import { useFoldedChoice } from '../../app/foldedChoice';
 import type { RunRow } from '../../api/types';
 import { num } from '../format';
-import { runWord, stageWord } from '../status';
+import { runWord, stageWord, unitsNote } from '../status';
 
 import { FatesRow, WhySkipped } from './RunFates';
 
@@ -54,6 +54,22 @@ function RunNumber({ run }: { run: RunRow }) {
       {run.stage && (
         <Text size="xs" c="dimmed" data-stage={run.stage}>
           {stageWord(run.stage)}
+        </Text>
+      )}
+    </Table.Td>
+  );
+}
+
+/** Смета и факт, а у прогона без живого ключа — почему это не расход (Z38).
+ *  Пометка в той же ячейке, не колонкой: число колонок держит раскрытие. */
+function RunUnits({ run }: { run: RunRow }) {
+  const note = unitsNote(run);
+  return (
+    <Table.Td ta="center">
+      {num(run.units_estimated)} → {num(run.units_actual)}
+      {note && (
+        <Text size="xs" c="dimmed" maw={CELL_WIDTH} mx="auto" data-units-note={run.mode}>
+          {note}
         </Text>
       )}
     </Table.Td>
@@ -126,9 +142,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                   onToggle={() => choose(String(run.id))}
                 />
               </Table.Td>
-              <Table.Td ta="center">
-                {num(run.units_estimated)} → {num(run.units_actual)}
-              </Table.Td>
+              <RunUnits run={run} />
             </Table.Tr>,
             <FatesRow
               key={`${run.id}-fates`}

@@ -82,6 +82,11 @@ export interface RunRow {
   units_estimated: number;
   units_actual: number;
   error: string;
+  /** Прогон ходил в настоящий Ahrefs — решает сервер тем же правилом, что
+   *  считает «потрачено». `false` — units прогона условные. */
+  live: boolean;
+  /** Записанный режим (`live`, `fixture`); пусто — прогон старше поля. */
+  mode: string;
 }
 
 /** Судьба одного проекта в прогоне: что с ним стало и почему. */

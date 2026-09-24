@@ -516,3 +516,105 @@ def test_authors_list_is_not_a_run_id(client: TestClient) -> None:
     authors = response.json()
     assert authors, "список авторов пуст, хотя прогон только что запущен"
     assert all({"id", "name", "deleted"} <= set(row) for row in authors)
+
+
+def _own_run(write: Callable[[Callable[..., object]], None], provider: str | None) -> int:
+    """Прогон своего пользователя с заданным режимом в снимке — без очереди."""
+    made: list[int] = []
+
+    async def _open(session: object) -> None:
+        from sqlalchemy import select as _select
+
+        author = (await session.execute(_select(User).where(User.email == EMAIL))).scalar_one()  # type: ignore[attr-defined]
+        snapshot = {"stage": "stage1", **({"provider": provider} if provider else {})}
+        run = Run(started_by=author.id, status=RunStatus.DONE, params_snapshot=snapshot)
+        session.add(run)  # type: ignore[attr-defined]
+        await session.flush()  # type: ignore[attr-defined]
+        made.append(run.id)
+
+    write(_open)
+    return made[0]
+
+
+def test_fates_name_the_domain_as_people_write_it(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """W1, W2: домен судьбы — как его пишет человек, тем же правилом, что у кейса."""
+    run_id = _own_run(writer, "fixture")
+
+    async def _fates(session: object) -> None:
+        from ahrefs_cases.collect.run_journal import add_item
+        from ahrefs_cases.storage._enums import RunItemOutcome
+
+        run = await session.get(Run, run_id)  # type: ignore[attr-defined]
+        for domain in ("xn--mller-shop-9db.de", "xn--zz.example"):
+            await add_item(
+                session,  # type: ignore[arg-type]
+                run,
+                project_id=None,
+                raw_domain=domain,
+                outcome=RunItemOutcome.SKIPPED_NO_DATA,
+            )
+
+    writer(_fates)
+
+    card = client.get(f"/api/runs/{run_id}", headers=_headers(client)).json()
+
+    # W2: обратно не разбирается — канон, а не падение журнала (правило 4а).
+    assert sorted(fate["domain"] for fate in card["fates"]) == ["müller-shop.de", "xn--zz.example"]
+
+
+def test_journal_names_the_mode_of_each_run(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """W3–W5: живой прогон, fixture и прогон без режима различимы в журнале."""
+    ids = {mode: _own_run(writer, mode) for mode in ("live", "fixture", None)}
+
+    rows = {
+        row["id"]: (row["live"], row["mode"])
+        for row in client.get("/api/runs", headers=_headers(client)).json()
+    }
+    card = client.get(f"/api/runs/{ids['fixture']}", headers=_headers(client)).json()
+
+    assert [rows[ids[mode]] for mode in ("live", "fixture", None)] == [
+        (True, "live"),
+        (False, "fixture"),
+        (False, ""),
+    ]
+    assert (card["live"], card["mode"]) == (False, "fixture")
+
+
+def test_journal_calls_live_what_spending_counts(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """W6: `live` журнала — ровно те прогоны, чей расход считает «потрачено».
+
+    Расход считается по всей базе, поэтому сверяется приращение: чужие строки
+    журнала между двумя замерами в одном тесте не появляются.
+    """
+    from ahrefs_cases.collect.budget import SpendSummary, spend_summary
+    from ahrefs_cases.storage import LedgerKind
+    from ahrefs_cases.storage.models.units_ledger import UnitsLedger
+
+    units: dict[str | None, int] = {"live": 11, "fixture": 13, None: 17}
+    found: list[SpendSummary] = []
+
+    async def _summary(session: object) -> None:
+        found.append(await spend_summary(session))  # type: ignore[arg-type]
+
+    writer(_summary)
+    ids = {mode: _own_run(writer, mode) for mode in units}
+
+    async def _spend(session: object) -> None:
+        for mode, run_id in ids.items():
+            spent = UnitsLedger(run_id=run_id, kind=LedgerKind.SPENT, units_actual=units[mode])
+            session.add(spent)  # type: ignore[attr-defined]
+
+    writer(_spend)
+    writer(_summary)
+    live = {
+        row["id"] for row in client.get("/api/runs", headers=_headers(client)).json() if row["live"]
+    }
+
+    counted = sum(units[mode] for mode, run_id in ids.items() if run_id in live)
+    assert found[1].live - found[0].live == counted == units["live"]

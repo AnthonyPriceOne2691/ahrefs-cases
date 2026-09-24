@@ -1,0 +1,143 @@
+# Verify report: journal-small-fixes
+
+**Date:** 2026-09-24
+**Verifier:** human:anthony (приёмка); оракулы и проверка в браузере — agent:claude
+**asserts_reviewed_by:** n/a (все утверждения ведут к одобренным примерам)
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36053254508
+**Commit:** 8d619ba
+
+## Чем проверено
+
+Ветка перенесена на main после слияния #25 (удаление проекта, экран): хеши
+ниже — до переноса, где сказано; всё после строки «перенос» гонялось заново.
+
+| Что | Чем | Результат |
+|---|---|---|
+| W1–W6 до правки (сервер) | pytest на коммите оракулов 3186ed1 (тесты есть, кода нет), своя копия базы | 3 failed: `'xn--mller-shop-9db.de' != 'müller-shop.de'`; `KeyError: 'live'` у строки журнала (W3–W5, W6) |
+| W3, W5 до правки (экран) | vitest `ops.test.tsx` на 3186ed1 | 2 failed, 31 passed: пометки под «смета → факт» нет; W1 и W4 — стражи (экран печатает домен сервера как есть; живой прогон не помечен) |
+| После правки | `pytest tests/test_api_runs.py tests/test_budget_spend.py` | 30 passed |
+| Бэкенд целиком | `pytest -q` на своей копии `cases_journal_tests` | 712 passed, 3 skipped (было 709 + 3 новых; пропуски прежние, по окружению) |
+| Фронт целиком | `vitest run` | 192 passed |
+| **Перенос на main (#25)** | конфликты `docs/FINDINGS.md` (Z44 и Z47) и `knowledge/log.md` — обе стороны | — |
+| Бэкенд после переноса | `pytest -q` на своей копии `cases_journal_rebased` (удалена) | 712 passed, 3 skipped |
+| Фронт после переноса | `vitest run`, `tsc --noEmit`, `eslint src` | 201 passed (+9 — тесты #25); чисто |
+| Гейты формы | `pre-commit run --all-files` | все хуки зелёные |
+| CI на ветке поставки | GitHub Actions, PR #26, коммит 8d619ba | delivery, gates, tests — pass: https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36053254508 |
+| Дайджест утверждений | `bash scripts/lint/assert_digest.sh` | 9 утверждений, без примера — 0 (до и после переноса одинаково) |
+| Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок, 0 предупреждений. Первый прогон на verify дал 2 предупреждения: уроки путей тестов, роутеров и реестра не названы в plan.md (L8, L58, L68, L73, L138, L142, L173; L216 пришёл с #25) и отвергнутые подходы без «потому что» — plan.md дописан |
+
+## Исполнение рисковых путей
+
+`web/src/pages/runs/RunsTable.tsx` — журнал на настоящих прогонах стенда.
+Исполнено дважды: до переноса (сборка `index-DMXXwa7e.js`, копия
+`cases_journal_check`) и после — с #25 (сборка `index-sG87de7E.js`, копия
+`cases_journal_check2`): боевая сборка ветки в `vite preview` с прокси на
+`uvicorn ahrefs_cases.api.main:app` из ветки, копия дев-базы (29 прогонов:
+8 live, 20 fixture, 1 без режима), headless Chrome 154 по CDP, светлая и тёмная
+темы переключателем приложения (`scratchpad/ui/journal.mjs`, `journal2.mjs`),
+at=2026-09-24. Второй проход читал ячейку units у всех 29 прогонов обеих
+страниц журнала, а не только в кадре.
+
+| Что на экране | Результат |
+|---|---|
+| Живые прогоны — все 8: 1089, 1088, 577, 565, 564, 327, 286, 285 | «400 → 400», «7 920 → 5 119», «2 844 → 1 862» … — без пометки |
+| Fixture-прогоны — все 20 (983, 861, 860, 760, 748, 563, 384–389, 398, 399, 204, 187, 186, 179, 178, 151) | под числами — «условные units: прогон без живого ключа (fixture)» |
+| Прогон 132 (режим не записан) | «0 → 0 / режим не записан — units не считаются расходом» |
+| Раскрытие прогона 1088 (18 строк) | домены судеб: `проверка-провал.example`, `контрольный.example`, `проверка-слабый.example`, `müller-shop.de`, `проверка-рост.example` среди латиницы; в колонке домена ни одного `xn--` |
+| То же после удаления проекта 8076 (`müller-shop.de`) по API на копии | «müller-shop.de (проект удалён)» — пометка #25 и правило 4а вместе; API ответил 200 на все 24 запроса проверки |
+
+12 снимков (журнал, раскрытие, вторая страница с прогоном 132 — по два прохода,
+в обеих темах) просмотрены глазами: пометка в ячейке units переносится на две
+строки и колонок не раздвигает; в тёмной теме читается. Копии базы удалены,
+процессы остановлены.
+
+## Ревью рисковых мест
+
+**Деньги.** «Потрачено» не менялось. Журнал помечает условные units по
+`budget.live_runs`, а он спрашивает тот же `_live_run`, что `spend_summary` и
+`live_spend_since`, — второй копии правила нет. W6 держит совпадение: из трёх
+прогонов (live 11, fixture 13, без режима 17 units) `live: true` получил ровно
+тот, чьи 11 units прибавились к «потрачено». Экран режим не судит: `unitsNote`
+смотрит на `live` и берёт слово по `mode`. Режим — записанный в прогоне, а не
+нынешний `AHREFS_PROVIDER` (L138): журнал не зависит от того, как поднят сервис.
+
+**Новый модуль.** Нового модуля нет; `budget.live_runs` — одна функция рядом с
+предикатом: пустой список — пустой ответ без запроса, иначе один `IN (…)` на
+страницу. `_row` получил `live` и `mode`; `mode` — записанный режим строкой,
+как `stage`, для слова, а не для решения.
+
+**Производительность.** Страница журнала раньше звала `_authors` в каждой
+строке списка (`[_row(run, await _authors(session, runs)) for run in runs]` —
+20 одинаковых запросов на странице из двадцати); теперь авторы и режим
+берутся по одному разу до цикла.
+
+**Домен.** `to_unicode` зовётся на выходе API (`run_status`), журнал хранит
+канон, и свёртка судеб ключует его — `collect/run_journal.py` не тронут. Хост,
+который обратно не разбирается, остаётся каноном (W2). `RunUnits` — ячейка
+таблицы, вынесенная ради предела длины функции `RunsTable`.
+
+## Чего проверка НЕ доказывает
+
+- Прод не проверялся: он в live с 24.09.2026 (`docs/PROD.md`), и пометка там
+  появится только у прежних прогонов, если они были fixture. Проверка на проде —
+  наблюдением (`observe_signal` в STATUS).
+- Колонка причины в раскрытии пишет текст Ahrefs как есть, и в нём канон
+  (`invalid domain or url: 'xn----7sbbebs6adlykmdr7m.example'`): это цитата
+  ответа на отправленный хост, её не переводим.
+- Остальные экраны пишут домен каноном — список проектов, карточка, библиотека
+  кейсов, окно удаления, `кейсы.csv` (Z47); здесь не исправлено.
+
+## Spec coverage gaps
+
+- W2 проверен только тестом: на стенде нет хоста, который обратно не
+  разбирается.
+
+## Verdict
+- [x] READY FOR HANDOFF — ждёт подписи human:anthony (verifier)
+- [ ] NEED CONVERGE (new tasks)
+- [ ] BLOCKED
+
+## Дайджест утверждений
+
+
+База: `origin/main` · сгенерировано `assert_digest.sh`
+
+Новых/изменённых утверждений: **9**, из них без ссылки на пример спеки:
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+значение — из спеки или придумано под реализацию?**
+
+```
+W2	assert sorted(fate["domain"] for fate in card["fates"]) == ["müller-shop.de", "xn--zz.example"]
+W3	assert [rows[ids[mode]] for mode in ("live", "fixture", None)] == [
+W3	assert (card["live"], card["mode"]) == (False, "fixture")
+W6	assert found[1].live - found[0].live == counted == units["live"]
+W3	expect(row).toHaveTextContent('условные units: прогон без живого ключа (fixture)');
+W4	expect(row).not.toHaveTextContent('условные');
+W4	expect(row).not.toHaveTextContent('режим');
+W5	expect(row).toHaveTextContent('режим не записан — units не считаются расходом');
+W1	expect(await screen.findByText('müller-shop.de')).toBeInTheDocument();
+```
+
+✅ **Каждое утверждение ведёт к примеру спеки** (W1 W2 W3 W4 W5 W6), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
+
+asserts_without_example: 0
+
+## Harness metrics (this shipment)
+
+<!-- generated by scripts/delivery_metrics.py --base origin/main -->
+
+| Metric | Value |
+|---|---|
+| files_touched / loc_diff | 9 code (+10 process docs) / +242/-11 (net +231) |
+| commits | 4 |
+| time_to_accepted_spec | 0.0h |
+| rework_after_done | 0 (handoff not declared yet) |
+| harness_hardened | no — оракулы дописаны в существующие файлы тестов; W6 сверяет признак журнала с «потрачено» по приращению |
+| implement_retries | 1 — гейт формы: функция `RunsTable` вышла за 80 строк (84), ячейка units вынесена в `RunUnits` |
+| verify_fails_before_green | 0 в CI; локально фазовый гейт на verify — 1 ошибка (дайджест ещё не вставлен) и 2 предупреждения (уроки путей, «потому что» в отвергнутых подходах), исправлено до пуша |
+| est_token_or_cost | n/a |
+
+MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
