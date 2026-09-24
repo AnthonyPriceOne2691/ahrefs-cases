@@ -41,6 +41,9 @@ function run(id: number, status: string, extra: Record<string, unknown> = {}) {
     units_estimated: 2112,
     units_actual: 1936,
     error: '',
+    // Режим — как у живого прода (L214: форма живого ответа): пометки нет.
+    live: true,
+    mode: 'live',
     ...extra,
   };
 }
@@ -169,6 +172,50 @@ describe('журнал прогонов', () => {
   });
 });
 
+describe('журнал называет режим прогона', () => {
+  /** Три прогона: живой, fixture и старый без записанного режима. */
+  function modes() {
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [
+          run(3, 'done'),
+          run(2, 'done', { live: false, mode: 'fixture' }),
+          run(1, 'done', { live: false, mode: '' }),
+        ],
+      },
+    });
+  }
+
+  it('W3: у fixture-прогона units названы условными', async () => {
+    modes();
+
+    showRuns();
+    const row = (await screen.findByText('2')).closest('tr');
+
+    expect(row).toHaveTextContent('условные units: прогон без живого ключа (fixture)');
+  });
+
+  it('W4: живой прогон ничем не помечен', async () => {
+    modes();
+
+    showRuns();
+    const row = (await screen.findByText('3')).closest('tr');
+
+    expect(row).not.toHaveTextContent('условные');
+    expect(row).not.toHaveTextContent('режим');
+  });
+
+  it('W5: у прогона без режима так и сказано', async () => {
+    modes();
+
+    showRuns();
+    const row = (await screen.findByText('1')).closest('tr');
+
+    expect(row).toHaveTextContent('режим не записан — units не считаются расходом');
+  });
+});
+
 describe('пропуски прогона', () => {
   it('E1: «пропущено 2» раскрывается в домены с причинами', async () => {
     // ТЗ требует «сколько обработано, сколько пропущено и почему». До этой
@@ -201,6 +248,28 @@ describe('пропуски прогона', () => {
     // Исход — словом, а не значением перечисления.
     expect(screen.getByText('пропущен: нет данных')).toBeInTheDocument();
     expect(screen.getByText(/нет истории/)).toBeInTheDocument();
+  });
+
+  it('W1: домен в раскрытии — словами сервера, как его пишет человек', async () => {
+    const card = {
+      ...run(9, 'partial', { projects_ok: 1, projects_skipped: 1 }),
+      fates: [
+        { domain: 'müller-shop.de', outcome: 'skipped_no_data', reason: '', units_actual: 0 },
+      ],
+    };
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [run(9, 'partial', { projects_ok: 1, projects_skipped: 1 })],
+      },
+      '/api/runs/9': { status: 200, body: card },
+    });
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    // Экран не переводит домен сам: правило одно, на сервере (правило 4а).
+    expect(await screen.findByText('müller-shop.de')).toBeInTheDocument();
   });
 
   it('E3: у прогона без пропусков лишнего на экране нет', async () => {
