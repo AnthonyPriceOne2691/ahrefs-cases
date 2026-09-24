@@ -137,6 +137,11 @@ async def _stage2(run_id: int) -> str:
             session, chosen, windows=windows, started_by=run.started_by if run else None
         )
         await session.commit()
+        # Ещё один пересчёт — бесплатный и обязательный: ступень кейса купила DR
+        # и стоимость трафика, кейс их напечатает, а сверка свежести считает
+        # метрику, которой нет у вердикта, расхождением. Без этого каждый кейс
+        # из интерфейса выходил «устаревшим» с рождения и не скачивался.
+        await _classify(session)
     return "; ".join(
         [*lines, f"данные под кейс: {case.projects_ok} из {len(chosen)}, units {case.units_spent}"]
     )

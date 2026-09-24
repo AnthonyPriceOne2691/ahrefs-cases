@@ -18,7 +18,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from ahrefs_cases.cases.builder import CASE_GROUPS
+from ahrefs_cases.cases.builder import CASE_GROUPS, keywords_total
+from ahrefs_cases.cases.model import KW_TOTAL
 from ahrefs_cases.storage.models.case import Case
 from ahrefs_cases.storage.models.verdict import Verdict
 
@@ -71,6 +72,13 @@ def _points(verdict: Verdict) -> tuple[dict[str, float], dict[str, float]]:
             part = point.get(key, {})
             if isinstance(part, dict):
                 out.update({str(name): float(value) for name, value in part.items()})
+        # «Число ключей» — величина кейса, не классификации: вердикт её не хранит.
+        # Считается из его же корзин той же функцией, что у сборки кейса; без
+        # этого каждый кейс с числом ключей сверялся с пустотой и «устаревал»
+        # с рождения — интерфейс прятал его кнопку скачивания.
+        total = keywords_total(out)
+        if total is not None:
+            out.setdefault(KW_TOTAL, total)
         return out
 
     return flat(verdict.point_a), flat(verdict.point_b)
