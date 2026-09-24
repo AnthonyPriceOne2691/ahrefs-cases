@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 from uuid import uuid4
@@ -34,12 +34,13 @@ from ahrefs_cases.api.schemas import (
 )
 from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.windows import point_windows
-from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
+from ahrefs_cases.collect.budget import live_runs, reserved_units, uncounted_spend
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.plan import build_case_plan, build_stage1_plan, build_stage2_plan
 from ahrefs_cases.collect.quota import preflight
 from ahrefs_cases.collect.run_journal import CASES, STAGE1, STAGE2, open_run
 from ahrefs_cases.collect.run_journal import fates as run_fates
+from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.locks import hold_start
 from ahrefs_cases.storage.models.project import Project
@@ -124,7 +125,8 @@ async def list_runs(
     if until is not None:
         stmt = stmt.where(Run.created_at < datetime.combine(until, time.min, tzinfo=UTC) + DAY)
     runs = list((await session.execute(stmt.limit(limit).offset(offset))).scalars().all())
-    return [_row(run, await _authors(session, runs)) for run in runs]
+    authors, live = await _authors(session, runs), await live_runs(session, [r.id for r in runs])
+    return [_row(run, authors, live) for run in runs]
 
 
 @router.get("/authors", response_model=list[RunAuthor])
@@ -298,10 +300,12 @@ async def run_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
     fates = await run_fates(session, run_id, limit=MAX_FATES)
     return RunCard(
-        **_row(run).model_dump(),
+        **_row(run, live=await live_runs(session, [run.id])).model_dump(),
         fates=[
             RunItemView(
-                domain=fate.domain,
+                # Журнал хранит канон — его отправили в Ahrefs; человек читает
+                # домен так, как пишет его сам (правило 4а, то же, что у кейса).
+                domain=to_unicode(fate.domain),
                 outcome=fate.outcome.value,
                 reason=fate.reason,
                 units_actual=fate.units_actual,
@@ -354,7 +358,7 @@ async def _enqueue(
     return RunStarted(run_id=run.id, queued_as=queued_as)
 
 
-def _row(run: Run, authors: Mapping[int, User] | None = None) -> RunRow:
+def _row(run: Run, authors: Mapping[int, User] | None = None, live: Collection[int] = ()) -> RunRow:
     author = (authors or {}).get(run.started_by)
     return RunRow(
         id=run.id,
@@ -375,4 +379,6 @@ def _row(run: Run, authors: Mapping[int, User] | None = None) -> RunRow:
         units_estimated=run.units_estimated,
         units_actual=run.units_actual,
         error=run.error,
+        live=run.id in live,
+        mode=str((run.params_snapshot or {}).get("provider") or ""),
     )

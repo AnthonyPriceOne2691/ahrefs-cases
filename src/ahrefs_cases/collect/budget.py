@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -51,6 +52,19 @@ def _live_run() -> ColumnElement[bool]:
     """
     rule: ColumnElement[bool] = Run.params_snapshot["provider"].astext == _LIVE_PROVIDER
     return rule
+
+
+async def live_runs(session: AsyncSession, run_ids: Collection[int]) -> frozenset[int]:
+    """Какие из прогонов живые — тем же правилом, что считает «потрачено».
+
+    Журнал прогонов помечает условные units по этому ответу: спроси он режим
+    сам, у правила появилась бы вторая копия, и журнал с экраном расхода
+    разошлись бы на первом же новом режиме (L208).
+    """
+    if not run_ids:
+        return frozenset()
+    rows = await session.execute(select(Run.id).where(Run.id.in_(list(run_ids)), _live_run()))
+    return frozenset(rows.scalars())
 
 
 def _spent(*columns: ColumnElement[Any]) -> Select[Any]:

@@ -71,3 +71,16 @@ export function caseWord(status: string): string {
 export function fateWord(outcome: string): string {
   return word(RUN_ITEM_LABELS, outcome);
 }
+
+/**
+ * Почему units прогона — не расход. `null` — живой прогон, пометка не нужна.
+ *
+ * Живой ли прогон, решает сервер (`live`, тем же правилом, что «потрачено»);
+ * здесь только слово по записанному режиму. Без пометки у fixture-прогона
+ * «смета → факт» читалась как настоящий расход (Z38).
+ */
+export function unitsNote(run: { live: boolean; mode: string }): string | null {
+  if (run.live) return null;
+  if (!run.mode) return 'режим не записан — units не считаются расходом';
+  return `условные units: прогон без живого ключа (${run.mode})`;
+}
