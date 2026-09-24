@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_api_users.py::test_manager_cannot_take_own_management_right
 - **diagnosis:** n/a reason=причина видна в коде без поиска: защита «последний администратор» (`_refuse_last_admin`) считает только группу admin, а личные права не проверяются вовсе; на проде единственный пользователь — engineer, и он снял с себя `manage_users` личным «Нет»
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony («нашел дыру, сам себе отрезал права, хотя я один инженер»; на выбор правила — «Строже: себе нельзя вообще»)
