@@ -72,15 +72,7 @@ def _text_volume_row(index: int) -> list[str]:
 
 
 def _xlsx(rows: list[list[str]]) -> bytes:
-    workbook = Workbook()
-    sheet = workbook.active
-    assert sheet is not None
-    sheet.append(list(HEADER))
-    for row in rows:
-        sheet.append(row)
-    buffer = BytesIO()
-    workbook.save(buffer)
-    return buffer.getvalue()
+    return _book([("Лист1", [list(HEADER), *rows])])
 
 
 @pytest.fixture(scope="module")
@@ -341,18 +333,7 @@ def test_link_that_is_not_a_sheet_is_refused(client: TestClient) -> None:
 # над таблицей «в файле нет колонки» — ошибка файла выглядела успешным приёмом.
 # Нечитаемая книга и длинная двоичная строка ответа не получали вовсе: `500`.
 
-RUSSIAN_HEADER = [
-    "домен",
-    "начало",
-    "конец",
-    "ниша",
-    "гео",
-    "услуга",
-    "объём",
-    "клиент",
-    "ответственный",
-    "публиковать",
-]
+RUSSIAN_HEADER = ["домен", "начало", "конец", "ниша", "гео", "услуга", "клиент"]
 
 
 def _csv(
@@ -490,11 +471,6 @@ def test_list_on_another_sheet_is_named(
     assert "«Список»" in detail
 
 
-def _truncated_book() -> bytes:
-    whole = _xlsx([_row(0)])
-    return whole[: len(whole) // 2]
-
-
 def _zip_without_book() -> bytes:
     import zipfile
 
@@ -510,7 +486,7 @@ def _zip_without_book() -> bytes:
         pytest.param(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n", id="pdf"),
         pytest.param(_csv(list(HEADER), [_row(0)]), id="csv"),
         pytest.param(_zip_without_book(), id="docx"),
-        pytest.param(_truncated_book(), id="truncated"),
+        pytest.param(_xlsx([_row(0)])[:2000], id="truncated"),
     ],
 )
 def test_unreadable_book_is_refused_not_crashed(client: TestClient, body: bytes) -> None:
