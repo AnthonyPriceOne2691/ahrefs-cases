@@ -51,6 +51,32 @@ Google Sheet (наведение мышью) и пустая база, как н
 профиль Chrome закрыт защитой macOS. Проверка на стороне владельца — окно
 инкогнито (расширения там по умолчанию выключены) до выкладки правки.
 
+## Ревью рисковых мест
+
+**Щит действует на каждый `Text` и на всё, что Mantine строит на нём.**
+`Text` берёт стили темы по имени `["Text", __staticSelector]`, поэтому
+`Text.extend({ styles })` в `web/src/theme.ts` получают и производные — `Anchor`
+в первую очередь. Ссылка цвет не теряет: её правило `.m_849cf0da` стоит в CSS
+Mantine позже правила `Text` (`.m_b6d8b162`) и перебивает `currentColor` при
+равном весе — замерено в подсказке к Google Sheet, `rgb(116, 143, 252)` до и
+после. Если обновление Mantine переставит порядок, ссылки станут наследовать
+цвет — но ровно так же они наследовали бы его и без щита (неопределённая
+переменная давала то же наследование), то есть новой уязвимости щит не вносит.
+
+**Вложенный `Text` внутри цветного.** Раньше вложенный наследовал саму
+переменную родителя (`--text-color: red`), теперь ставит себе `currentColor` и
+наследует цвет родителя — тот же красный. Результат совпадает.
+
+**Цвет из пропса.** Щит ставится только без `props.color`, а `vars` Mantine
+ложатся поверх `styles` темы (`getStyle`, Mantine 8.3.18) — цвет пропса
+выигрывает дважды. Страж T2 держит это тестом.
+
+**Чего щит не закрывает.** Наши собственные токены на `:root` (`--ink`,
+`--canvas`, `--glass-fill`) чужое определение того же веса перекрыло бы по
+порядку таблиц. Сегодня таких жалоб нет, и проход с подменой их не трогал;
+если появятся — лечится тем же приёмом (имя с префиксом или определение на
+элементе), а не новым разбором.
+
 ## Чего проверка НЕ доказывает
 
 **Что у владельца дело именно в `--text-color`.** Механизм доказан подменой:
@@ -77,13 +103,13 @@ Google Sheet (наведение мышью) и пустая база, как н
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 0 code (+0 process docs) / +0/-0 (net +0) |
-| commits | 0 |
+| files_touched / loc_diff | 3 code (+6 process docs) / +70/-1 (net +69) |
+| commits | 1 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | no |
-| implement_retries | MANUAL — fills from session log |
-| verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
-| est_token_or_cost | MANUAL / n/a |
+| rework_after_done | 0 commit(s) after first phase: handoff |
+| harness_hardened | yes — web/src/app/__tests__/text-ink.test.tsx (новый оракул) |
+| implement_retries | 2 — `tsc`: TS7006 (тема объектом без типов), TS2322 (`vars` без `--text-color` в типе Mantine); оба до первого зелёного прогона |
+| verify_fails_before_green | 0 по продуктовым оракулам (тест и проход в браузере зелёные с первого раза после правки); `delivery_check` дважды красный по форме — строка решений без «вместо», нет вердикта и метрик на handoff |
+| est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
