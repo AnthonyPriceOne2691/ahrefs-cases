@@ -21,11 +21,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.classify.candidates import stage2_candidates
-from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds
 from ahrefs_cases.classify.verdicts import ClassifyReport, classify_all
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.factory import build_provider
-from ahrefs_cases.collect.run_journal import failure_reason, start_run
+from ahrefs_cases.collect.run_journal import add_item, failure_reason, finish_run, start_run
 from ahrefs_cases.collect.runner import collect_case_data, collect_projects, collect_stage2
 from ahrefs_cases.logs import run_context
 from ahrefs_cases.storage import Group, RunStatus
@@ -164,21 +164,47 @@ async def _with_case(session: AsyncSession) -> list[int]:
 
 
 async def _pack(run_id: int) -> str:
+    """Сборка кейсов кнопкой: пачка, строки `cases` и судьба каждого проекта.
+
+    Судьбы пишутся строками журнала в той же транзакции, что кейсы, и прогон
+    закрывается `finish_run` — теми же итогами по строкам, что у сбора. Пока
+    задача получала от сборки только код возврата, журнал на проде 24.09.2026
+    говорил «собрано 0, пропущено 53» при десяти кейсах, а сводка жила в логе
+    воркера (Z46, урок L130).
+    """
     # Импорт внутри: `export` живёт слоем выше `workers` по контракту слоёв,
     # и тянуть его на уровень модуля значило бы связать воркер с рендером.
-    from ahrefs_cases.cli.case_commands import pack_cases
+    from ahrefs_cases.cli.case_commands import case_fates, pack_built
 
-    # Отметка о начале — здесь, а не в `_run_guarded`: у сбора её ставит сам
-    # прогон после preflight, и отмеченный раньше он соврал бы, если квота
-    # откажет. У сборки кейсов preflight нет, и без этой строки журнал
-    # показывал её без времени начала и конца (B6).
     async with get_sessionmaker()() as session:
         run = await session.get(Run, run_id)
+        # Отметка о начале — здесь, а не в `_run_guarded`: у сбора её ставит сам
+        # прогон после preflight, и отмеченный раньше он соврал бы, если квота
+        # откажет. У сборки кейсов preflight нет, и без этой строки журнал
+        # показывал её без времени начала и конца (B6).
         if run is not None:
             await start_run(session, run)
             await session.commit()
-    code = await pack_cases()
-    return f"пачка кейсов собрана, код возврата {code}"
+        await seed_thresholds(session)
+        # Ряды — режима провайдера, тем же источником, что классифицирует
+        # `_classify`: кнопка и консоль собирают по одним данным (урок L63).
+        result = await pack_built(session, build_provider().source)
+        if run is not None:
+            for fate in case_fates(result):
+                await add_item(
+                    session,
+                    run,
+                    project_id=fate.project_id,
+                    raw_domain=fate.domain,
+                    outcome=fate.outcome,
+                    reason=fate.reason,
+                )
+            run.projects_total = len(result.report.attempts)
+            await finish_run(session, run)
+        await session.commit()
+    summary = "; ".join(result.lines())
+    logger.info("cases_packed", extra={"run_id": run_id, "summary": summary})
+    return summary
 
 
 async def _run_guarded(run_id: int, work: object) -> None:

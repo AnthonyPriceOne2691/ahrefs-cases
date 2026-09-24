@@ -374,23 +374,23 @@ async def _attempt(
     обёртку (урок L127).
     """
     if verdict is None:
-        return CaseAttempt(domain=project.domain, outcome=CaseOutcome.NO_VERDICT)
+        return CaseAttempt(project.domain, CaseOutcome.NO_VERDICT, project_id=project.id)
     if verdict.group is Group.INSUFFICIENT_DATA:
-        return CaseAttempt(domain=project.domain, outcome=CaseOutcome.INSUFFICIENT_DATA)
+        return CaseAttempt(project.domain, CaseOutcome.INSUFFICIENT_DATA, project_id=project.id)
     if verdict.group not in CASE_GROUPS:
-        return CaseAttempt(domain=project.domain, outcome=CaseOutcome.NOT_ELIGIBLE)
+        return CaseAttempt(project.domain, CaseOutcome.NOT_ELIGIBLE, project_id=project.id)
 
     # Источник спрашивается до чтения серии: он отвечает на вопрос «те ли это
     # вообще данные», а числа — только на «те ли они сейчас».
     mismatch = verdicts_module.source_mismatch(verdict.source, source)
     if mismatch is not None:
-        return _mismatch(project, mismatch)
+        return _mismatch(project, mismatch, rows=verdict.source)
 
     series = await load_series(session, project.id, source)
     view = VerdictView.of(verdict, version)
     diverged = numbers_mismatch(project, view, series, windows)
     if diverged is not None:
-        return _mismatch(project, diverged)
+        return _mismatch(project, diverged, rows=verdict.source)
 
     return CaseAttempt(
         domain=project.domain,
@@ -402,18 +402,32 @@ async def _attempt(
     )
 
 
-def _mismatch(project: Project, reason: str) -> CaseAttempt:
+def _mismatch(project: Project, reason: str, *, rows: MetricSource | None) -> CaseAttempt:
     """Кейса нет, потому что его числа пришли бы из двух разных миров.
 
     Причина обязательна: «кейс не собран» без неё отправляет человека искать
-    поломку там, где сработало правило (класс уроков L32, L34). Совет один на
-    все три случая — переклассифицировать по этому источнику, и он бесплатен:
-    `classify` считает по уже купленному и в Ahrefs не ходит.
+    поломку там, где сработало правило (класс уроков L32, L34). Совет —
+    переклассифицировать **по тем рядам, по которым вынесен вердикт**: это
+    бесплатно (`classify` считает по купленному и в Ahrefs не ходит) и не
+    переписывает ничего ни в каком режиме. Прежнее «по этому источнику»
+    читалось как «по текущему режиму», а на проде в `fixture` такой пересчёт
+    заменил бы живые вердикты фикстурными. Вердикт без записанного источника
+    своих рядов не помнит — ему остаётся пересчёт по тем, из которых собирают.
     """
+    if rows is None:
+        advice = (
+            "переклассифицируйте его по рядам, из которых собираете кейсы (`classify --source …`)"
+        )
+    else:
+        advice = (
+            f"переклассифицируйте по рядам «{rows.value}», по которым вынесен вердикт "
+            f"(`classify --source {rows.value}`), а не по текущему режиму"
+        )
     return CaseAttempt(
         domain=project.domain,
         outcome=CaseOutcome.VERDICT_MISMATCH,
-        detail=f"{reason} — перезапустите `classify` по этому источнику",
+        project_id=project.id,
+        detail=f"{reason} — {advice}",
     )
 
 

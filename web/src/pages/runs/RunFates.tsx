@@ -27,7 +27,23 @@ import { fateWord } from '../status';
  *  экрана, а не API. */
 const COLLECTED = 'ok';
 
+/** Исход сборки кейсов «не положен по группе»: «плохим» кейс по ТЗ не
+ *  собирают, это воронка, а не беда. Как и собранных, их хватает числом: на
+ *  проде это 41 строка из 53, и строками они заслонили бы две настоящие
+ *  причины — ровно то, из-за чего собранные свернули в число (урок L214). */
+const NOT_ELIGIBLE = 'case_not_eligible';
+
 type Fate = RunCard['fates'][number];
+
+/** Сколько проектов сборке кейсов не положено по группе — одной строкой. */
+function NotEligible({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <Text size="xs" c="dimmed" data-fates-not-eligible={count}>
+      не положен по группе: {count}
+    </Text>
+  );
+}
 
 /** Сколько собрано без замечаний — одной строкой: собранные не пропадают
  *  молча, но и не занимают по строке каждый. Удалённые с тех пор проекты среди
@@ -102,7 +118,9 @@ function Fates({ runId }: { runId: number }) {
     );
   }
 
-  const trouble = card.data.fates.filter((fate) => fate.outcome !== COLLECTED);
+  const trouble = card.data.fates.filter(
+    (fate) => fate.outcome !== COLLECTED && fate.outcome !== NOT_ELIGIBLE,
+  );
   const collected = card.data.fates.filter((fate) => fate.outcome === COLLECTED);
   return (
     <Stack gap={4}>
@@ -111,6 +129,7 @@ function Fates({ runId }: { runId: number }) {
         count={collected.length}
         deleted={collected.filter((fate) => fate.project_deleted).length}
       />
+      <NotEligible count={card.data.fates.filter((fate) => fate.outcome === NOT_ELIGIBLE).length} />
     </Stack>
   );
 }

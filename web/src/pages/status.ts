@@ -39,6 +39,13 @@ export const RUN_ITEM_LABELS: Record<string, string> = {
   skipped_quota: 'пропущен: не хватило units',
   skipped_aborted: 'не выполнен: прогон остановлен',
   failed: 'упал',
+  // Сборка кейсов: Ahrefs она не спрашивает, и её исходы — про кейс, а не про
+  // данные. Собранный кейс — тот же `ok`, «собран».
+  case_not_eligible: 'не положен по группе',
+  case_insufficient_data: 'данных не хватило',
+  case_no_verdict: 'вердикта этой версии нет',
+  case_verdict_mismatch: 'вердикт не про эти данные',
+  case_blocked: 'не отдан: контент-запрет',
 };
 
 /** Незнакомое значение показываем как есть: выдумывать ему слово опаснее, чем

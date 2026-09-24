@@ -82,6 +82,32 @@ class RunItemOutcome(StrEnum):
     спрашивали и ничего о нём не знаем — в отличие от домена, чей запрос упал."""
     FAILED = "failed"
 
+    # Исходы ступени кейсов (сборка PDF). Собранный кейс — `ok`: журнал считает
+    # «собрано» по нему, и экран сворачивает его в число так же, как у сбора.
+    CASE_NOT_ELIGIBLE = "case_not_eligible"
+    """Кейс не положен по группе: «плохим» по ТЗ его не собирают."""
+    CASE_INSUFFICIENT_DATA = "case_insufficient_data"
+    CASE_NO_VERDICT = "case_no_verdict"
+    """Вердикта действующей версии порогов нет — собирать не из чего."""
+    CASE_VERDICT_MISMATCH = "case_verdict_mismatch"
+    """Числа вердикта не про ряды, из которых собирают кейс (Z10)."""
+    CASE_BLOCKED = "case_blocked"
+    """Кейс собран, но не отдан: сработал контент-запрет."""
+
+
+CASE_OUTCOMES = frozenset(
+    {
+        RunItemOutcome.CASE_NOT_ELIGIBLE,
+        RunItemOutcome.CASE_INSUFFICIENT_DATA,
+        RunItemOutcome.CASE_NO_VERDICT,
+        RunItemOutcome.CASE_VERDICT_MISMATCH,
+        RunItemOutcome.CASE_BLOCKED,
+    }
+)
+"""Исходы, которые пишет только сборка кейсов. Ahrefs она не спрашивает, и её
+строки — не проверки домена: память о пустом домене (`cache.empty_since`) их не
+считает, иначе «данных не хватило» рвало бы цепочку «нет данных» подряд."""
+
 
 class Group(StrEnum):
     """Группа проекта. `INSUFFICIENT_DATA` — отдельная, не «плохая»:
