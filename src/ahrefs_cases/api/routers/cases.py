@@ -33,6 +33,8 @@ from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import MAX_PAGE, CaseRow, PackView
 from ahrefs_cases.cases.freshness import case_mismatch
 from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.export.archive import newest_pack
+from ahrefs_cases.export.removal import holds_deleted_case
 from ahrefs_cases.storage.models.case import Case, CaseArtifact
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -153,63 +155,52 @@ async def _verdicts_behind(
     return judge
 
 
-def _newest_pack() -> Path | None:
-    """Самый свежий архив каталога выгрузки — или `None`, если его там нет.
-
-    Сборка одного дня переписывает архив того же имени, поэтому «свежий» — это
-    время файла, а не имя. Обращение к диску синхронное нарочно: вызывают его
-    из потока, иначе медленный том останавливает цикл событий.
-    """
-    directory = config.export.output_dir
-    if not directory.is_dir():
-        return None
-    dated: list[tuple[float, Path]] = []
-    for path in directory.glob("*.zip"):
-        try:
-            dated.append((path.stat().st_mtime, path))
-        except OSError:
-            # Файл исчез между перечислением и опросом: пачку пересобирают
-            # прямо сейчас. Это не отказ выдачи — остальные архивы на месте,
-            # и правильный ответ здесь «пропустить», а не «упасть».
-            continue
-    if not dated:
-        return None
-    return max(dated)[1]
+PACK_OF_DELETED = "в пачке кейс удалённого проекта — пересоберите кейсы, и архив соберётся без него"
+"""Почему пачку не отдают. Одни слова на состояние и на отказ скачивания."""
 
 
 @router.get("/pack", response_model=PackView)
-async def pack_state() -> PackView:
-    """Что за пачка лежит и когда собрана.
+async def pack_state(session: SessionDep) -> PackView:
+    """Что за пачка лежит, когда собрана и можно ли её отдавать.
 
     Объявлен **выше** `/{case_id}/download`: ниже слово `pack` уехало бы в
     целочисленный параметр и превратило выдачу в `422` — та же ловушка, что
     поймала смету прогона.
     """
-    path = await anyio.to_thread.run_sync(_newest_pack)
+    path = await anyio.to_thread.run_sync(newest_pack, config.export.output_dir)
     if path is None:
         return PackView(
             exists=False,
             note="пачка ещё не собиралась: соберите кейсы, и архив появится здесь",
         )
     stat = await anyio.to_thread.run_sync(path.stat)
+    deleted = await holds_deleted_case(session, path)
     return PackView(
         exists=True,
         filename=path.name,
         size_bytes=stat.st_size,
         built_at=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
-        note="архив собран последней сборкой кейсов",
+        note=PACK_OF_DELETED if deleted else "архив собран последней сборкой кейсов",
+        outdated="project_deleted" if deleted else None,
     )
 
 
 @router.get("/pack/download")
-async def download_pack() -> FileResponse:
-    """Отдать пачку целиком — тем же файлом, что лежит в каталоге выгрузки."""
-    path = await anyio.to_thread.run_sync(_newest_pack)
+async def download_pack(session: SessionDep) -> FileResponse:
+    """Отдать пачку целиком — тем же файлом, что лежит в каталоге выгрузки.
+
+    Пачку с кейсом удалённого проекта не отдаём, пока её не пересобрали
+    (решение владельца 24.09.2026): удаление унесло кейс, а копия PDF в архиве
+    осталась. Автоматической пересборки нет — она тратит решение человека.
+    """
+    path = await anyio.to_thread.run_sync(newest_pack, config.export.output_dir)
     if path is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="пачки кейсов нет: она собирается прогоном сборки кейсов",
         )
+    if await holds_deleted_case(session, path):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PACK_OF_DELETED)
     return FileResponse(path, filename=path.name, media_type="application/zip")
 
 

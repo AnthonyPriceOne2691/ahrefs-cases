@@ -224,6 +224,8 @@ class ProjectFate:
     outcome: RunItemOutcome
     reason: str
     units_actual: int
+    project_deleted: bool = False
+    """Проект удалён: ссылки у строки журнала нет, домен и расход остались."""
 
 
 async def fates(session: AsyncSession, run_id: int, *, limit: int) -> list[ProjectFate]:
@@ -246,22 +248,35 @@ async def fates(session: AsyncSession, run_id: int, *, limit: int) -> list[Proje
     items = (await session.execute(stmt)).scalars().all()
     decided = _fold_by_project(items)
 
-    seen: dict[int | None, ProjectFate] = {}
+    seen: dict[FateKey, ProjectFate] = {}
     for item in items:
-        outcome = decided.get(item.project_id)
+        key = _fate_key(item)
+        outcome = decided.get(key)
         if outcome is None or item.outcome is not outcome:
             continue
-        previous = seen.get(item.project_id)
-        seen[item.project_id] = ProjectFate(
+        previous = seen.get(key)
+        seen[key] = ProjectFate(
             domain=item.raw_domain,
             outcome=outcome,
             reason=item.reason or (previous.reason if previous else ""),
             units_actual=(previous.units_actual if previous else 0) + item.units_actual,
+            project_deleted=item.project_id is None,
         )
     return list(seen.values())[:limit]
 
 
-def _fold_by_project(items: Sequence[RunItem]) -> dict[int | None, RunItemOutcome]:
+FateKey = int | str  # номер проекта, а у удалённого — домен строки журнала
+
+
+def _fate_key(item: RunItem) -> FateKey:
+    """Удаление проекта обнуляет ссылку у строк журнала (`ON DELETE SET NULL`), и
+    ключ по `project_id` сливал все удалённые проекты прогона в одну судьбу — с
+    доменом первого и суммой units всех. Домен их разводит; две удалённые
+    кампании одного сайта в одном прогоне развести нечем (граница, Z41)."""
+    return item.project_id if item.project_id is not None else item.raw_domain
+
+
+def _fold_by_project(items: Sequence[RunItem]) -> dict[FateKey, RunItemOutcome]:
     """Исход **проекта**, а не задачи.
 
     На шаге 2 у одного проекта четыре запроса, и подсчёт по задачам давал в
@@ -269,15 +284,16 @@ def _fold_by_project(items: Sequence[RunItem]) -> dict[int | None, RunItemOutcom
     Правило свёртки: одна упавшая задача делает проект упавшим (данные кейса
     неполны), иначе достаточно одной успешной.
     """
-    folded: dict[int | None, RunItemOutcome] = {}
+    folded: dict[FateKey, RunItemOutcome] = {}
     for item in items:
-        current = folded.get(item.project_id)
+        key = _fate_key(item)
+        current = folded.get(key)
         if current is RunItemOutcome.FAILED:
             continue
         if item.outcome is RunItemOutcome.FAILED or current is None:
-            folded[item.project_id] = item.outcome
+            folded[key] = item.outcome
         elif current is not RunItemOutcome.OK and item.outcome is RunItemOutcome.OK:
-            folded[item.project_id] = RunItemOutcome.OK
+            folded[key] = RunItemOutcome.OK
     return folded
 
 
