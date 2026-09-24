@@ -16,7 +16,55 @@ import { useQuery } from '@tanstack/react-query';
 import { FOLD_MS } from '../../app/foldedChoice';
 import { ApiError } from '../../api/client';
 import { fetchRun } from '../../api/ops';
+import type { RunCard } from '../../api/types';
 import { fateWord } from '../status';
+
+/** Исход «собран» (`RunItemOutcome.OK` на сервере). В раскрытие он не
+ *  попадает: знак «?» спрашивает, кого прогон не собрал и почему, а собранные —
+ *  ответ «всё хорошо», и его хватает числом. У прогона №2 прода 51 строка
+ *  «собран — вся история уже собрана» из 53 заслоняла две настоящие причины
+ *  (владелец 24.09.2026). Приходят судьбы по-прежнему все: отбор — решение
+ *  экрана, а не API. */
+const COLLECTED = 'ok';
+
+type Fate = RunCard['fates'][number];
+
+/** Сколько собрано без замечаний — одной строкой: собранные не пропадают
+ *  молча, но и не занимают по строке каждый. */
+function Collected({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <Text size="xs" c="dimmed" data-fates-collected={count}>
+      без замечаний собрано: {count}
+    </Text>
+  );
+}
+
+/** Строки проблемных судеб. Ключ — не домен: у двух кампаний одного сайта он
+ *  один и тот же, а это два проекта и две строки (урок L13). */
+function TroubleTable({ fates }: { fates: Fate[] }) {
+  return (
+    <Table>
+      <Table.Tbody>
+        {fates.map((fate, index) => (
+          <Table.Tr key={`${fate.domain}#${index}`} data-fate={fate.domain}>
+            <Table.Td>
+              <Text size="xs">{fate.domain}</Text>
+            </Table.Td>
+            <Table.Td>
+              <Text size="xs">{fateWord(fate.outcome)}</Text>
+            </Table.Td>
+            <Table.Td>
+              <Text size="xs" c="dimmed">
+                {fate.reason || '—'}
+              </Text>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
 
 /** Тело раскрытия отдельным компонентом: у списка четыре состояния (грузится,
  *  отказ, пусто, строки), и вместе с кнопкой они дают ветвистость, на которую
@@ -42,26 +90,12 @@ function Fates({ runId }: { runId: number }) {
     );
   }
 
+  const trouble = card.data.fates.filter((fate) => fate.outcome !== COLLECTED);
   return (
-    <Table>
-      <Table.Tbody>
-        {card.data.fates.map((fate) => (
-          <Table.Tr key={fate.domain} data-fate={fate.domain}>
-            <Table.Td>
-              <Text size="xs">{fate.domain}</Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="xs">{fateWord(fate.outcome)}</Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="xs" c="dimmed">
-                {fate.reason || '—'}
-              </Text>
-            </Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+    <Stack gap={4}>
+      {trouble.length > 0 && <TroubleTable fates={trouble} />}
+      <Collected count={card.data.fates.length - trouble.length} />
+    </Stack>
   );
 }
 

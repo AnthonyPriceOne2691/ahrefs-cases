@@ -214,15 +214,92 @@ describe('пропуски прогона', () => {
   });
 });
 
-describe('расход units', () => {
-  const USAGE = {
-    spent: 5872,
-    reserved: 2112,
-    remaining: 9500,
-    uncounted: 0,
-    per_hundred_domains: 21120,
-  };
+describe('раскрытие показывает только проблемы', () => {
+  /** Судьбы прогона такими, какими их отдаёт живой API: все исходы подряд.
+   *  E1 держал в ответе один пропущенный домен и потому не видел, что
+   *  раскрытие рисует и собранные — на проде это 51 строка «собран» из 53. */
+  function fatesRun(fates: { domain: string; outcome: string; reason?: string }[]) {
+    const card = {
+      ...run(12, 'partial', { projects_ok: 3, projects_skipped: 2 }),
+      fates: fates.map((fate) => ({ reason: '', units_actual: 132, ...fate })),
+    };
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [run(12, 'partial', { projects_ok: 3, projects_skipped: 2 })],
+      },
+      '/api/runs/12': { status: 200, body: card },
+    });
+  }
 
+  it('в раскрытии только те, кого прогон не собрал', async () => {
+    fatesRun([
+      { domain: 'kaspi.kz', outcome: 'ok', reason: 'вся история уже собрана' },
+      { domain: 'lonelyplanet.com', outcome: 'skipped_no_data', reason: 'Ahrefs не отдал историю' },
+      { domain: 'bellroy.com', outcome: 'ok' },
+      { domain: 'huel.com', outcome: 'failed', reason: 'Ahrefs ответил 500' },
+      { domain: 'kiwi.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('lonelyplanet.com')).toBeInTheDocument();
+    expect(screen.getByText('huel.com')).toBeInTheDocument();
+    // Собранных в раскрытии нет — ни доменом, ни словом исхода.
+    expect(screen.queryByText('kaspi.kz')).not.toBeInTheDocument();
+    expect(screen.queryByText('собран')).not.toBeInTheDocument();
+    // Но и не пропали молча: их число названо одной строкой.
+    expect(screen.getByText('без замечаний собрано: 3')).toBeInTheDocument();
+  });
+
+  it('две кампании одного сайта с проблемой — две строки', async () => {
+    // Обе строки React нарисует и с одинаковым ключом — но с предупреждением,
+    // и при следующем обновлении списка вправе потерять одну из них. Поэтому
+    // тест смотрит и на ключи: домен у двух кампаний один и тот же.
+    const complaints = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fatesRun([
+      { domain: 'nordvpn.com', outcome: 'skipped_no_data', reason: 'первая кампания' },
+      { domain: 'nordvpn.com', outcome: 'skipped_quota', reason: 'вторая кампания' },
+      { domain: 'kiwi.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('первая кампания')).toBeInTheDocument();
+    expect(screen.getByText('вторая кампания')).toBeInTheDocument();
+    expect(screen.getAllByText('nordvpn.com')).toHaveLength(2);
+    const sameKey = complaints.mock.calls.filter((call) => String(call[0]).includes('same key'));
+    complaints.mockRestore();
+    expect(sameKey).toHaveLength(0);
+  });
+
+  it('проблем нет — таблицы нет, одна строка', async () => {
+    fatesRun([
+      { domain: 'kiwi.com', outcome: 'ok' },
+      { domain: 'bellroy.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('без замечаний собрано: 2')).toBeInTheDocument();
+    expect(screen.queryByText('kiwi.com')).not.toBeInTheDocument();
+  });
+});
+
+const USAGE = {
+  spent: 5872,
+  conditional: 0,
+  reserved: 2112,
+  remaining: 9500,
+  uncounted: 0,
+  live_domains: 28,
+  per_hundred_domains: 21120,
+};
+
+describe('расход units', () => {
   it('E6: потрачено, резерв и остаток — три разных числа', async () => {
     server({
       '/api/usage': { status: 200, body: USAGE },
@@ -248,7 +325,6 @@ describe('расход units', () => {
 
     // Ноль читался бы как «квота кончилась» — то есть как запрет запускать.
     expect(await screen.findByText('остаток неизвестен')).toBeInTheDocument();
-    expect(screen.getByText(/прогонов не было/)).toBeInTheDocument();
   });
 
   it('E11: расход, которого счётчик Ahrefs ещё не видит, назван отдельно', async () => {
@@ -310,6 +386,59 @@ describe('расход units', () => {
     renderApp(<UsagePage />);
 
     expect(await screen.findByText(/Поводов нет/)).toBeInTheDocument();
+  });
+});
+
+describe('расход units: только живые прогоны', () => {
+  it('R6: стенд с одними fixture-прогонами — условные units названы, а не выданы за расход', async () => {
+    // Как на проде до живого ключа: живого расхода нет, fixture-прогоны
+    // насчитали условные units. Прежний текст «прогонов не было» здесь был бы
+    // неправдой: прогоны были, в Ahrefs они не ходили.
+    server({
+      '/api/usage': {
+        status: 200,
+        body: {
+          ...USAGE,
+          spent: 0,
+          conditional: 15414,
+          live_domains: 0,
+          per_hundred_domains: null,
+        },
+      },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    expect(await screen.findByText('потрачено 0')).toBeInTheDocument();
+    expect(screen.getByText(/^Условные units: 15 414 — /)).toBeInTheDocument();
+    expect(screen.getByText(/живых прогонов с расходом ещё не было/)).toBeInTheDocument();
+    expect(screen.queryByText(/прогонов не было/)).not.toBeInTheDocument();
+  });
+
+  it('R7: стоимость на сто доменов — со своими слагаемыми, без строки об условных units', async () => {
+    server({
+      '/api/usage': {
+        status: 200,
+        body: {
+          ...USAGE,
+          spent: 11952,
+          conditional: 0,
+          live_domains: 62,
+          per_hundred_domains: 19277,
+        },
+      },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    expect(
+      await screen.findByText(
+        'Стоимость запуска на сто доменов по факту: 19 277 units (потрачено 11 952 units, оплачено доменов — 62).',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Условные units/)).not.toBeInTheDocument();
   });
 });
 
