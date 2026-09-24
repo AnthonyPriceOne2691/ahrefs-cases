@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.background import BackgroundTask
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
@@ -211,6 +214,8 @@ async def download_pack() -> FileResponse:
 
 
 MAX_SELECTION = 100
+SELECTION_NAME = "выборка-кейсов.zip"
+"""Имя выборки у человека. На диске у каждой выборки своё имя — см. `_build`."""
 
 
 @router.get("/selection/download")
@@ -257,21 +262,29 @@ async def download_selection(
         )
 
     def _build() -> Path:
-        """Архив пишется в каталог выгрузки, а не во временный файл процесса.
+        """Своя временная копия на каждый запрос — и не в каталоге выгрузки.
 
-        `FileResponse` отдаёт файл ПОСЛЕ возврата обработчика, и временный файл,
-        удаляемый по выходу из блока, к этому моменту уже не существует.
+        Не в каталоге выгрузки: пачку там ищут как самый свежий `*.zip`, и
+        выборка, положенная рядом, становилась «пачкой» для всех (сквозной
+        прогон 24.09.2026). Не под общим именем: две выборки, собранные
+        одновременно, писали бы в один файл, и каждый получил бы чужую.
+        Удаляет файл фоновая задача ответа: `FileResponse` читает его ПОСЛЕ
+        возврата обработчика, поэтому файл, живущий до конца блока, не годится.
         """
-        directory = config.export.output_dir
-        directory.mkdir(parents=True, exist_ok=True)
-        out: Path = directory / "выборка-кейсов.zip"
-        with ZipFile(out, "w", ZIP_DEFLATED) as archive:
-            for case_id in wanted:
-                artifact = newest[case_id]
-                path = Path(artifact.path)
-                if not path.is_file():
-                    raise FileNotFoundError(artifact.filename)
-                archive.write(path, arcname=artifact.filename)
+        handle, name = tempfile.mkstemp(prefix="selection-", suffix=".zip")
+        os.close(handle)
+        out = Path(name)
+        try:
+            with ZipFile(out, "w", ZIP_DEFLATED) as archive:
+                for case_id in wanted:
+                    artifact = newest[case_id]
+                    path = Path(artifact.path)
+                    if not path.is_file():
+                        raise FileNotFoundError(artifact.filename)
+                    archive.write(path, arcname=artifact.filename)
+        except BaseException:
+            out.unlink(missing_ok=True)
+            raise
         return out
 
     try:
@@ -282,7 +295,12 @@ async def download_selection(
             detail=f"файл кейса не найден на диске: {missing_file}",
         ) from missing_file
 
-    return FileResponse(archive_path, filename=archive_path.name, media_type="application/zip")
+    return FileResponse(
+        archive_path,
+        filename=SELECTION_NAME,
+        media_type="application/zip",
+        background=BackgroundTask(archive_path.unlink, missing_ok=True),
+    )
 
 
 @router.get("/{case_id}/download")
