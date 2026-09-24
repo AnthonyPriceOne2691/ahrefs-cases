@@ -94,7 +94,7 @@ Mantine позже правила `Text` (`.m_b6d8b162`) и перебивает
 поверхность проход не трогал.
 
 ## Verdict
-- [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
+- [x] READY FOR HANDOFF — подписал human:anthony at=2026-09-24 («давай и выкатывай всё» — ответ на предложение слить #16 и #17 и выкатить)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
 
