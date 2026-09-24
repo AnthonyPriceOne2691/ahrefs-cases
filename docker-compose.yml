@@ -138,6 +138,32 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  reaper:
+    # Закрывает прогоны, чью задачу убили (выкатка, память), и снимает замок
+    # «один активный». Отдельным процессом с тикером: воркер свою смерть не
+    # разберёт, а API — не место для фоновой работы (`workers/reaper.py`).
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    command: python -m ahrefs_cases.workers.reaper
+    env_file: *backend-env-file
+    environment: *backend-env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-m", "ahrefs_cases.workers.reaper", "--check"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
   web:
     build:
       context: .

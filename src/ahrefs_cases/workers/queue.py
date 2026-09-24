@@ -35,7 +35,9 @@ class JobQueue(Protocol):
     и обязан не занимать цикл событий, а `redis` только пишет в очередь.
     """
 
-    async def enqueue(self, job: Callable[..., object], *args: JobArg) -> str: ...
+    async def enqueue(
+        self, job: Callable[..., object], *args: JobArg, key: str | None = None
+    ) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +63,11 @@ class InlineQueue:
     процесс воркера, где у неё свой движок. В компоузе воркер для этого и есть.
     """
 
-    async def enqueue(self, job: Callable[..., object], *args: JobArg) -> str:
-        """Выполнить задачу в отдельном потоке и дождаться её.
+    async def enqueue(
+        self, job: Callable[..., object], *args: JobArg, key: str | None = None
+    ) -> str:
+        """Выполнить задачу в отдельном потоке и дождаться её. `key` не нужен:
+        здесь задача не переживёт процесс, и спрашивать о ней реаперу незачем.
 
         В потоке, а не прямо здесь: задача внутри поднимает свой цикл событий
         (`asyncio.run`), а вызов этого из уже работающего цикла — ошибка. То
@@ -89,8 +94,12 @@ class RedisQueue:
             connection=Redis.from_url(config.storage.redis_url),
         )
 
-    async def enqueue(self, job: Callable[..., object], *args: JobArg) -> str:
-        enqueued = self._queue.enqueue(job, *args, job_timeout=_JOB_TIMEOUT_SEC)
+    async def enqueue(
+        self, job: Callable[..., object], *args: JobArg, key: str | None = None
+    ) -> str:
+        # Ключ задаёт вызывающий и записывает в строку прогона: по нему реапер
+        # находит задачу и спрашивает, жива ли она (`workers/reaper.py`).
+        enqueued = self._queue.enqueue(job, *args, job_id=key, job_timeout=_JOB_TIMEOUT_SEC)
         logger.info("job_enqueued", extra={"job": job.__name__, "job_id": enqueued.id})
         return str(enqueued.id)
 
