@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.collect.budget import record_spend
+from ahrefs_cases.collect.budget import key_fingerprint, record_spend
 from ahrefs_cases.collect.fetch import TaskOutcome
 from ahrefs_cases.collect.series import store_history
 from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome, RunStatus, UserGroup
@@ -98,6 +98,9 @@ async def open_run(
             "collect_scheme": config.ahrefs.collect_scheme,
             "fixture_seed": config.ahrefs.fixture_seed,
             "stage": stage,
+            # Кто платит — отпечаток ключа, не ключ: вычет «счётчик ещё не видит»
+            # снимает с остатка ключа только его траты (Z49).
+            **({"api_key_fp": fp} if (fp := key_fingerprint(config.ahrefs.api_key)) else {}),
             # Ключ задачи очереди — по нему реапер спрашивает, жива ли она.
             # Есть только у прогонов, поставленных через очередь: прогон из
             # консоли идёт без RQ, и «задачи нет в очереди» его не касается.
