@@ -39,19 +39,40 @@ class EmptyArchiveError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
-class PackedCase:
-    """Кейс, попавший в архив: файл на диске и имя внутри архива."""
+class ToPack:
+    """Кейс, который просят положить в архив, и чей он.
 
+    Опознаёт кейс номер проекта, а не домен: у двух кампаний одного сайта домен
+    один и тот же. Пока пачка принимала пары «домен, кейс», вызывающий мог
+    сопоставить исход с проектом только доменом — и у `nordvpn.com` вторая
+    кампания затирала первую: один PDF в архиве и чужие числа в строке кейса
+    (Z39). Номер проходит через `pack` насквозь и возвращается в каждом исходе.
+    """
+
+    project_id: int
     domain: str
     case: CaseData
+
+
+@dataclass(frozen=True, slots=True)
+class PackedCase:
+    """Кейс, попавший в архив: чей он, файл на диске и имя внутри архива."""
+
+    project_id: int
+    domain: str
+    case: CaseData
+    """Кейс ровно в том виде, в каком лёг в файл (с номером сборки): строку кейса
+    в базе пишут им, и запись с файлом не расходятся."""
+
     path: Path
     arcname: str
 
 
 @dataclass(frozen=True, slots=True)
 class SkippedCase:
-    """Кейс, не попавший в архив, и почему именно."""
+    """Кейс, не попавший в архив: чей он и почему именно."""
 
+    project_id: int
     domain: str
     reason: str
 
@@ -71,7 +92,7 @@ class Packed:
 
 
 def pack(
-    cases: Sequence[tuple[str, CaseData]],
+    cases: Sequence[ToPack],
     *,
     output_dir: Path | None = None,
     name: str | None = None,
@@ -79,7 +100,8 @@ def pack(
     """Собрать кейсы в один архив. Каждый проходит те же проверки, что поодиночке.
 
     Архив ничего не обходит: стоп-лист и сверка чисел остаются на месте, и кейс,
-    который их не прошёл, в пачку не попадает — с названной причиной.
+    который их не прошёл, в пачку не попадает — с названной причиной. Каждый
+    вход даёт ровно один исход, и в исходе — номер проекта этого входа.
     """
     target_dir = output_dir or config.export.output_dir
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -87,18 +109,21 @@ def pack(
     packed: list[PackedCase] = []
     skipped: list[SkippedCase] = []
     used: set[str] = set()
-    for domain, case in cases:
+    for wanted in cases:
         try:
-            rendered = render_pdf(case, output_dir=target_dir)
+            rendered = render_pdf(wanted.case, output_dir=target_dir)
         except ContentBlockedError as exc:
-            skipped.append(SkippedCase(domain=domain, reason=str(exc)))
+            skipped.append(
+                SkippedCase(project_id=wanted.project_id, domain=wanted.domain, reason=str(exc))
+            )
             continue
         packed.append(
             PackedCase(
-                domain=domain,
-                case=case,
+                project_id=wanted.project_id,
+                domain=wanted.domain,
+                case=wanted.case,
                 path=rendered.path,
-                arcname=unique_name(filename(case), used),
+                arcname=unique_name(filename(wanted.case), used),
             )
         )
 

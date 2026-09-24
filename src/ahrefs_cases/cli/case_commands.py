@@ -12,6 +12,8 @@ import sys
 from dataclasses import replace
 from typing import TextIO
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ahrefs_cases.cases.builder import build_cases
 from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, CaseReport, Change
 from ahrefs_cases.cases.stoplist import ContentBlockedError
@@ -19,7 +21,7 @@ from ahrefs_cases.cases.store import next_version, store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.cli.source import reading_source
-from ahrefs_cases.export.archive import EmptyArchiveError, pack
+from ahrefs_cases.export.archive import EmptyArchiveError, Packed, ToPack, pack
 from ahrefs_cases.export.pdf_renderer import render_pdf
 from ahrefs_cases.storage._enums import MetricSource
 from ahrefs_cases.storage.session import get_sessionmaker
@@ -147,44 +149,50 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
 async def pack_cases(source: MetricSource | None = None) -> int:
     """Собрать кейсы всех «хороших» и «средних» в один архив.
 
-    Отчёт печатает четыре исхода сборки и отдельно — кто не попал в архив по
+    Отчёт печатает все исходы сборки и отдельно — кто не попал в архив по
     контент-запрету: «пропущено N» оставило бы человека без следующего шага
     (уроки L32 и L34).
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
         report = await build_cases(session, source=reading_source(source))
-        built = [item for item in report.by_outcome(CaseOutcome.BUILT) if item.case is not None]
         print("\n".join(report.as_lines()))
         _print_refusals(report)
-
-        # Номера сборок — до упаковки: они в именах файлов внутри архива.
-        numbered = {
-            item.domain: replace(item.case, version=await next_version(session, item.project_id))
-            for item in built
-            if item.case is not None and item.project_id is not None
-        }
         try:
-            bundle = pack(list(numbered.items()))
+            bundle = await _pack_and_store(session, report)
         except EmptyArchiveError as exc:
             print(str(exc), file=sys.stderr)
             return EXIT_BAD_SOURCE
-
-        blocked = {item.domain for item in bundle.skipped}
-        for item in built:
-            if item.case is None or item.domain in blocked:
-                continue
-            if item.project_id is None or item.verdict_id is None:
-                continue
-            case_row = await store_case(
-                session,
-                project_id=item.project_id,
-                verdict_id=item.verdict_id,
-                case=numbered.get(item.domain, item.case),
-            )
-            path = next(one.path for one in bundle.packed if one.domain == item.domain)
-            await store_artifact(session, case_id=case_row.id, path=path)
         await session.commit()
 
     print("\n".join(bundle.as_lines()))
     return EXIT_CONTENT_BLOCKED if bundle.skipped else 0
+
+
+async def _pack_and_store(session: AsyncSession, report: CaseReport) -> Packed:
+    """Упаковать собранные кейсы и записать каждому проекту его строку и его файл.
+
+    Ключ — проект, а не домен. У двух кампаний одного сайта домен один, и
+    словарь номеров сборки, отказы запрета и поиск файла по домену отдавали
+    обеим строкам `cases` числа и файл одной кампании: у `nordvpn.com` так
+    было во всех сборках (Z39, класс урока L150). Строка пишется тем кейсом,
+    что лёг в файл; проект, не попавший в архив (контент-запрет), строку не
+    получает — причина уже в `Packed.skipped`.
+    """
+    verdicts: dict[int, int] = {}
+    wanted: list[ToPack] = []
+    for item in report.by_outcome(CaseOutcome.BUILT):
+        if item.case is None or item.project_id is None or item.verdict_id is None:
+            continue
+        verdicts[item.project_id] = item.verdict_id
+        # Номер сборки — до упаковки: он в имени файла внутри архива.
+        version = await next_version(session, item.project_id)
+        wanted.append(ToPack(item.project_id, item.domain, replace(item.case, version=version)))
+
+    bundle = pack(wanted)
+    for one in bundle.packed:
+        case_row = await store_case(
+            session, project_id=one.project_id, verdict_id=verdicts[one.project_id], case=one.case
+        )
+        await store_artifact(session, case_id=case_row.id, path=one.path)
+    return bundle

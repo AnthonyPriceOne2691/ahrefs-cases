@@ -333,8 +333,9 @@ async def build_cases(
     Ничего не пишет и никуда не ходит: запись кейса приезжает вместе с текстом,
     а Ahrefs здесь нечего спрашивать — всё уже куплено ступенью кейса.
 
-    Порядок — по домену: два запуска подряд обязаны давать одинаковый список,
-    иначе его не сравнить глазами.
+    Порядок — по домену, а у кампаний одного сайта — по началу периода: два
+    запуска подряд обязаны давать одинаковый список, иначе его не сравнить
+    глазами.
     """
     ruleset = await (ruleset_by_version(session, version) if version else active_ruleset(session))
     # Окна нужны сверке чисел: точки пересчитываются по окнам **той версии
@@ -417,7 +418,15 @@ def _mismatch(project: Project, reason: str) -> CaseAttempt:
 
 
 async def _projects(session: AsyncSession, domain: str | None) -> list[Project]:
-    stmt = select(Project).order_by(Project.domain)
+    """Проекты в порядке, который не зависит от того, как лежат строки.
+
+    Одного домена мало: у двух кампаний одного сайта он один, и их взаимный
+    порядок решала куча Postgres — строка проекта переезжает при каждом
+    обновлении статуса. Чья кампания получала имя с «(2)», менялось от сборки к
+    сборке (Z39). Раньше идёт кампания, начатая раньше; номер строки — на
+    случай одинаковых периодов в разных режимах подсчёта.
+    """
+    stmt = select(Project).order_by(Project.domain, Project.period_start, Project.id)
     if domain is not None:
         stmt = stmt.where(Project.domain == domain)
     return list((await session.execute(stmt)).scalars().all())
