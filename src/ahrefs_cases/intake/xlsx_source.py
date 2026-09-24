@@ -16,6 +16,7 @@ from typing import IO, Any
 
 from openpyxl import load_workbook
 
+from ahrefs_cases.intake.rejections import UnfitSourceError
 from ahrefs_cases.intake.rows import RawTable, table_from_matrix
 
 
@@ -36,14 +37,40 @@ def read_xlsx_stream(stream: IO[bytes], origin: str) -> RawTable:
     временные файлы и убирать их за собой — при том, что читатель и так
     работает с потоком.
     """
-    workbook = load_workbook(filename=stream, read_only=True, data_only=True)
     try:
-        sheet = workbook.worksheets[0]
-        rows = [[_cell_to_str(cell) for cell in row] for row in sheet.iter_rows(values_only=True)]
-    finally:
-        workbook.close()
+        workbook = load_workbook(filename=stream, read_only=True, data_only=True)
+        try:
+            titles = [sheet.title for sheet in workbook.worksheets]
+            cells = [list(row) for row in workbook.worksheets[0].iter_rows(values_only=True)]
+        finally:
+            workbook.close()
+    # Ловится любое исключение, и это решение, а не небрежность: openpyxl на
+    # чужом файле отвечает чем придётся — `BadZipFile` на PDF и CSV, `KeyError`
+    # на документе Word, `ParseError` на обрезанном листе, — и каждый не
+    # пойманный тип был пятисоткой человеку. Внутри блока только чтение книги;
+    # приведение ячеек, то есть наш код, стоит снаружи и так не прячется.
+    except Exception as exc:
+        raise UnfitSourceError(
+            f"не читается как книга Excel ({type(exc).__name__}). Если это CSV или "
+            "старый .xls, сохраните список как .csv или .xlsx."
+        ) from exc
 
-    return table_from_matrix(origin, rows)
+    rows = [[_cell_to_str(cell) for cell in row] for row in cells]
+    return table_from_matrix(origin, rows, where=_sheet_note(titles))
+
+
+def _sheet_note(titles: list[str]) -> str:
+    """Какой лист прочитан и какие ещё есть — для отказа, если списка на нём нет.
+
+    Лист в книге один — фраза не нужна: искать список больше негде.
+    """
+    if len(titles) < 2:
+        return ""
+    others = ", ".join(f"«{title}»" for title in titles[1:])
+    return (
+        f"Читается первый лист книги — «{titles[0]}», а в книге есть ещё {others}: "
+        "список должен лежать на первом листе."
+    )
 
 
 def _cell_to_str(value: Any) -> str:
