@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_api_runs.py::test_fates_name_the_domain_as_people_write_it
 - **diagnosis:** n/a reason=обе причины видны в коде без поиска: судьба отдаёт `raw_domain` каноном (`api/routers/runs.run_status`), правило 4а (`to_unicode`) зовёт только сборка кейса; `RunRow` не несёт режима прогона, хотя он лежит в `params_snapshot['provider']`
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony (через координатора: «Начинай следующую поставку „мелочи журнала“ — владелец её одобрил»; состав: домен по-человечески в журнале прогонов одним правилом с кейсом, журнал называет режим прогона fixture/live)
