@@ -7,7 +7,7 @@
 - **kind:** hotfix
 - **repro_test:** n/a reason=падение воспроизводит сам CI на свежей установке (SQLAlchemy 2.1.0, run 36054208631: 47 failed); локально и на проде стоит 2.0.x, тест на версию библиотеки проверял бы pyproject, а не поведение by=agent:claude
 - **diagnosis:** n/a reason=причина названа логом CI без поиска: `SADeprecationWarning: Passing expression to distinct … DISTINCT ON … deprecated` при `filterwarnings = error`, `sqlalchemy-2.1.0` в списке установленного
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** deferred (reason=срочная починка CI: красный у всех PR и main с выхода SQLAlchemy 2.1.0; владелец спрошен в том же сообщении, at=2026-09-24)
