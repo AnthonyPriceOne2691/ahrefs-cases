@@ -214,6 +214,81 @@ describe('пропуски прогона', () => {
   });
 });
 
+describe('раскрытие показывает только проблемы', () => {
+  /** Судьбы прогона такими, какими их отдаёт живой API: все исходы подряд.
+   *  E1 держал в ответе один пропущенный домен и потому не видел, что
+   *  раскрытие рисует и собранные — на проде это 51 строка «собран» из 53. */
+  function fatesRun(fates: { domain: string; outcome: string; reason?: string }[]) {
+    const card = {
+      ...run(12, 'partial', { projects_ok: 3, projects_skipped: 2 }),
+      fates: fates.map((fate) => ({ reason: '', units_actual: 132, ...fate })),
+    };
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [run(12, 'partial', { projects_ok: 3, projects_skipped: 2 })],
+      },
+      '/api/runs/12': { status: 200, body: card },
+    });
+  }
+
+  it('в раскрытии только те, кого прогон не собрал', async () => {
+    fatesRun([
+      { domain: 'kaspi.kz', outcome: 'ok', reason: 'вся история уже собрана' },
+      { domain: 'lonelyplanet.com', outcome: 'skipped_no_data', reason: 'Ahrefs не отдал историю' },
+      { domain: 'bellroy.com', outcome: 'ok' },
+      { domain: 'huel.com', outcome: 'failed', reason: 'Ahrefs ответил 500' },
+      { domain: 'kiwi.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('lonelyplanet.com')).toBeInTheDocument();
+    expect(screen.getByText('huel.com')).toBeInTheDocument();
+    // Собранных в раскрытии нет — ни доменом, ни словом исхода.
+    expect(screen.queryByText('kaspi.kz')).not.toBeInTheDocument();
+    expect(screen.queryByText('собран')).not.toBeInTheDocument();
+    // Но и не пропали молча: их число названо одной строкой.
+    expect(screen.getByText('без замечаний собрано: 3')).toBeInTheDocument();
+  });
+
+  it('две кампании одного сайта с проблемой — две строки', async () => {
+    // Обе строки React нарисует и с одинаковым ключом — но с предупреждением,
+    // и при следующем обновлении списка вправе потерять одну из них. Поэтому
+    // тест смотрит и на ключи: домен у двух кампаний один и тот же.
+    const complaints = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fatesRun([
+      { domain: 'nordvpn.com', outcome: 'skipped_no_data', reason: 'первая кампания' },
+      { domain: 'nordvpn.com', outcome: 'skipped_quota', reason: 'вторая кампания' },
+      { domain: 'kiwi.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('первая кампания')).toBeInTheDocument();
+    expect(screen.getByText('вторая кампания')).toBeInTheDocument();
+    expect(screen.getAllByText('nordvpn.com')).toHaveLength(2);
+    const sameKey = complaints.mock.calls.filter((call) => String(call[0]).includes('same key'));
+    complaints.mockRestore();
+    expect(sameKey).toHaveLength(0);
+  });
+
+  it('проблем нет — таблицы нет, одна строка', async () => {
+    fatesRun([
+      { domain: 'kiwi.com', outcome: 'ok' },
+      { domain: 'bellroy.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('без замечаний собрано: 2')).toBeInTheDocument();
+    expect(screen.queryByText('kiwi.com')).not.toBeInTheDocument();
+  });
+});
+
 describe('расход units', () => {
   const USAGE = {
     spent: 5872,
