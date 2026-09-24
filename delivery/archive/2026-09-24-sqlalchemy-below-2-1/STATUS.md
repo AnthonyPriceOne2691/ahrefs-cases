@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** sqlalchemy-below-2-1
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** hotfix
+- **repro_test:** n/a reason=падение воспроизводит сам CI на свежей установке (SQLAlchemy 2.1.0, run 36054208631: 47 failed); локально и на проде стоит 2.0.x, тест на версию библиотеки проверял бы pyproject, а не поведение by=agent:claude
+- **diagnosis:** n/a reason=причина названа логом CI без поиска: `SADeprecationWarning: Passing expression to distinct … DISTINCT ON … deprecated` при `filterwarnings = error`, `sqlalchemy-2.1.0` в списке установленного
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** deferred (reason=срочная починка CI: красный у всех PR и main с выхода SQLAlchemy 2.1.0; владелец спрошен в том же сообщении, at=2026-09-24)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=правка ограничения версии, артефакт тот же
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** none reason=прод на 2.0.54, правка только не пускает 2.1 в следующую сборку образа и в CI
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** следующий CI на main и PR #26/#27 зелёные с SQLAlchemy 2.0.x в списке установленного
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

@@ -8,7 +8,10 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
-    "sqlalchemy[asyncio]>=2.0",
+    # Верхняя граница — с 24.09.2026: вышел 2.1.0, в нём `.distinct(expr)` (DISTINCT ON,
+    # collect/cache.py) объявлен устаревшим, а `filterwarnings = error` роняет на этом
+    # 47 тестов CI. Переход на `postgresql.distinct_on` — вместе с 2.1 везде (Z48).
+    "sqlalchemy[asyncio]>=2.0,<2.1",
     "alembic>=1.14",
     "asyncpg>=0.30",
     "httpx>=0.27",
