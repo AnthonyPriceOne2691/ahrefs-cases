@@ -76,4 +76,5 @@ RUN npm run build
 # --- Фронт, боевой режим -----------------------------------------------------
 FROM nginx:1.27-alpine AS web
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
+COPY deploy/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=web-build /app/web/dist /usr/share/nginx/html

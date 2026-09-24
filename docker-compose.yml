@@ -121,6 +121,15 @@ services:
     restart: unless-stopped
     volumes:
       - casedata:/app/data
+    # Жив ли воркер с точки зрения очереди: зарегистрирован и отметка свежая
+    # (`workers/health.py`). Docker по unhealthy не перезапускает — только
+    # показывает; причина — в `docker inspect --format '{{json .State.Health}}'`.
+    healthcheck:
+      test: ["CMD", "python", "-m", "ahrefs_cases.workers.health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,6 +152,14 @@ services:
       # бы, что открыты только 22/80/443. Порт — свой у каждого сервиса на
       # машине (на общем сервере 8091, `docs/PROD.md`).
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    # Оболочка и путь к API через себя же: 502 от устаревшего адреса api
+    # (или лежащий api) делает web unhealthy сам, а не только жалобой снаружи.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ && wget -q --spider http://127.0.0.1/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       api:
         condition: service_healthy

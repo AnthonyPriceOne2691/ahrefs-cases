@@ -124,6 +124,24 @@ docker compose exec api python scripts/run_collect.py case-data   # платно
 В `fixture` всё бесплатно; перед переключением в `live` — раздел 1
 `docs/FINDINGS.md`.
 
+## Здоровье контейнеров
+
+`docker compose ps` показывает `healthy`/`unhealthy` у api, worker и web.
+Docker по `unhealthy` контейнер **не перезапускает** — только показывает; это
+нарочно: воркер, убитый посреди платного прогона, при повторе заплатил бы
+дважды. Причину смотреть так:
+
+```bash
+docker inspect --format '{{json .State.Health}}' ahrefs-cases-worker-1
+```
+
+- **api** — `/api/health` отвечает.
+- **worker** — зарегистрирован в очереди и его отметка о жизни свежая
+  (`workers/health.py`): зависший `await` процесс не роняет, но отметку
+  обновлять перестаёт.
+- **web** — отдаёт оболочку **и** проходит к `/api/health` через себя: 502 от
+  лежащего или переехавшего api делает его `unhealthy` сам.
+
 ## Логи
 
 ```bash
@@ -188,7 +206,16 @@ scripts/restore.sh /srv/backups/ahrefs-cases/<дата> --yes   # затрёт �
 Что делает сайт: оболочка приложения — за паролем прокси; `/api/` открыт (фронт
 ходит с `Authorization: Bearer`, и basic auth на том же заголовке отказал бы
 каждому запросу — API защищён входом сервиса); вход ограничен 10 попытками в
-минуту на адрес (`limit_req`, всплеск 5, дальше 429); схемы API снаружи нет.
+минуту на адрес (`limit_req`, всплеск 5, дальше 429); схемы API снаружи нет;
+версия nginx не называется (`server_tokens off` — в обоих server-блоках сайта:
+в основном из шаблона и в блоке редиректа, который дописал certbot, — руками).
+
+Заголовки безопасности и CSP ставит nginx **контейнера**
+(`deploy/nginx.conf` + `deploy/security-headers.conf`), а не прокси хоста: они
+едут с образом и обновляются выкаткой. CSP разрешает только свои скрипты;
+появится встроенный `<script>` в `web/index.html` — нужен его sha256 в
+политике, и `tests/test_deploy_headers.py` назовёт его сам. HSTS — на прокси
+хоста, где TLS.
 
 Продление сертификата — системный таймер certbot
 (`systemctl list-timers | grep certbot`).
