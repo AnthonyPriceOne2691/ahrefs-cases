@@ -80,3 +80,25 @@ DISTINCT endpoint FROM units_ledger WHERE target = :domain AND kind = 'spent'`
 
 **Что признак виден в браузере.** Проверено оракулами в jsdom и разбором ответа
 API на живых данных; экран глазами не смотрели — инструмента съёмки в проекте нет.
+
+## Verdict
+- [x] READY FOR HANDOFF — подписал human:anthony at=2026-09-24 («давай подпишем»)
+- [ ] NEED CONVERGE (new tasks)
+- [ ] BLOCKED
+
+Подпись поставлена после выкладки сервиса на прод (24.09.2026). Сигнал из
+`observe_signal` глазами на живом стенде не смотрели: в проде пока `fixture` и
+проектов нет. Наблюдение открыто до 08.10 — срок и причина в STATUS.
+
+## Harness metrics (this shipment)
+
+| Metric | Value |
+|---|---|
+| time_to_accepted_spec | в тот же день: `human_ok_spec` 15.09, работа 16.09 |
+| implement_retries | n/a — не снималось на ходу; восстанавливать задним числом значило бы выдумывать |
+| verify_fails_before_green | n/a — то же |
+| files_touched / loc_diff | 31 / +1412 −296 (код и тесты, без delivery/knowledge/docs) — выше порога 800, waiver не записан |
+| rework_after_done | да: Z34 (24.09.2026) — сверка свежести из этой поставки искала `kw_total` среди точек вердикта и объявляла устаревшим каждый кейс с числом ключей; интерфейс прятал «Скачать PDF». Найдено браузером на боевых образах, исправлено PR #12 |
+| harness_hardened | no |
+| est_token_or_cost | n/a |
+
