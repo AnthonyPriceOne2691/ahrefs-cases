@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/card.test.tsx
 - **diagnosis:** n/a reason=не дефект: экран к API удаления, заведённому поставкой project-deletion-api
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony (через координатора: «Владелец одобрил вторую поставку удаления — экран»; состав — список из отчёта первой поставки: кнопка на карточке по праву из `/me` с предпросмотром из `GET …/deletion`, подпись права, «(проект удалён)» в судьбах прогона, предупреждение на карточке пачки)
