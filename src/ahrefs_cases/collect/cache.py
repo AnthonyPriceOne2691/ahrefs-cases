@@ -174,6 +174,16 @@ async def coverage(
     )
 
 
+REMEMBERED_EMPTY = "истории нет, проверено"
+"""Начало причины, с которой прогон берёт пустоту из памяти (`plan._skip_reason`).
+
+Такой исход — `ok`, но проверкой он не является: в подсчёт подтверждений он не
+входит, и время последней проверки берётся мимо него. Засчитай его как «собрано» —
+он рвёт цепочку «нет данных» подряд, и следующий прогон покупает пустоту заново
+(Z33: память держалась один прогон из трёх). Засчитай его проверкой — каждый
+прогон из памяти продлевал бы её бесконечно."""
+
+
 async def empty_since(session: AsyncSession, project_id: int) -> datetime | None:
     """Когда по проекту последний раз получили пустую историю — если это
     по-прежнему его последний известный исход.
@@ -187,12 +197,18 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
     выглядят опечатка в домене и расхождение формы ответа с нашей спекой, и
     поверить с первого раза значит замолчать проблему на месяц. Если после
     пустых ответов домен успели собрать, память не действует вовсе.
+
+    Исходы, взятые из самой памяти (`REMEMBERED_EMPTY`), пропускаются: они не
+    проверки, и срок отсчитывается от последнего настоящего запроса.
     """
     needed = config.ahrefs.empty_confirmations
+    from_memory = (RunItem.outcome == RunItemOutcome.OK) & RunItem.reason.startswith(
+        REMEMBERED_EMPTY, autoescape=True
+    )
     stmt = (
         select(RunItem.outcome, Run.finished_at)
         .join(Run, Run.id == RunItem.run_id)
-        .where(RunItem.project_id == project_id)
+        .where(RunItem.project_id == project_id, ~from_memory)
         .order_by(RunItem.id.desc())
         .limit(needed)
     )

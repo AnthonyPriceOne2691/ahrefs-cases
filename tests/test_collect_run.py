@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
+from ahrefs_cases.collect.cache import empty_since
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.quota import FixtureQuota
@@ -186,6 +187,47 @@ async def test_empty_history_is_skipped_run_continues(
     skipped = [item for item in items if item.outcome is RunItemOutcome.SKIPPED_NO_DATA]
     assert all(item.reason for item in skipped)
     assert all(item.units_actual == 0 for item in skipped)
+
+
+async def test_empty_memory_outlives_its_own_hits(db_session: AsyncSession, tmp_path: Path) -> None:
+    """Z33: память о пустом домене держит свой срок, а не один прогон из трёх.
+
+    Прогон, взявший пустоту из памяти, пишет исход `ok` с причиной «истории
+    нет, проверено …». Посчитай его среди подтверждений — он рвёт цепочку «нет
+    данных» подряд, и следующий прогон покупает пустоту заново: на боевых
+    образах 24.09.2026 шло «запрос → память → запрос». Посчитай его проверкой —
+    каждый прогон из памяти продлевал бы её бесконечно. Поэтому две проверки:
+    исходы подряд и время, от которого отсчитан срок.
+    """
+    await _load(db_session, tmp_path, ["empty.example.com"])
+
+    outcomes: list[RunItemOutcome] = []
+    for _ in range(5):
+        await collect_all(db_session, AhrefsFixture())
+        last = (
+            (await db_session.execute(select(RunItem).order_by(RunItem.id.desc()).limit(1)))
+            .scalars()
+            .one()
+        )
+        outcomes.append(last.outcome)
+
+    no_data, remembered = RunItemOutcome.SKIPPED_NO_DATA, RunItemOutcome.OK
+    assert outcomes == [no_data, no_data, remembered, remembered, remembered]
+
+    project_id = (await db_session.execute(select(Project.id))).scalars().one()
+    real_checks = (
+        (
+            await db_session.execute(
+                select(Run.finished_at)
+                .join(RunItem, RunItem.run_id == Run.id)
+                .where(RunItem.outcome == no_data)
+                .order_by(Run.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert await empty_since(db_session, project_id) == real_checks[-1]
 
 
 async def test_short_history_is_marked_not_dropped(
