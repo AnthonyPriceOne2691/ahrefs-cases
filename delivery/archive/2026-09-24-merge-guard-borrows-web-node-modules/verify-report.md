@@ -11,7 +11,8 @@
 | G4: адаптация объявлена | `scripts/lint/adapted.json` | запись `merge_guard.sh` с `reason`/`changed`/`kind: adaptation` |
 | Форма кода | `pre-commit run --all-files` | 29 хуков, упавших 0 |
 | Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок |
-| CI на ветке поставки | GitHub Actions | ждёт первого прогона после пуша |
+| Бэкенд целиком | `pytest -q` на дев-базе | 663 passed, 3 skipped (медленные, без стека) |
+| CI на ветке поставки | GitHub Actions, PR #19 | delivery, gates, tests — pass: https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36011872616 |
 
 ## Исполнение рисковых путей
 
