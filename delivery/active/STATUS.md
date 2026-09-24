@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** last-keyholder-keeps-the-key
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** tests/test_api_users.py::test_manager_cannot_take_own_management_right
+- **diagnosis:** n/a reason=причина видна в коде без поиска: защита «последний администратор» (`_refuse_last_admin`) считает только группу admin, а личные права не проверяются вовсе; на проде единственный пользователь — engineer, и он снял с себя `manage_users` личным «Нет»
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-24 by=human:anthony («нашел дыру, сам себе отрезал права, хотя я один инженер»; на выбор правила — «Строже: себе нельзя вообще»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт в ответе API
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель, класс S; ветка поверх `bugfix/text-keeps-its-ink-in-any-browser` — обе поставки дописывают `INDEX.md` и реестр находок
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** none reason=отказ — обычный ответ 409 роутера, его видят тесты API; экран показывает текст отказа уже существующей плашкой, фронт не менялся
+- **irreversible_surfaces:** none reason=автомерж в репозитории выключен, каждый PR сливает человек; выкатка в прод — ручная, по `docs/PROD.md`. Правка базы на проде (снять личный запрет у anthony@) сделана до поставки по прямому решению владельца, с бэкапом `2026-09-24-1519`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде «Нет» у своего «добавлять пользователей» и смена своей группы на «пользователь» отвечают отказом со словами «другой управляющий», а право остаётся
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
