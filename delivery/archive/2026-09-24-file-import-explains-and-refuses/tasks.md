@@ -41,4 +41,4 @@
 - [x] T11: гейты: pytest, vitest, tsc, eslint, prettier, mypy, ruff,
       `delivery_check`; канон (`knowledge/product/intake.md`) и реестр
       находок (Z42).
-- [ ] T12: verify-report, метрики, архив, урок L212, PR, зелёный CI.
+- [x] T12: verify-report, метрики, архив, уроки L212–L213, PR #24, зелёный CI.
