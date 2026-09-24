@@ -3,6 +3,8 @@
 **Date:** 2026-09-25
 **Verifier:** human:anthony (приёмка); оракулы и исполнение на копии базы — agent:claude
 **asserts_reviewed_by:** n/a (все утверждения ведут к одобренным примерам)
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36061022773
+**Commit:** 4b98af8
 
 ## Чем проверено
 
@@ -18,6 +20,7 @@
 | Миграция: цикл с нуля | `MIGRATION_CYCLE_TEST=1 pytest tests/test_migrations.py` на пустой базе `cases_casestage_cycle` | passed: `upgrade head` → `downgrade base` (типов ENUM не осталось) → `upgrade head`; голова `a8b9c0d1e2f3`, пять новых имён на месте |
 | Миграция на копии перед исполнением | `alembic upgrade head` на `cases_casestage_check` | `f7a8b9c0d1e2 -> a8b9c0d1e2f3`; `/api/health` — `migration: a8b9c0d1e2f3` |
 | Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок; до слияния #27 — с `--diff-base bugfix/two-campaigns-two-cases`: поставка была отведена от его ветки |
+| CI на ветке поставки | GitHub Actions, PR #29, коммит 4b98af8 | delivery, gates, tests — pass (726 passed, 2 skipped): https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36061022773 |
 | Исполнение (Y10) | ниже — «Исполнение рисковых путей» | журнал и экран сошлись со сборкой; до правки — «0 из 75», судеб нет |
 
 ## Исполнение рисковых путей
