@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** merge-guard-borrows-web-node-modules
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** tests/test_merge_guard_environment.py::test_merge_worktree_gets_the_environment_of_every_frontend
+- **diagnosis:** active/diagnosis.md
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** n/a reason=класс S — mini-spec с примерами G1–G4 в tasks.md; дефект воспроизведён 24.09.2026 в сессии владельца, подпись владельца — на handoff (verifier)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт в скрипте гейта мержа
+- **ci-oracles:** tooling
+- **worktree:** .claude/worktrees/agent-a9c520ba405a79ed9 reason=основной клон занят слиянием #16/#17 и выкладкой; ветка от свежего origin/main
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** scripts/merge_guard.sh reason=гейт мержа с настоящими хуками судится только исполнением: тест ставит заглушку вместо pre-commit, а eslint и prettier через симлинк во временном дереве видит лишь прогон DRY_RUN
+- **irreversible_surfaces:** none reason=правка меняет только список каталогов, одалживаемых во временное дерево; сам мерж скрипт по-прежнему делает локально и только без DRY_RUN, пуш в main и слияние PR — человек; выкатки и отправок наружу поставка не касается
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** следующий мерж из основного клона через `bash scripts/merge_guard.sh` без MERGE_GUARD_BORROW печатает «одолжено окружение: web/node_modules», и гейт pre-commit (all files) на нём OK
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
