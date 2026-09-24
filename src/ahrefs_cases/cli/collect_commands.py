@@ -48,6 +48,7 @@ from ahrefs_cases.intake.accept import (
 )
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError
 from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
+from ahrefs_cases.intake.rejections import UnfitSourceError
 from ahrefs_cases.storage._enums import Group, MetricSource
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -67,16 +68,22 @@ async def _intake(reference: str) -> int:
     Опечатка в пути и закрытая таблица — самые частые ошибки запуска, и
     отвечать на них стеком `io.open` значит требовать от человека читать
     трассировку ради строки «файла нет».
+
+    Список, не годный целиком (нет колонок, одна шапка), — тот же код 2: чинит
+    его человек правкой файла. Код 1 остаётся списку, где битые все строки, —
+    там чинят строки, и отчёт называет какие.
     """
     try:
         table = read_source(reference)
+        async with get_sessionmaker()() as session:
+            report = await accept(session, table)
+            await session.commit()
+    except UnfitSourceError as exc:
+        print(f"список не подходит: {exc}", file=sys.stderr)
+        return _EXIT_BAD_SOURCE
     except _SOURCE_ERRORS as exc:
         print(f"источник не прочитан: {exc}", file=sys.stderr)
         return _EXIT_BAD_SOURCE
-
-    async with get_sessionmaker()() as session:
-        report = await accept(session, table)
-        await session.commit()
     print("\n".join(report.as_lines()))
     return 0 if report.accepted else 1
 

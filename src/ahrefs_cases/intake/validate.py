@@ -7,16 +7,21 @@
 Строка собирает **все** свои отказы, а не первый: список правят в Excel руками,
 и три прохода «исправил дату — узнал про гео — узнал про флаг» стоят человеку
 трёх загрузок.
+
+Граница двух браков проведена здесь же (`check_fit`): чего нет в **шапке**, того
+нет ни в одной строке — это брак файла, и он отказывает целиком; чего нет в
+**ячейке** — брак строки, и он попадает в отчёт, не мешая соседям.
 """
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import date, datetime
 
 from ahrefs_cases.intake.drafts import ProjectDraft
 from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
-from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason
+from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason, UnfitSourceError
 from ahrefs_cases.intake.rows import RawRow, RawTable
 from ahrefs_cases.storage._enums import TargetMode
 
@@ -37,7 +42,18 @@ REQUIRED_COLUMNS = (
 знать (тогда блок «что сделали» в кейсе скрывается, а не выдумывается)."""
 
 OPTIONAL_COLUMNS = ("target_mode", "notes")
-_MAY_BE_EMPTY = frozenset({"work_volume"})
+MAY_BE_EMPTY = frozenset({"work_volume"})
+"""Обязательная колонка, ячейки которой разрешено оставлять пустыми. Открыто
+наружу: подсказка экрана говорит то же самое, и тест сверяет их (V19)."""
+
+_KNOWN_COLUMNS = frozenset(REQUIRED_COLUMNS + OPTIONAL_COLUMNS)
+_EXPECTED = (
+    f"Нужна шапка в первой строке с колонками {', '.join(REQUIRED_COLUMNS)} "
+    f"(необязательные: {', '.join(OPTIONAL_COLUMNS)}) — имена латиницей."
+)
+_BLANK_HEADER = "первая строка пуста — шапка должна стоять в первой строке."
+_SEEN_CELLS = 6
+_SEEN_WIDTH = 60
 
 _DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y/%m/%d")
 _GEO_RE = re.compile(r"^[A-Za-z]{2}$")
@@ -49,32 +65,10 @@ def validate_table(table: RawTable) -> tuple[list[ProjectDraft], list[Rejection]
     """Таблица → черновики, отказы и замечания.
 
     Новости три, а не две: строка принята, строка принята с непонятой ячейкой,
-    строка отклонена. Дубль домена в файле отмечается, не глотается.
+    строка отклонена. Дубль домена в файле отмечается, не глотается. Файл,
+    который не годится целиком, до строк не доходит (`check_fit`).
     """
-    if not table.columns:
-        return (
-            [],
-            [
-                Rejection(
-                    row_no=1,
-                    field="*",
-                    reason=RejectReason.EMPTY_SOURCE,
-                    detail=table.origin,
-                )
-            ],
-            [],
-        )
-
-    missing = missing_columns(table)
-    if missing:
-        return (
-            [],
-            [
-                Rejection(row_no=1, field=column, reason=RejectReason.MISSING_COLUMN)
-                for column in missing
-            ],
-            [],
-        )
+    check_fit(table)
 
     drafts: dict[tuple[str, TargetMode, date], ProjectDraft] = {}
     rejections: list[Rejection] = []
@@ -106,12 +100,122 @@ def missing_columns(table: RawTable) -> tuple[str, ...]:
     return tuple(column for column in REQUIRED_COLUMNS if column not in present)
 
 
+def check_fit(table: RawTable) -> None:
+    """Годится ли источник целиком. Нет — `UnfitSourceError`, и в базу не пишется ничего.
+
+    Четыре брака файла: строк нет вовсе, нет обязательных колонок, колонка из
+    известных стоит в шапке дважды (какую читать — неизвестно; раньше молча
+    бралась последняя), только шапка. Беды шапки называются **разом**, как
+    отказы строки: два прохода «поправил имя — узнал про дубль» стоят человеку
+    двух загрузок. Текст называет прочитанное и ожидаемое, потому что человек
+    чинит файл по нему, а не по коду ответа.
+    """
+    if not table.columns:
+        # Пустая первая строка над списком выглядит так же, как пустой файл:
+        # `csv` отдаёт её пустым списком. Различают их строки ниже неё.
+        if table.rows:
+            raise UnfitSourceError(_sentences([_BLANK_HEADER, _EXPECTED]))
+        raise UnfitSourceError(_sentences(["нет ни одной строки.", table.where, _EXPECTED]))
+    counts = Counter(table.columns)
+    doubled = sorted(name for name in _KNOWN_COLUMNS if counts[name] > 1)
+    missing = missing_columns(table)
+    if missing or doubled:
+        raise UnfitSourceError(
+            _sentences(
+                [
+                    _missing_text(table, missing) if missing else "",
+                    f"в шапке дважды: {', '.join(doubled)} — непонятно, какую колонку "
+                    "читать, оставьте по одной."
+                    if doubled
+                    else "",
+                    _EXPECTED if missing else "",
+                ]
+            )
+        )
+    if not table.data_rows():
+        raise UnfitSourceError(
+            "только шапка — строк со списком нет. Проекты идут со второй строки, по одному "
+            "на строку."
+        )
+
+
+def _missing_text(table: RawTable, missing: tuple[str, ...]) -> str:
+    """Чего нет, на что похоже имеющееся, что прочитано и что ожидается.
+
+    Прочитанное показывается, только когда не нашлось **ни одной** нужной
+    колонки: так выглядят шапка по-русски, чужой разделитель («domain|…» одной
+    ячейкой), список на другом листе. Когда не хватает двух колонок из десяти,
+    перечень восьми правильных — шум.
+    """
+    if len(missing) == len(REQUIRED_COLUMNS):
+        # Все десять перечислены в ожидаемом ниже — второй раз подряд это шум.
+        parts = ["нет ни одной нужной колонки.", _seen(table.columns), table.where]
+    else:
+        word = "колонки" if len(missing) == 1 else "колонок"
+        parts = [f"нет {word} {', '.join(missing)}.", _near_names(table.columns, missing)]
+    return _sentences(parts)
+
+
+def _sentences(parts: list[str]) -> str:
+    """Предложения через пробел, каждое следующее — с заглавной; пустые пропускаются.
+
+    Первое остаётся строчным: перед ним встанет «Файл «x» не подходит:».
+    """
+    kept = [part for part in parts if part]
+    return " ".join(part if i == 0 else part[:1].upper() + part[1:] for i, part in enumerate(kept))
+
+
+def _near_names(columns: tuple[str, ...], missing: tuple[str, ...]) -> str:
+    """Подсказка для имени, отличающегося от нужного только пробелами и знаками.
+
+    Регистр приём прощает (`Domain` — это `domain`), и человек ждёт, что простит
+    и `Period Start`. Не прощает: принять значило бы расширить формат, а не
+    проверить его, — и второе правило соответствия имён (урок L124). Поэтому
+    похожесть считается **только для текста**; сличение шапки по-прежнему одно,
+    в `rows.normalize_columns`.
+    """
+    squashed = {_squash(name): name for name in columns if name and name not in _KNOWN_COLUMNS}
+    hints = [
+        f"{name} — в шапке «{squashed[_squash(name)]}», переименуйте"
+        for name in missing
+        if _squash(name) in squashed
+    ]
+    return f"Похоже на опечатку: {'; '.join(hints)}." if hints else ""
+
+
+def _squash(name: str) -> str:
+    return re.sub(r"[\W_]+", "", name)
+
+
+def _seen(columns: tuple[str, ...]) -> str:
+    """Что стоит в первой строке — как прочитано, первые несколько ячеек."""
+    cells = [name for name in columns if name]
+    if not cells:
+        return _BLANK_HEADER
+    shown = ", ".join(f"«{_clip(name)}»" for name in cells[:_SEEN_CELLS])
+    rest = len(cells) - _SEEN_CELLS
+    more = f" и ещё {rest}" if rest > 0 else ""
+    seen = f"В первой строке сейчас: {shown}{more}."
+    # Одна ячейка, в которой стоят сразу несколько нужных имён, — шапка не
+    # разделилась: разделитель не тот, что мы ищем (`csv_source._DELIMITERS`).
+    if len(cells) == 1 and sum(name in cells[0] for name in REQUIRED_COLUMNS) > 1:
+        seen += (
+            " Шапка не разделилась на колонки: разделитель — запятая, точка с запятой"
+            " или табуляция."
+        )
+    return seen
+
+
+def _clip(name: str) -> str:
+    return name if len(name) <= _SEEN_WIDTH else f"{name[:_SEEN_WIDTH]}…"
+
+
 def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection], list[Notice]]:
     """Строка → черновик, её отказы (все сразу) и замечания к принятой строке."""
     rejections = [
         Rejection(row_no=row.row_no, field=column, reason=RejectReason.MISSING_FIELD)
         for column in REQUIRED_COLUMNS
-        if column not in _MAY_BE_EMPTY and not row.get(column)
+        if column not in MAY_BE_EMPTY and not row.get(column)
     ]
     notices: list[Notice] = []
 

@@ -56,6 +56,12 @@ class RawTable:
     origin: str
     columns: tuple[str, ...]
     rows: tuple[RawRow, ...]
+    where: str = ""
+    """Какой лист прочитан — фразой для отказа, если списка на нём не нашлось.
+
+    Книга читается с первого листа, таблица по ссылке — с листа из `gid`, и
+    когда список лежит на соседнем, «нет колонок» без этой фразы отправляет
+    человека чинить шапку, которая в порядке. У CSV лист один — пусто."""
 
     def data_rows(self) -> tuple[RawRow, ...]:
         return tuple(row for row in self.rows if not row.is_blank())
@@ -85,7 +91,7 @@ def normalize_columns(header: list[str]) -> tuple[str, ...]:
     return tuple(column.strip().lower() for column in header)
 
 
-def table_from_matrix(origin: str, values: list[list[str]]) -> RawTable:
+def table_from_matrix(origin: str, values: list[list[str]], where: str = "") -> RawTable:
     """Матрица «заголовок + строки» → сырая таблица. Одна сборка на все источники.
 
     Сборка была написана дважды — в читателе CSV и в читателе XLSX, — и пока
@@ -95,6 +101,8 @@ def table_from_matrix(origin: str, values: list[list[str]]) -> RawTable:
     для этого знания одно, здесь.
     """
     if not values:
-        return RawTable(origin=origin, columns=(), rows=())
+        return RawTable(origin=origin, columns=(), rows=(), where=where)
     columns = normalize_columns(values[0])
-    return RawTable(origin=origin, columns=columns, rows=build_rows(columns, values[1:]))
+    return RawTable(
+        origin=origin, columns=columns, rows=build_rows(columns, values[1:]), where=where
+    )

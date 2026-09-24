@@ -15,6 +15,7 @@ from pathlib import Path
 
 import chardet
 
+from ahrefs_cases.intake.rejections import UnfitSourceError
 from ahrefs_cases.intake.rows import RawTable, table_from_matrix
 
 _FALLBACK_ENCODINGS = ("utf-8-sig", "cp1251", "latin-1")
@@ -24,6 +25,11 @@ _FALLBACK_ENCODINGS = ("utf-8-sig", "cp1251", "latin-1")
 _DETECT_CONFIDENCE = 0.8
 _DELIMITERS = ",;\t"
 _SNIFF_BYTES = 8192
+_BINARY_PROBE = 4096
+"""Сколько символов начала смотреть в поисках нулевого байта. В тексте его не
+бывает (UTF-16 с меткой порядка байт — выгрузка Excel «Юникод» — раскодирован
+раньше и нулей уже не содержит), а в книге Excel и в PDF он стоит в первых
+сотнях байт."""
 
 
 def read_csv(path: Path) -> RawTable:
@@ -31,15 +37,32 @@ def read_csv(path: Path) -> RawTable:
     return parse_csv_text(decode(path.read_bytes()), origin=str(path))
 
 
-def parse_csv_text(text: str, origin: str) -> RawTable:
+def parse_csv_text(text: str, origin: str, where: str = "") -> RawTable:
     """Текст CSV → сырая таблица. Один разбор на файл и на Google Sheet.
 
     Экспорт таблицы — тот же CSV, и разбирать его вторым способом («поделить по
     запятой») значило бы получить разное поведение на кавычках и на заметке с
     запятой внутри — ровно там, где расхождение заметят не сразу.
+
+    Двоичный файл под именем `.csv` (книга Excel, PDF) раскодируется всегда —
+    `latin-1` читает любые байты, — и без проверки его мусор становился шапкой,
+    а ответ — «Принято». Длинная строка без переводов роняла модуль `csv`
+    (`field larger than field limit`), и человек получал пятисотку.
     """
+    if "\x00" in text[:_BINARY_PROBE]:
+        raise UnfitSourceError(
+            "не похож на текст — это двоичный файл с расширением .csv (книга Excel, PDF "
+            "или что-то ещё). Сохраните список как CSV или XLSX."
+        )
     delimiter = _sniff_delimiter(text)
-    return table_from_matrix(origin, list(csv.reader(text.splitlines(), delimiter=delimiter)))
+    try:
+        matrix = list(csv.reader(text.splitlines(), delimiter=delimiter))
+    except csv.Error as exc:
+        raise UnfitSourceError(
+            f"не читается как CSV ({exc}): похоже, это не текстовая таблица. "
+            "Сохраните список как CSV или XLSX."
+        ) from exc
+    return table_from_matrix(origin, matrix, where=where)
 
 
 def decode(data: bytes) -> str:
