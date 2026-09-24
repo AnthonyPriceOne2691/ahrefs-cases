@@ -261,7 +261,12 @@ async def _estimate_view(
     cached: int,
     lines: list[str],
 ) -> RunEstimate:
-    """Смета против квоты — одна на обе кнопки: вторая копия разошлась бы в деньгах."""
+    """Смета против квоты — одна на обе кнопки: вторая копия разошлась бы в деньгах.
+
+    Считать не по кому — строк схемы нет: пустой план печатает «данные по
+    этому списку уже куплены», а это неправда про список, где собирать не по
+    кому. Пустоту объясняет окно своими словами.
+    """
     reserved = await reserved_units(session)
     state = await preflight(
         build_quota(),
@@ -274,7 +279,7 @@ async def _estimate_view(
         units_estimated=units,
         requests_planned=planned,
         requests_cached=cached,
-        scheme_lines=lines,
+        scheme_lines=lines if projects else [],
         quota_left=state.left,
         quota_reserved=reserved,
         verdict=state.verdict.value,
