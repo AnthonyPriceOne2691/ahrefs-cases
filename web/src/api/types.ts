@@ -226,12 +226,17 @@ export interface PackView {
 }
 
 export interface UsageView {
+  /** Настоящий расход — только живые прогоны. */
   spent: number;
+  /** Условные units прогонов без живого ключа: столько стоили бы они вживую. Не расход. */
+  conditional: number;
   reserved: number;
   /** `null` — остаток не узнали. Это не ноль: ноль означал бы «квота кончилась». */
   remaining: number | null;
   /** Расход, которого счётчик Ahrefs ещё не увидел: прогон считается по разнице. */
   uncounted: number;
+  /** Сколько доменов оплачено живьём — знаменатель стоимости на сто доменов. */
+  live_domains: number;
   per_hundred_domains: number | null;
 }
 
