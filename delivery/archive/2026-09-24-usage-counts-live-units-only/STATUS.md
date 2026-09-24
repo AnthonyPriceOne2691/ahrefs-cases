@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_api_usage.py::test_fixture_run_is_not_spent
 - **diagnosis:** active/diagnosis.md
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony («поправь расхождение»)
@@ -28,8 +28,8 @@
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** —
-- **observe_until:** —
+- **observe_signal:** на проде после выкладки «потрачено» равно сумме `SPENT` живых прогонов по SQL (на 24.09 по данным координатора 10 460), стоимость на сто — она же на различные `target` живых `SPENT` × 100 (при 51 домене 20 510 вместо 19 736); строки «Условные units» на чисто живом журнале нет, в том числе посреди прогона
+- **observe_until:** 2026-10-08
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Что решает эта поставка
