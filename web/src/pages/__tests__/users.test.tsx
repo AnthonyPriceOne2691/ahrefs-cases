@@ -174,3 +174,23 @@ describe('состояния экрана', () => {
     expect(await screen.findByText('нужно право manage_users')).toBeInTheDocument();
   });
 });
+
+it('PD6: право удалять проекты подписано словами, а не ключом', async () => {
+  const withDelete = {
+    rights: [...CATALOG.rights, 'delete_projects'],
+    groups: { ...CATALOG.groups, engineer: [...CATALOG.groups.engineer, 'delete_projects'] },
+  };
+  server({
+    '/api/auth/me': ME,
+    '/api/users': {
+      status: 200,
+      body: [user(1, 'engineer', {}, { rights: withDelete.groups.engineer })],
+    },
+    '/api/users/rights': { status: 200, body: withDelete },
+  });
+
+  show();
+
+  expect(await screen.findByText('удалять проекты')).toBeInTheDocument();
+  expect(screen.queryByText('delete_projects')).toBeNull();
+});
