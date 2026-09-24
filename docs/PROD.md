@@ -207,7 +207,8 @@ systemctl reload nginx` → `certbot --nginx -d <новое имя> --redirect`.
    http://127.0.0.1:8091/api/health`.
 4. Пороги: `docker compose exec api python scripts/run_collect.py classify` —
    Ahrefs не трогает, на пустой базе засевает версию по умолчанию. Без неё
-   экран проектов отвечает `503` «нет активной версии порогов».
+   экран проектов отвечает `503` «нет активной версии порогов». Код выхода 1
+   здесь не сбой: проектов ещё нет, «классифицировано 0», а версия записана.
 5. Первый человек: `useradd … engineer` (см. «Люди»).
 6. Сайт: шаблон с настоящим `server_name` в `sites-available`, ссылка в
    `sites-enabled`, `htpasswd -c /etc/nginx/ahrefs-cases.htpasswd cases`,
