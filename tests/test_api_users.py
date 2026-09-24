@@ -300,6 +300,84 @@ def test_self_deactivation_is_refused(client: TestClient) -> None:
     assert response.status_code == 409
 
 
+def _rights_of(client: TestClient, email: str) -> list[str]:
+    rows = client.get("/api/users", headers=_headers(client, ADMIN)).json()
+    return next(row["rights"] for row in rows if row["email"] == email)
+
+
+def test_manager_cannot_take_own_management_right(client: TestClient) -> None:
+    """U1: себя не лишить права управлять людьми личным «Нет».
+
+    Так единственный инженер прода запер себя снаружи 24.09.2026: «Нет» у
+    своего «добавлять пользователей» — и вернуть право стало некому, экран
+    людей отвечал 403. Отказ называет, кто может это сделать.
+    """
+    boss = _headers(client, ADMIN)
+
+    refused = client.patch(
+        f"/api/users/{_user_id(client, ADMIN)}",
+        json={"personal_rights": {"manage_users": False}},
+        headers=boss,
+    )
+
+    assert refused.status_code == 409
+    assert "другой управляющий" in refused.json()["detail"]
+    assert "manage_users" in _rights_of(client, ADMIN)
+
+
+def test_manager_cannot_leave_management_by_own_group(client: TestClient) -> None:
+    """U2: и сменой своей группы тоже — правило строгое, другой управляющий есть.
+
+    Второй администратор здесь не для красоты (урок L160): без него смену группы
+    отбила бы прежняя защита «последний администратор», и тест был бы зелёным
+    без новой. Поэтому утверждение — по тексту отказа, а не по коду 409.
+    """
+    boss = _headers(client, ADMIN)
+    second = client.post("/api/users", json={"email": SECOND_ADMIN, "group": "admin"}, headers=boss)
+    assert second.status_code == 201, second.text
+
+    refused = client.patch(
+        f"/api/users/{_user_id(client, ADMIN)}", json={"group": "user"}, headers=boss
+    )
+
+    assert refused.status_code == 409
+    assert "другой управляющий" in refused.json()["detail"]
+    assert "manage_users" in _rights_of(client, ADMIN)
+
+
+def test_management_right_of_another_can_be_taken(client: TestClient) -> None:
+    """U3: страж от перегиба — правило про себя, а не про само право."""
+    boss = _headers(client, ADMIN)
+    second = client.post("/api/users", json={"email": SECOND_ADMIN, "group": "admin"}, headers=boss)
+    assert second.status_code == 201, second.text
+
+    taken = client.patch(
+        f"/api/users/{second.json()['user']['id']}",
+        json={"personal_rights": {"manage_users": False}},
+        headers=boss,
+    )
+
+    assert taken.status_code == 200, taken.text
+    assert "manage_users" not in taken.json()["rights"]
+
+
+def test_own_group_change_keeping_management_is_allowed(client: TestClient) -> None:
+    """U4: страж от перегиба — запрещено терять право, а не менять свою группу.
+
+    Второй администратор — чтобы уход из админов не отбила прежняя защита.
+    """
+    boss = _headers(client, ADMIN)
+    second = client.post("/api/users", json={"email": SECOND_ADMIN, "group": "admin"}, headers=boss)
+    assert second.status_code == 201, second.text
+
+    moved = client.patch(
+        f"/api/users/{_user_id(client, ADMIN)}", json={"group": "engineer"}, headers=boss
+    )
+
+    assert moved.status_code == 200, moved.text
+    assert "manage_users" in moved.json()["rights"]
+
+
 def test_password_reset_invalidates_the_old_one(client: TestClient) -> None:
     """E9: перевыпуск — это не «ещё один пароль», а замена."""
     headers = _headers(client, ADMIN)
