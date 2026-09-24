@@ -218,7 +218,9 @@ describe('раскрытие показывает только проблемы'
   /** Судьбы прогона такими, какими их отдаёт живой API: все исходы подряд.
    *  E1 держал в ответе один пропущенный домен и потому не видел, что
    *  раскрытие рисует и собранные — на проде это 51 строка «собран» из 53. */
-  function fatesRun(fates: { domain: string; outcome: string; reason?: string }[]) {
+  function fatesRun(
+    fates: { domain: string; outcome: string; reason?: string; project_deleted?: boolean }[],
+  ) {
     const card = {
       ...run(12, 'partial', { projects_ok: 3, projects_skipped: 2 }),
       fates: fates.map((fate) => ({ reason: '', units_actual: 132, ...fate })),
@@ -273,6 +275,30 @@ describe('раскрытие показывает только проблемы'
     const sameKey = complaints.mock.calls.filter((call) => String(call[0]).includes('same key'));
     complaints.mockRestore();
     expect(sameKey).toHaveLength(0);
+  });
+
+  it('PD7: удалённый проект подписан, живая кампания того же сайта — нет', async () => {
+    fatesRun([
+      {
+        domain: 'nordvpn.com',
+        outcome: 'skipped_no_data',
+        reason: 'первая',
+        project_deleted: true,
+      },
+      { domain: 'nordvpn.com', outcome: 'skipped_quota', reason: 'вторая' },
+      { domain: 'kiwi.com', outcome: 'ok', project_deleted: true },
+      { domain: 'bellroy.com', outcome: 'ok' },
+    ]);
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect((await screen.findByText('первая')).closest('tr')).toHaveTextContent('(проект удалён)');
+    expect(screen.getByText('вторая').closest('tr')).not.toHaveTextContent('(проект удалён)');
+    // Собранные не перечисляются, но удалённые среди них названы числом.
+    expect(screen.getByText(/без замечаний собрано: 2/)).toHaveTextContent(
+      'без замечаний собрано: 2, из них проектов удалено: 1',
+    );
   });
 
   it('проблем нет — таблицы нет, одна строка', async () => {
