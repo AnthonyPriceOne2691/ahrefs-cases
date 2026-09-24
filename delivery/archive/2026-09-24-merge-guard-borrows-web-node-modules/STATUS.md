@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_merge_guard_environment.py::test_merge_worktree_gets_the_environment_of_every_frontend
 - **diagnosis:** active/diagnosis.md
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** n/a reason=класс S — mini-spec с примерами G1–G4 в tasks.md; дефект воспроизведён 24.09.2026 в сессии владельца, подпись владельца — на handoff (verifier)
