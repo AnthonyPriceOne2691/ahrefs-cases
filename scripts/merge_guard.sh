@@ -102,7 +102,13 @@ git worktree add --quiet --detach "$WT" "$TARGET" || die "не смог созд
 #
 # Так решили три независимых развёртывания на настоящем проекте — каждое пришло к
 # симлинкам само, поэтому дизайн здесь не мой выбор, а воспроизведённый результат.
-BORROW_DIRS=${MERGE_GUARD_BORROW:-"backend/.venv frontend/node_modules .venv node_modules"}
+#
+# Адаптация под раскладку проекта (объявлена в scripts/lint/adapted.json): фронт
+# живёт в `web/`, а не в `frontend/`. Без `web/node_modules` хук eslint во
+# временном дереве своего eslint не находил, npx брал чужой из своего кэша, и мерж
+# блокировал дефект гейта, а не код. Раскладку сторожит
+# tests/test_merge_guard_environment.py — каталоги фронта он берёт из package.json.
+BORROW_DIRS=${MERGE_GUARD_BORROW:-"backend/.venv frontend/node_modules web/node_modules .venv node_modules"}
 for dev in $BORROW_DIRS; do
   if [[ -e "$REPO_ROOT/$dev" && ! -e "$WT/$dev" ]]; then
     mkdir -p "$WT/$(dirname "$dev")"
