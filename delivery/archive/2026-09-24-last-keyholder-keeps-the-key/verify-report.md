@@ -11,6 +11,7 @@
 | U5: прежние отказы (себя не выключить, не удалить, последний админ) | `pytest tests/test_api_users.py` | 21 passed |
 | Бэкенд целиком | `pytest -q` | 663 passed, 2 skipped |
 | Типы и стиль | `mypy src/ahrefs_cases`, `ruff check`, `ruff format --check` | чисто |
+| CI на ветке поставки | GitHub Actions, PR #17 | delivery, gates, tests — pass: https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36006449176 |
 
 ## Путь человека — кнопкой
 
