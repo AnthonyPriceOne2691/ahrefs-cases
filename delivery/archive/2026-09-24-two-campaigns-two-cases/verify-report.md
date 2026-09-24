@@ -3,6 +3,8 @@
 **Date:** 2026-09-24
 **Verifier:** human:anthony (приёмка); оракулы и исполнение на копии базы — agent:claude
 **asserts_reviewed_by:** n/a (все утверждения ведут к одобренным примерам)
+**CI run:** https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36054725420
+**Commit:** fffc1cc
 
 ## Чем проверено
 
@@ -15,6 +17,8 @@
 | pre-commit | хуки на коммитах поставки | Passed, `okf-sync` — код и концепт одним коммитом |
 | Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок |
 | Исполнение на копии дев-базы (W6) | ниже — «Исполнение рисковых путей» | до правки один PDF на две кампании, после — два с разными sha256 |
+| CI на ветке поставки, первый прогон | GitHub Actions, PR #27, коммит 10f2587 | tests — fail, 47 failed не по диффу: CI поставил вышедший в тот же час SQLAlchemy 2.1.0, чьё предупреждение об устаревшем `select().distinct(выражение)` (`cache.share_twin_points`) `filterwarnings = error` сделал падением; соседняя ветка четырьмя минутами раньше на 2.0.54 — зелёная. Граница `<2.1` в `pyproject.toml` (fffc1cc), грабли — в `knowledge/references/repo-map.md` |
+| CI на ветке поставки | GitHub Actions, PR #27, коммит fffc1cc | delivery, gates, tests — pass (715 passed, 2 skipped): https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36054725420 |
 
 ## Исполнение рисковых путей
 
@@ -143,13 +147,13 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 5 code (+9 process docs) / +439/-45 (net +394) |
-| commits | 4 |
+| files_touched / loc_diff | 7 code (+12 process docs) / +446/-47 (net +399) |
+| commits | 7 |
 | time_to_accepted_spec | 0.0h |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — tests/test_cases_pack.py (новый оракул) |
 | implement_retries | 1 — mypy: переменная цикла `item` в `pack` получила два типа (`ToPack` и `PackedCase`), переименована в `wanted` |
-| verify_fails_before_green | 0 — сьют и фазовый гейт зелёные с первого прогона после правки; дайджест первой редакции приписал утверждения W1 находке Z39 из докстроки теста — докстрока поправлена, привязка W1 |
+| verify_fails_before_green | 1 — первый прогон CI на ветке упал 47 тестами не по диффу (вышел SQLAlchemy 2.1.0, граница `<2.1` — fffc1cc); локально сьют и фазовый гейт зелёные с первого прогона после правки; дайджест первой редакции приписал утверждения W1 находке Z39 из докстроки теста — докстрока поправлена, привязка W1 |
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
