@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { deleteProject, fetchDeletion } from '../../api/projects';
+import { ConfirmDelete } from '../../components/ConfirmDelete';
 import type { ProjectDeletion } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { failureText } from '../cases/failure';
@@ -70,20 +71,12 @@ function AskAndDelete({ projectId, domain, onDeleted }: Props) {
       {preview.isError && (
         <Text size="sm">{failureText(preview.error, 'не удалось узнать, что уйдёт')}</Text>
       )}
-      <Group mt="sm">
-        <Button
-          size="compact-sm"
-          color="red"
-          disabled={!preview.data}
-          loading={drop.isPending}
-          onClick={() => drop.mutate()}
-        >
-          Да, удалить
-        </Button>
-        <Button size="compact-sm" variant="subtle" onClick={() => setAsked(false)}>
-          Отмена
-        </Button>
-      </Group>
+      <ConfirmDelete
+        busy={drop.isPending}
+        disabled={!preview.data}
+        onConfirm={() => drop.mutate()}
+        onCancel={() => setAsked(false)}
+      />
       {error && (
         <Text size="sm" c="red" mt="xs">
           {error}
