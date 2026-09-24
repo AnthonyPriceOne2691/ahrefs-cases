@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** journal-shows-only-trouble
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** web/src/pages/__tests__/ops.test.tsx::в раскрытии только те, кого прогон не собрал
+- **diagnosis:** n/a reason=причина видна в коде без поиска: `RunFates.tsx::Fates` рисует `card.data.fates` целиком, хотя докстринг компонента обещает «кого прогон не собрал и почему»; тест E1 держал в ответе один пропущенный домен и собранных строк не видел — живой ответ несёт все исходы (прогон №2 прода: 51 «собран» и 2 пропуска)
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-24 by=human:anthony («при раскрытии списка отображались только проблемные случаи а те которые собраны нормально отображать не нужно»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт только на экране
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S; параллельные поставки агентов живут в своих worktree
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/pages/runs/RunFates.tsx reason=экран: что видно в раскрытии, решает рендер со всеми исходами живого прогона, а тест видит только то, что ему подложили
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`; правка только фронта, без записи куда-либо
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде у прогона №2 (51 из 53, пропущено 2) раскрытие по «?» показывает две строки — `lonelyplanet.com` и `machinemfg.com` — и строку «без замечаний собрано: 51», а не 53 строки
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
