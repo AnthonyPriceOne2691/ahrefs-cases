@@ -25,10 +25,15 @@ const PREVIEW = {
 
 const LIST: Reply = { status: 200, body: [ruleset('2026-09-I', true)] };
 
-/** Открыть форму и назвать версию — общее начало для всех шагов после первого. */
+/** Открыть форму и назвать версию — общее начало для всех шагов после первого.
+ *
+ *  Поле ждётся, а не берётся сразу: окно правки открывается не в тот же такт.
+ *  Синхронный поиск проходил только потому, что предыдущий тест файла оставлял
+ *  окно открытым в памяти браузера, — в одиночку и с чистой памятью эти тесты
+ *  падали (найдено 24.09.2026, когда память стала чиститься перед каждым тестом). */
 async function openForm(name = '2026-09-II') {
   await userEvent.click(await screen.findByRole('button', { name: 'Править пороги' }));
-  await userEvent.type(screen.getByLabelText('Имя версии'), name);
+  await userEvent.type(await screen.findByLabelText('Имя версии'), name);
 }
 
 beforeEach(() => rememberToken('токен'));

@@ -28,6 +28,15 @@ export function startRun(): Promise<RunStarted> {
   return request<RunStarted>('/api/runs', { method: 'POST' });
 }
 
+/** Смета второй кнопки: шаг 2 по кандидатам и данные под кейс (B6). */
+export function fetchStage2Estimate(): Promise<RunEstimate> {
+  return request<RunEstimate>('/api/runs/stage2/estimate');
+}
+
+export function startStage2(): Promise<RunStarted> {
+  return request<RunStarted>('/api/runs/stage2', { method: 'POST' });
+}
+
 export function fetchRun(runId: number): Promise<RunRow> {
   return request<RunRow>(`/api/runs/${runId}`);
 }

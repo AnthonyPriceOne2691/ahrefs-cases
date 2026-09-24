@@ -19,12 +19,29 @@ import type { RunEstimate, RunRow } from '../../api/types';
 
 import { RunLine } from './RunLine';
 
+/** Подписи панели. Смета одна на обе кнопки прогона (B6) — у второй другие
+ *  слова, а не другая панель: вторая копия разошлась бы с первой. */
+export interface EstimateWords {
+  title: string;
+  count: string;
+  start: string;
+  empty: string;
+}
+
+export const STAGE1_WORDS: EstimateWords = {
+  title: 'Смета прогона',
+  count: 'проектов',
+  start: 'Запустить прогон',
+  empty: 'Сначала загрузите список.',
+};
+
 interface Props {
   estimate: RunEstimate;
   run: RunRow | null;
   starting: boolean;
   startError: string | null;
   onStart: () => void;
+  words?: EstimateWords;
 }
 
 function quotaText(estimate: RunEstimate): string {
@@ -37,11 +54,11 @@ function quotaText(estimate: RunEstimate): string {
   return `Остаток квоты: ${left}${held}`;
 }
 
-function Numbers({ estimate }: { estimate: RunEstimate }) {
+function Numbers({ estimate, count }: { estimate: RunEstimate; count: string }) {
   return (
     <Group gap="xs">
       <Badge size="lg" variant="light">
-        проектов {estimate.projects}
+        {count} {estimate.projects}
       </Badge>
       <Badge size="lg" variant="light" color="grape">
         units по смете {estimate.units_estimated}
@@ -67,13 +84,20 @@ function Refusal({ estimate }: { estimate: RunEstimate }) {
   );
 }
 
-export function EstimatePanel({ estimate, run, starting, startError, onStart }: Props) {
+export function EstimatePanel({
+  estimate,
+  run,
+  starting,
+  startError,
+  onStart,
+  words = STAGE1_WORDS,
+}: Props) {
   const empty = estimate.projects === 0;
 
   return (
     <Stack gap="sm">
-      <Title order={4}>Смета прогона</Title>
-      <Numbers estimate={estimate} />
+      <Title order={4}>{words.title}</Title>
+      <Numbers estimate={estimate} count={words.count} />
       <Text size="sm">{quotaText(estimate)}</Text>
       {estimate.scheme_lines.length > 0 && <Code block>{estimate.scheme_lines.join('\n')}</Code>}
       <Refusal estimate={estimate} />
@@ -91,9 +115,9 @@ export function EstimatePanel({ estimate, run, starting, startError, onStart }: 
           disabled={!estimate.may_start || empty}
           data-testid="start-run"
         >
-          Запустить прогон
+          {words.start}
         </Button>
-        {empty && <Text size="sm">Сначала загрузите список.</Text>}
+        {empty && <Text size="sm">{words.empty}</Text>}
       </Group>
 
       {run && <RunLine run={run} />}

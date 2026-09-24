@@ -221,6 +221,10 @@ class RunRow(BaseModel):
     """Учётку автора удалили. В журнале он остаётся с пометкой «(удалён)»:
     ответ «кто запускал» обязан переживать увольнение."""
 
+    stage: str = ""
+    """Ступень прогона: `stage1`, `stage2`, `case_data`, `cases`. Пусто — прогон
+    старше этого поля, ступень неизвестна (B6: сборка кейсов читалась как сбор)."""
+
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None

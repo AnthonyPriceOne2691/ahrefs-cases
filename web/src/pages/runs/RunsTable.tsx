@@ -11,7 +11,7 @@ import { Badge, Table, Text } from '@mantine/core';
 import { useFoldedChoice } from '../../app/foldedChoice';
 import type { RunRow } from '../../api/types';
 import { num } from '../format';
-import { runWord } from '../status';
+import { runWord, stageWord } from '../status';
 
 import { FatesRow, WhySkipped } from './RunFates';
 
@@ -45,6 +45,21 @@ function stripe(index: number): string | undefined {
   return index % 2 === 1 ? 'var(--mantine-color-default-hover)' : undefined;
 }
 
+/** Номер и под ним ступень (B6). Не отдельной колонкой: число колонок держит
+ *  строка раскрытия (`colSpan`), и таблица не должна раздаваться. */
+function RunNumber({ run }: { run: RunRow }) {
+  return (
+    <Table.Td>
+      {run.id}
+      {run.stage && (
+        <Text size="xs" c="dimmed" data-stage={run.stage}>
+          {stageWord(run.stage)}
+        </Text>
+      )}
+    </Table.Td>
+  );
+}
+
 export function RunsTable({ rows }: { rows: RunRow[] }) {
   // Раскрыт всегда один прогон, и раскрытие держится в адресе: тот же хук, что
   // у людей и версий порогов.
@@ -71,7 +86,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
         <Table.Tbody>
           {rows.flatMap((run, index) => [
             <Table.Tr key={run.id} data-run={run.id} bg={stripe(index)}>
-              <Table.Td>{run.id}</Table.Td>
+              <RunNumber run={run} />
               <Table.Td ta="center">
                 <Badge
                   variant="light"
