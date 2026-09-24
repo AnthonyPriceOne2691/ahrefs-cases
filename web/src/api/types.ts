@@ -90,6 +90,8 @@ export interface RunItemView {
   outcome: string;
   reason: string;
   units_actual: number;
+  /** Проект с тех пор удалён: строка журнала осталась, ссылки на проект нет. */
+  project_deleted?: boolean;
 }
 
 /** Прогон со списком судеб — то, что открывают, когда «17 из 19» мало. */
@@ -185,6 +187,26 @@ export interface ProjectCard {
   source_mismatch: string | null;
 }
 
+/**
+ * Что удаление проекта уносит и что оставляет. Одна форма на предпросмотр
+ * (`GET …/deletion`) и на ответ удаления — числа считает сервер (урок L78).
+ */
+export interface ProjectDeletion {
+  project_id: number;
+  domain: string;
+  metric_points: number;
+  verdicts: number;
+  cases: number;
+  /** PDF, уходящие с диска: общий с кейсом другого проекта файл остаётся. */
+  files: number;
+  /** Строки журнала прогонов — остаются, домен в них подписан удалённым. */
+  run_items: number;
+  /** Другие кампании того же сайта: их данные — свои копии, они остаются. */
+  twin_campaigns: number;
+  /** Свежая пачка содержит кейс проекта и после удаления не скачается. */
+  pack_blocked: boolean;
+}
+
 export interface ChartBlock {
   title: string;
   svg: string;
@@ -221,8 +243,10 @@ export interface PackView {
   filename: string | null;
   size_bytes: number | null;
   built_at: string | null;
-  /** Что сказать человеку: когда пачка собрана или почему её нет. */
+  /** Что сказать человеку: когда пачка собрана, почему её нет или не отдаём. */
   note: string;
+  /** Почему пачку не отдают: в ней кейс удалённого проекта. Лечит пересборка. */
+  outdated?: 'project_deleted' | null;
 }
 
 export interface UsageView {

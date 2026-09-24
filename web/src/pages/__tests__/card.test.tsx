@@ -884,7 +884,9 @@ const PREVIEW = {
 
 /** Сервер удаления: `DELETE` отвечает `answer`, остальное — карточка. Путь
  *  карточки и удаления один, различает их только метод. */
-function deletionServer(answer = { status: 200, body: PREVIEW }) {
+function deletionServer(
+  answer: { status: number; body: unknown } = { status: 200, body: PREVIEW },
+) {
   const seen: string[] = [];
   vi.stubGlobal(
     'fetch',

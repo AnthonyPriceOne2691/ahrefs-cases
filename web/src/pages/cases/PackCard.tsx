@@ -49,18 +49,25 @@ export function PackCard({
     <Stack gap="sm">
       <Title order={4}>Пачка целиком</Title>
 
-      {pack.exists ? (
+      {pack.exists && (
         <Text size="sm">
           {pack.filename} · {size(pack.size_bytes)} · собрана {moment(pack.built_at)}
         </Text>
-      ) : (
-        <Alert color="yellow" variant="light">
+      )}
+      {/* Пачки нет — или она есть, а отдавать её нельзя: в ней кейс удалённого
+          проекта. Слова — сервера, лекарство — кнопка пересборки рядом. */}
+      {(!pack.exists || pack.outdated) && (
+        <Alert color="yellow" variant="light" data-pack-outdated={pack.outdated ?? undefined}>
           <Text size="sm">{pack.note}</Text>
         </Alert>
       )}
 
       <Group gap="sm">
-        <Button disabled={!pack.exists} loading={downloading} onClick={onDownload}>
+        <Button
+          disabled={!pack.exists || Boolean(pack.outdated)}
+          loading={downloading}
+          onClick={onDownload}
+        >
           Скачать ZIP
         </Button>
         {/* Кнопки нет вовсе, а не «нажми и получи 403»: право проверяет сервер,

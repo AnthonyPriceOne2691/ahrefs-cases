@@ -5,7 +5,7 @@
  * бы «хороших нет», когда они на второй странице.
  */
 import { request } from './client';
-import type { ChartBlock, ProjectCard, ProjectRow, ProjectsQuery } from './types';
+import type { ChartBlock, ProjectCard, ProjectDeletion, ProjectRow, ProjectsQuery } from './types';
 
 export function fetchProjects(params: ProjectsQuery): Promise<ProjectRow[]> {
   const search = new URLSearchParams({
@@ -30,4 +30,14 @@ export function fetchProjectCharts(
   grouping: Grouping = 'month',
 ): Promise<ChartBlock[]> {
   return request<ChartBlock[]>(`/api/projects/${projectId}/charts?grouping=${grouping}`);
+}
+
+/** Что уйдёт вместе с проектом — ничего не удаляя. */
+export function fetchDeletion(projectId: number): Promise<ProjectDeletion> {
+  return request<ProjectDeletion>(`/api/projects/${projectId}/deletion`);
+}
+
+/** Удалить проект — жёстко, каскадом. Ответ — что ушло на самом деле. */
+export function deleteProject(projectId: number): Promise<ProjectDeletion> {
+  return request<ProjectDeletion>(`/api/projects/${projectId}`, { method: 'DELETE' });
 }
