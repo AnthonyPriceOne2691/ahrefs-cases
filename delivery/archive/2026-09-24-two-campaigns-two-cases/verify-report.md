@@ -17,7 +17,7 @@
 | pre-commit | хуки на коммитах поставки | Passed, `okf-sync` — код и концепт одним коммитом |
 | Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок |
 | Исполнение на копии дев-базы (W6) | ниже — «Исполнение рисковых путей» | до правки один PDF на две кампании, после — два с разными sha256 |
-| CI на ветке поставки, первый прогон | GitHub Actions, PR #27, коммит 10f2587 | tests — fail, 47 failed не по диффу: CI поставил вышедший в тот же час SQLAlchemy 2.1.0, чьё предупреждение об устаревшем `select().distinct(выражение)` (`cache.share_twin_points`) `filterwarnings = error` сделал падением; соседняя ветка четырьмя минутами раньше на 2.0.54 — зелёная. Граница `<2.1` в `pyproject.toml` (fffc1cc), грабли — в `knowledge/references/repo-map.md` |
+| CI на ветке поставки, первый прогон | GitHub Actions, PR #27, коммит 10f2587 | tests — fail, 47 failed не по диффу: CI поставил вышедший в тот же час SQLAlchemy 2.1.0, чьё предупреждение об устаревшем `select().distinct(выражение)` (`cache.share_twin_points`) `filterwarnings = error` сделал падением; соседняя ветка четырьмя минутами раньше на 2.0.54 — зелёная. Граница `<2.1` сначала своим коммитом (fffc1cc), затем общей починкой `main` (#28, 2b25a99, Z48) — влита merge-коммитом |
 | CI на ветке поставки | GitHub Actions, PR #27, коммит fffc1cc | delivery, gates, tests — pass (715 passed, 2 skipped): https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36054725420 |
 
 ## Исполнение рисковых путей
