@@ -17,7 +17,7 @@
 | Миграция: цикл на копии с данными | копия дев-базы `cases_casestage_migrate` (578 строк `run_items`): `alembic upgrade head` → `downgrade -1` → `upgrade head` | все три шага зелёные; `enum_range(NULL::run_item_outcome)` после первого подъёма — `{OK,…,SKIPPED_ABORTED,CASE_NOT_ELIGIBLE,CASE_INSUFFICIENT_DATA,CASE_NO_VERDICT,CASE_VERDICT_MISMATCH,CASE_BLOCKED}` — **имена** членов (урок L12); после отката значения остаются (у Postgres нет `DROP VALUE`, откат — осознанный no-op), повторный подъём проходит на `IF NOT EXISTS`; `'CASE_NOT_ELIGIBLE'::run_item_outcome` принимается, `'case_not_eligible'` — `invalid input value`; строк `run_items` 578 до и после |
 | Миграция: цикл с нуля | `MIGRATION_CYCLE_TEST=1 pytest tests/test_migrations.py` на пустой базе `cases_casestage_cycle` | passed: `upgrade head` → `downgrade base` (типов ENUM не осталось) → `upgrade head`; голова `a8b9c0d1e2f3`, пять новых имён на месте |
 | Миграция на копии перед исполнением | `alembic upgrade head` на `cases_casestage_check` | `f7a8b9c0d1e2 -> a8b9c0d1e2f3`; `/api/health` — `migration: a8b9c0d1e2f3` |
-| Фазовый гейт | `python3 scripts/delivery_check.py --diff-base bugfix/two-campaigns-two-cases` | 0 ошибок; база — ветка #27, от которой поставка отведена (против `origin/main` дифф включал бы код #27) |
+| Фазовый гейт | `python3 scripts/delivery_check.py --diff-base origin/main` | 0 ошибок; до слияния #27 — с `--diff-base bugfix/two-campaigns-two-cases`: поставка была отведена от его ветки |
 | Исполнение (Y10) | ниже — «Исполнение рисковых путей» | журнал и экран сошлись со сборкой; до правки — «0 из 75», судеб нет |
 
 ## Исполнение рисковых путей

@@ -16,7 +16,7 @@
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** n/a reason=артефакты сборки (ZIP, PDF) не меняются: правка — журнал прогона, оповещение и экран журнала
 - **ci-oracles:** tooling
-- **worktree:** .claude/worktrees/agent-afac83d6310fad99c (ветка `bugfix/cases-stage-journal` от `bugfix/two-campaigns-two-cases`, PR #27: судьбы собранных кейсов опираются на его исходы `pack` по номеру проекта; фазовый гейт и предохранители гоняются с `--diff-base bugfix/two-campaigns-two-cases`, пока #27 не слит)
+- **worktree:** .claude/worktrees/agent-afac83d6310fad99c (ветка `bugfix/cases-stage-journal`: отведена от ветки #27 — судьбы собранных кейсов опираются на его исходы `pack` по номеру проекта, — и после слияния #27 в `main` (1a4a785) перенесена на свежий `origin/main`; фазовый гейт — `--diff-base origin/main`)
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no
