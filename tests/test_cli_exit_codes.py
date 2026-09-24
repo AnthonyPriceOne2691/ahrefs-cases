@@ -90,6 +90,23 @@ def test_unreadable_source_exits_with_two(source: str, expected_text: str) -> No
     assert "Traceback" not in result.stderr
 
 
+def test_unfit_list_exits_with_two_and_names_the_columns(tmp_path: Path) -> None:
+    """V21: список без нужных колонок — код 2 и причина, а не отчёт «принято 0».
+
+    До поставки команда печатала отчёт с десятью `missing_column` и выходила
+    кодом 1 — тем же, что у списка, где битые все строки: «чините строки», хотя
+    чинить надо шапку. Отказ случается до записи, поэтому база не нужна.
+    """
+    path = tmp_path / "список.csv"
+    path.write_text("домен,начало,конец\nexample.com,2025-01-01,2025-12-01\n", encoding="utf-8")
+
+    result = _run("intake", str(path))
+
+    assert result.returncode == _EXIT_BAD_SOURCE
+    assert "список не подходит: нет ни одной нужной колонки" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_help_works_without_database() -> None:
     """`--help` не должен требовать ни базы, ни ключа: им пользуются до настройки."""
     result = _run("--help")

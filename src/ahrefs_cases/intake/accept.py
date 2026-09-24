@@ -21,6 +21,9 @@ from ahrefs_cases.intake.validate import validate_table
 from ahrefs_cases.intake.xlsx_source import read_xlsx, read_xlsx_stream
 
 _XLSX_SUFFIXES = (".xlsx", ".xlsm")
+FILE_SUFFIXES = (*_XLSX_SUFFIXES, ".csv")
+"""Какие файлы читает приём. Открыто наружу: из того же списка экран строит
+фильтр выбора файла и подсказку, и тест сверяет их (V19)."""
 _SHEET_MARKER = "docs.google.com/spreadsheets"
 
 
@@ -46,7 +49,7 @@ def read_source(reference: str | Path, fetch: Fetcher | None = None) -> RawTable
 
     path = Path(ref)
     suffix = path.suffix.lower()
-    if suffix not in {*_XLSX_SUFFIXES, ".csv"}:
+    if suffix not in FILE_SUFFIXES:
         raise UnknownSourceError(
             f"не понимаю источник: {ref}. Ожидаю .csv, .xlsx или ссылку на Google Sheet."
         )
@@ -82,7 +85,8 @@ async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:
 
     Порядок «сначала проверить всё, потом писать» намеренный: приём на сто строк
     не должен оставлять базу наполовину заполненной, если сороковая строка
-    окажется битой.
+    окажется битой. Файл, не годный целиком, отказывает здесь же, до записи
+    (`UnfitSourceError` из `validate.check_fit`).
     """
     drafts, rejections, notices = validate_table(table)
     result = await upsert_projects(session, drafts)

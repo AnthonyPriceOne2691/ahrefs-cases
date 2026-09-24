@@ -203,7 +203,7 @@ def test_xlsx_upload_creates_projects(client: TestClient) -> None:
 
 
 def test_broken_row_is_rejected_with_a_reason(client: TestClient) -> None:
-    """E2: битая строка не останавливает загрузку и называет причину и номер."""
+    """E2, V12: битая строка не останавливает загрузку и называет причину и номер."""
     rows = [_row(i) for i in range(GOOD_ROWS)]
     rows.append(_row(99, domain=""))
 
@@ -248,7 +248,7 @@ def test_second_upload_updates_instead_of_doubling(client: TestClient) -> None:
 
 
 def test_unknown_format_is_a_refusal_not_a_crash(client: TestClient) -> None:
-    """E4: `.pdf` — отказ с объяснением, а не пятисотка от разбора."""
+    """E4, V11: `.pdf` — отказ с объяснением, а не пятисотка от разбора."""
     response = _upload(client, b"%PDF-1.7 ...", name="отчёт.pdf")
 
     assert response.status_code == 400
@@ -258,7 +258,7 @@ def test_unknown_format_is_a_refusal_not_a_crash(client: TestClient) -> None:
 def test_body_over_the_limit_is_refused(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """E5: предел назван в отказе — человек должен знать, во что упёрся."""
+    """E5, V11: предел назван в отказе — человек должен знать, во что упёрся."""
     from ahrefs_cases.api.routers import intake
 
     monkeypatch.setattr(intake, "MAX_UPLOAD_BYTES", 1024)
@@ -270,11 +270,16 @@ def test_body_over_the_limit_is_refused(
 
 
 def test_empty_body_is_refused(client: TestClient) -> None:
-    """Пустое тело — отказ, а не «принято 0»: файла просто нет."""
+    """V6: пустой файл — отказ, а не «принято 0», и словами человека.
+
+    «Пустое тело запроса» — язык протокола: файл человек выбрал, и слышать, что
+    «файла нет», ему странно. Пуст сам файл, так и сказано.
+    """
     response = _upload(client, b"")
 
     assert response.status_code == 400
-    assert "файла нет" in response.json()["detail"]
+    assert "файл пуст" in response.json()["detail"]
+    assert "тело запроса" not in response.json()["detail"]
 
 
 def _link(client: TestClient, url: str) -> object:
@@ -282,7 +287,7 @@ def _link(client: TestClient, url: str) -> object:
 
 
 def test_closed_google_sheet_says_why(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """E6: закрытая таблица отвечает страницей входа со статусом 200 (L10).
+    """E6, V15: закрытая таблица отвечает страницей входа со статусом 200 (L10).
 
     Донести это как `400` обязан роутер: «принято 0» отправило бы человека
     чинить свой файл вместо того, чтобы открыть доступ. Подменяется только
@@ -298,6 +303,8 @@ def test_closed_google_sheet_says_why(client: TestClient, monkeypatch: pytest.Mo
 
     assert response.status_code == 400
     assert "недоступна по ссылке" in response.json()["detail"]
+    # Своя причина: «откройте доступ», а не «поправьте колонки» (V15).
+    assert "не подходит" not in response.json()["detail"]
 
 
 def test_unreachable_sheet_is_a_refusal_not_a_crash(
@@ -326,6 +333,280 @@ def test_link_that_is_not_a_sheet_is_refused(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert "не похоже на ссылку Google Sheet" in response.json()["detail"]
+
+
+# --- Брак файла: отказ целиком, база не тронута (поставка file-import-explains-and-refuses)
+#
+# До неё файл без нужных колонок отвечал `200`, и экран писал «Принято из …»
+# над таблицей «в файле нет колонки» — ошибка файла выглядела успешным приёмом.
+# Нечитаемая книга и длинная двоичная строка ответа не получали вовсе: `500`.
+
+RUSSIAN_HEADER = [
+    "домен",
+    "начало",
+    "конец",
+    "ниша",
+    "гео",
+    "услуга",
+    "объём",
+    "клиент",
+    "ответственный",
+    "публиковать",
+]
+
+
+def _csv(
+    header: list[str], rows: list[list[str]], sep: str = ",", encoding: str = "utf-8"
+) -> bytes:
+    lines = [sep.join(header), *(sep.join(row) for row in rows)]
+    return ("\n".join(lines) + "\n").encode(encoding)
+
+
+def _book(sheets: list[tuple[str, list[list[str]]]]) -> bytes:
+    """Книга из нескольких листов: список бывает не на первом."""
+    workbook = Workbook()
+    for index, (title, matrix) in enumerate(sheets):
+        sheet = workbook.active if index == 0 else workbook.create_sheet()
+        assert sheet is not None
+        sheet.title = title
+        for values in matrix:
+            sheet.append(values)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _without(*dropped: str) -> tuple[list[str], list[list[str]]]:
+    """Шапка и строки без названных колонок — как будто их в файле не было."""
+    keep = [index for index, name in enumerate(HEADER) if name not in dropped]
+    rows = [[_row(i)[index] for index in keep] for i in range(3)]
+    return [HEADER[index] for index in keep], rows
+
+
+def _own_projects(write: Callable[[Callable[..., object]], None]) -> int:
+    """Проекты этого модуля (по префиксу): база общая, чужие не считаются (L68)."""
+    found: list[int] = []
+
+    async def _count(session: object) -> None:
+        from sqlalchemy import func, select
+
+        query = select(func.count()).select_from(Project)
+        query = query.where(Project.domain.like(f"{DOMAIN_PREFIX}%"))
+        found.append((await session.execute(query)).scalar_one())  # type: ignore[attr-defined]
+
+    write(_count)
+    return found[0]
+
+
+def _refusal(response: object) -> str:
+    assert response.status_code == 400, response.text  # type: ignore[attr-defined]
+    detail = response.json()["detail"]  # type: ignore[attr-defined]
+    assert isinstance(detail, str)
+    return detail
+
+
+def test_unfit_file_is_refused_and_nothing_is_written(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """V1: нет двух колонок — отказ с их именами и перечнем ожидаемых, в базе пусто.
+
+    Строки файла при этом годные: без проверки файла целиком приём записал бы
+    три проекта без периода и гео — и отчитался бы, что всё в порядке.
+    """
+    header, rows = _without("period_start", "geo")
+    book = _book([("Лист1", [header, *rows])])
+
+    detail = _refusal(_upload(client, book))
+
+    assert detail.startswith("Файл «список.xlsx» не подходит: нет колонок period_start, geo.")
+    assert ", ".join(HEADER) in detail
+    assert _own_projects(writer) == 0
+
+
+@pytest.mark.parametrize(
+    ("separator", "encoding"),
+    [(",", "utf-8"), (";", "cp1251")],
+)
+def test_russian_header_is_refused_with_what_was_read(
+    client: TestClient, separator: str, encoding: str
+) -> None:
+    """V2: шапка по-русски — отказ показывает прочитанное и ожидаемое латиницей.
+
+    Кодировка и разделитель при этом разобраны верно: «домен» прочитан словом,
+    а не кракозябрами — значит, дело в именах, и текст обязан сказать именно это.
+    """
+    body = _csv(RUSSIAN_HEADER, [_row(0)], sep=separator, encoding=encoding)
+
+    detail = _refusal(_upload(client, body, name="список.csv"))
+
+    assert "нет ни одной нужной колонки" in detail
+    assert "В первой строке сейчас: «домен», «начало»" in detail
+    assert ", ".join(HEADER) in detail
+
+
+def test_foreign_delimiter_shows_the_unsplit_header(client: TestClient) -> None:
+    """V3: разделитель `|` — шапка не разделилась, и отказ показывает её одной ячейкой."""
+    detail = _refusal(_upload(client, _csv(list(HEADER), [_row(0)], sep="|"), name="список.csv"))
+
+    assert "В первой строке сейчас: «domain|period_start|" in detail
+    assert "Шапка не разделилась на колонки" in detail
+
+
+def test_near_names_are_suggested_not_accepted(client: TestClient) -> None:
+    """V4: `Period Start` не принимается за `period_start` — отказ называет ближайшее имя.
+
+    Регистр приём прощает (`Domain` — это `domain`), поэтому человек ждёт, что
+    простит и пробел. Не прощает — и обязан сказать, какое имя поправить.
+    """
+    spaced = [name.replace("_", " ").title() for name in HEADER]
+
+    detail = _refusal(_upload(client, _csv(spaced, [_row(0)]), name="список.csv"))
+
+    for name in ("period_start", "period_end", "service_type", "work_volume"):
+        assert f"{name} — в шапке «{name.replace('_', ' ')}», переименуйте" in detail
+
+
+@pytest.mark.parametrize("tail", [[], [[""] * len(HEADER), [""] * len(HEADER)]])
+def test_header_only_is_refused(client: TestClient, tail: list[list[str]]) -> None:
+    """V5: одна шапка (и пустые строки, которые Excel дописывает хвостом) — отказ."""
+    detail = _refusal(_upload(client, _csv(list(HEADER), tail), name="список.csv"))
+
+    assert "только шапка — строк со списком нет" in detail
+
+
+@pytest.mark.parametrize(
+    "first",
+    [("Пусто", []), ("Инструкция", [["Заполните лист «Список»"]])],
+)
+def test_list_on_another_sheet_is_named(
+    client: TestClient, first: tuple[str, list[list[str]]]
+) -> None:
+    """V7: читается первый лист — отказ называет его и лист, где список лежит."""
+    book = _book([first, ("Список", [list(HEADER), _row(0)])])
+
+    detail = _refusal(_upload(client, book, name="книга.xlsx"))
+
+    assert f"Читается первый лист книги — «{first[0]}»" in detail
+    assert "«Список»" in detail
+
+
+def _truncated_book() -> bytes:
+    whole = _xlsx([_row(0)])
+    return whole[: len(whole) // 2]
+
+
+def _zip_without_book() -> bytes:
+    import zipfile
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("word/document.xml", "<document/>")
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n", id="pdf"),
+        pytest.param(_csv(list(HEADER), [_row(0)]), id="csv"),
+        pytest.param(_zip_without_book(), id="docx"),
+        pytest.param(_truncated_book(), id="truncated"),
+    ],
+)
+def test_unreadable_book_is_refused_not_crashed(client: TestClient, body: bytes) -> None:
+    """V8: не книга под именем `.xlsx` — отказ, а не пятисотка от openpyxl."""
+    detail = _refusal(_upload(client, body, name="список.xlsx"))
+
+    assert "не читается как книга Excel" in detail
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        pytest.param(_xlsx([_row(0)]), "не похож на текст", id="book"),
+        pytest.param(b"%PDF-1.7\n" + bytes(range(256)) * 8, "не похож на текст", id="pdf"),
+        pytest.param(b"x" * 200_000, "не читается как CSV", id="long-line"),
+    ],
+)
+def test_binary_csv_is_refused(client: TestClient, body: bytes, said: str) -> None:
+    """V9: книга или PDF под именем `.csv` — отказ, а не «Принято» с мусором в шапке.
+
+    Строка длиннее предела модуля `csv` (131 072 символа) роняла разбор
+    `csv.Error`, и человек получал пятисотку.
+    """
+    detail = _refusal(_upload(client, body, name="список.csv"))
+
+    assert said in detail
+
+
+def test_doubled_column_is_refused(client: TestClient) -> None:
+    """V10: две колонки `domain` — непонятно, какую читать; раньше молча бралась последняя.
+
+    Беды шапки названы разом: нехватка колонки и дубль в одном отказе, а не в
+    двух загрузках подряд.
+    """
+    header = [*(name for name in HEADER if name != "geo"), "domain"]
+    row = [value for name, value in zip(HEADER, _row(0), strict=True) if name != "geo"]
+    body = _csv(header, [[*row, f"{DOMAIN_PREFIX}other.example"]])
+
+    detail = _refusal(_upload(client, body, name="список.csv"))
+
+    assert "нет колонки geo." in detail
+    assert "В шапке дважды: domain" in detail
+
+
+def _sheet_answers(monkeypatch: pytest.MonkeyPatch, body: bytes) -> None:
+    """Подменить только загрузку байтов: разбор и проверка работают настоящие."""
+    from ahrefs_cases.intake import gsheet_source
+
+    monkeypatch.setattr(gsheet_source, "_http_fetch", lambda _url: body)
+
+
+SHEET = "https://docs.google.com/spreadsheets/d/abc123/edit#gid=7"
+
+
+def test_sheet_without_columns_is_refused(
+    client: TestClient,
+    writer: Callable[[Callable[..., object]], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """V13: таблица по ссылке без двух колонок — тот же отказ, что у файла."""
+    header, rows = _without("client", "owner")
+    _sheet_answers(monkeypatch, _csv(header, rows))
+
+    detail = _refusal(_link(client, SHEET))
+
+    assert detail.startswith("Таблица по ссылке не подходит: нет колонок client, owner.")
+    assert ", ".join(HEADER) in detail
+    assert _own_projects(writer) == 0
+
+
+@pytest.mark.parametrize(
+    ("body", "said", "names_the_sheet"),
+    [
+        pytest.param(b"", "нет ни одной строки", True, id="empty-sheet"),
+        pytest.param(_csv(list(HEADER), []), "только шапка", False, id="header-only"),
+        pytest.param(_csv(RUSSIAN_HEADER, [_row(0)]), "нет ни одной нужной", True, id="russian"),
+    ],
+)
+def test_unfit_sheet_is_refused_like_a_file(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    body: bytes,
+    said: str,
+    names_the_sheet: bool,
+) -> None:
+    """V14: пустой лист, одна шапка, шапка по-русски — отказ, а не «Принято».
+
+    Лист таблицы выбирается `gid` в ссылке, и когда на нём нет ничего своего,
+    отказ говорит, какой лист прочитан: список мог лежать на соседнем.
+    """
+    _sheet_answers(monkeypatch, body)
+
+    detail = _refusal(_link(client, SHEET))
+
+    assert said in detail
+    assert ("gid=7" in detail) is names_the_sheet
 
 
 def test_intake_requires_the_run_right(client: TestClient) -> None:

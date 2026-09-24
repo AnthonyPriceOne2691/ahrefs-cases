@@ -51,19 +51,30 @@ def sheet_export_url(link: str) -> str:
     match = _SHEET_ID_RE.search(link)
     if not match:
         raise SheetLinkError(f"не похоже на ссылку Google Sheet: {link}")
+    return _EXPORT_TEMPLATE.format(sheet_id=match.group("id"), gid=_gid(link))
 
+
+def _gid(link: str) -> str:
+    """Номер листа из ссылки; нет его — первый лист (`0`), как у самого Google."""
     gid_match = _GID_RE.search(link)
-    gid = gid_match.group("gid") if gid_match else "0"
-    return _EXPORT_TEMPLATE.format(sheet_id=match.group("id"), gid=gid)
+    return gid_match.group("gid") if gid_match else "0"
 
 
 def read_gsheet(link: str, fetch: Fetcher | None = None) -> RawTable:
-    """Опубликованная таблица → сырая таблица, тем же путём, что CSV из файла."""
+    """Опубликованная таблица → сырая таблица, тем же путём, что CSV из файла.
+
+    Лист выбирает `gid` в ссылке, и если на нём списка нет, отказ назовёт этот
+    лист: ссылку обычно копируют с того листа, который был открыт последним.
+    """
     url = sheet_export_url(link)
     data = (fetch or _http_fetch)(url)
     _ensure_csv(data, link)
 
-    return parse_csv_text(decode(data), origin=link)
+    where = (
+        f"Читается лист из ссылки (gid={_gid(link)}): если список на другом листе, "
+        "откройте его и скопируйте ссылку заново."
+    )
+    return parse_csv_text(decode(data), origin=link, where=where)
 
 
 def _http_fetch(url: str) -> bytes:
