@@ -47,6 +47,19 @@ function word(labels: Record<string, string>, status: string): string {
   return labels[status] ?? status;
 }
 
+/** Ступень прогона (B6): без неё сборка кейсов читалась как сбор «0 из 18». */
+export const RUN_STAGE_LABELS: Record<string, string> = {
+  stage1: 'шаг 1',
+  stage2: 'шаг 2',
+  case_data: 'данные под кейс',
+  cases: 'сборка кейсов',
+};
+
+export function stageWord(stage: string): string {
+  // Пусто — прогон старше поля: ступень неизвестна, и придумывать её нельзя.
+  return stage ? word(RUN_STAGE_LABELS, stage) : '';
+}
+
 export function runWord(status: string): string {
   return word(RUN_STATUS_LABELS, status);
 }

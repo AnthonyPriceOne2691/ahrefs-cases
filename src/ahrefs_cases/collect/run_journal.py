@@ -57,7 +57,21 @@ async def system_user(session: AsyncSession) -> User:
     return user
 
 
-async def open_run(session: AsyncSession, started_by: int, projects_total: int) -> Run:
+STAGE1 = "stage1"
+STAGE2 = "stage2"
+CASE_DATA = "case_data"
+CASES = "cases"
+"""Ступень прогона — в снимке параметров (`params_snapshot["stage"]`).
+
+Журнал показывал все прогоны одинаково, и сборка кейсов без вердиктов читалась
+как сбор «0 из 18, пропущено 18» (B6). Ступень пишется в снимок, а не колонкой:
+это свойство прогона того же рода, что провайдер и группировка, и миграция ради
+неё не нужна. У прогонов старше этого поля ступени нет — это «неизвестно»."""
+
+
+async def open_run(
+    session: AsyncSession, started_by: int, projects_total: int, *, stage: str = ""
+) -> Run:
     """Открыть прогон в статусе `queued` и записать, чем он считается.
 
     Именно `queued`, а не `running`: между открытием и первым запросом стоит
@@ -78,6 +92,7 @@ async def open_run(session: AsyncSession, started_by: int, projects_total: int) 
             "max_history_months": config.ahrefs.max_history_months,
             "collect_scheme": config.ahrefs.collect_scheme,
             "fixture_seed": config.ahrefs.fixture_seed,
+            "stage": stage,
         },
     )
     session.add(run)

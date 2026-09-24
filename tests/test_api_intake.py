@@ -19,7 +19,7 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from tests.owned_rows import delete_owned
+from tests.owned_rows import delete_owned, isolated_ruleset
 
 from ahrefs_cases import config
 from ahrefs_cases.api import security
@@ -31,6 +31,7 @@ from ahrefs_cases.storage.models.user import User
 PASSWORD = "очень-длинный-пароль"
 EMAIL = "intake@test.local"
 READER_EMAIL = "reader@test.local"
+RULESET = "тест-приём-api"
 DOMAIN_PREFIX = "intake-api-"
 
 HEADER = (
@@ -138,6 +139,9 @@ def jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -> Iterator[None]:
     _cleanup(writer)
+    # Здесь тоже запускается прогон, а он классифицирует все проекты базы по
+    # действующей версии порогов — значит, по своей, а не по стендовой (Z12).
+    undo = isolated_ruleset(writer, RULESET)
 
     async def _seed(session: object) -> None:
         session.add_all(  # type: ignore[attr-defined]
@@ -160,6 +164,7 @@ def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -
 
     writer(_seed)
     yield
+    undo()
     _cleanup(writer)
 
 

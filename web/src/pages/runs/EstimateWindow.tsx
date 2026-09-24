@@ -19,8 +19,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
 import { fetchEstimate } from '../../api/intake';
-import type { RunRow } from '../../api/types';
-import { EstimatePanel } from '../intake/EstimatePanel';
+import type { RunEstimate, RunRow } from '../../api/types';
+import { EstimatePanel, STAGE1_WORDS, type EstimateWords } from '../intake/EstimatePanel';
 
 export const ESTIMATE_KEY = ['runs', 'estimate'];
 
@@ -31,12 +31,26 @@ interface Props {
   starting: boolean;
   startError: string | null;
   onStart: () => void;
+  /** Чья смета: шаг 1 (умолчание) или вторая кнопка (B6) — ключ, запрос, слова. */
+  queryKey?: readonly string[];
+  fetcher?: () => Promise<RunEstimate>;
+  words?: EstimateWords;
 }
 
-export function EstimateWindow({ opened, onClose, run, starting, startError, onStart }: Props) {
+export function EstimateWindow({
+  opened,
+  onClose,
+  run,
+  starting,
+  startError,
+  onStart,
+  queryKey = ESTIMATE_KEY,
+  fetcher = fetchEstimate,
+  words = STAGE1_WORDS,
+}: Props) {
   const estimate = useQuery({
-    queryKey: ESTIMATE_KEY,
-    queryFn: fetchEstimate,
+    queryKey,
+    queryFn: fetcher,
     // Считается, только когда окно открыто: смета проходит по всем проектам
     // базы и спрашивает у Ahrefs остаток — делать это на каждой загрузке
     // экрана, который открыли ради журнала, незачем.
@@ -46,7 +60,7 @@ export function EstimateWindow({ opened, onClose, run, starting, startError, onS
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Смета прогона" size="lg" centered>
+    <Modal opened={opened} onClose={onClose} title={words.title} size="lg" centered>
       <Stack gap="md">
         {estimate.isPending && <Text size="sm">Считаем смету…</Text>}
         {estimate.isError && (
@@ -63,6 +77,7 @@ export function EstimateWindow({ opened, onClose, run, starting, startError, onS
             starting={starting}
             startError={startError}
             onStart={onStart}
+            words={words}
           />
         )}
         <Button variant="subtle" onClick={onClose}>

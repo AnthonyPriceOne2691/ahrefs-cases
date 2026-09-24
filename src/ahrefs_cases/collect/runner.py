@@ -16,6 +16,7 @@ import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import TypedDict, Unpack
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -43,6 +44,9 @@ from ahrefs_cases.collect.plan import (
 from ahrefs_cases.collect.provider import AhrefsProvider
 from ahrefs_cases.collect.quota import QuotaSource, preflight
 from ahrefs_cases.collect.run_journal import (
+    CASE_DATA,
+    STAGE1,
+    STAGE2,
     add_item,
     count_outcome,
     failure_reason,
@@ -125,7 +129,9 @@ async def collect_projects(
     await reap_stale_runs(session)
     if run is None:
         user = await system_user(session)
-        run = await open_run(session, started_by=user.id, projects_total=len(projects))
+        run = await open_run(
+            session, started_by=user.id, projects_total=len(projects), stage=STAGE1
+        )
     # Коммит сразу: до него строки прогона не существует ни для другого
     # процесса (а его резерв обязан быть виден чужой смете), ни для реапера.
     await session.commit()
@@ -330,28 +336,38 @@ async def _execute_tasks(
     return points
 
 
+class StageArgs(TypedDict, total=False):
+    """Что уточняет вызывающий у шага 2 и ступени кейса — одно на обе.
+
+    Отдельным словарём, а не повтором в двух сигнатурах: две копии одних и тех
+    же четырёх параметров разошлись бы при первой правке, и гейт копипаста это
+    справедливо ловит (24.09.2026).
+    """
+
+    now: date | None
+    refresh: bool
+    quota: QuotaSource | None
+    windows: PointWindows | None
+
+
 async def collect_stage2(
     session: AsyncSession,
     project_ids: Sequence[int],
     provider: AhrefsProvider | None = None,
     *,
-    now: date | None = None,
-    refresh: bool = False,
-    quota: QuotaSource | None = None,
-    windows: PointWindows | None = None,
+    run: Run | None = None,
+    **args: Unpack[StageArgs],
 ) -> RunReport:
     """Шаг 2 воронки: дорогие метрики только по переданным проектам.
 
     Список кандидатов приходит **снаружи** — от `classify.candidates.stage2_candidates`,
     а с Ф3 от классификации. Здесь механизм, а не критерий: правило отбора,
     оказавшись и тут, и там, разошлось бы при первой же правке порогов.
+
+    `run` — прогон, уже открытый API: как у шага 1, только обработчик запроса
+    знает, кто нажал кнопку.
     """
-    return await _run_by_ids(
-        session,
-        project_ids,
-        provider,
-        RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=2),
-    )
+    return await _run_by_ids(session, project_ids, provider, RunOptions(stage=2, **args), run=run)
 
 
 async def collect_case_data(
@@ -359,23 +375,20 @@ async def collect_case_data(
     project_ids: Sequence[int],
     provider: AhrefsProvider | None = None,
     *,
-    now: date | None = None,
-    refresh: bool = False,
-    quota: QuotaSource | None = None,
-    windows: PointWindows | None = None,
+    started_by: int | None = None,
+    **args: Unpack[StageArgs],
 ) -> RunReport:
     """Ступень кейса: докупить кривую позиций, стоимость трафика и DR.
 
     Только тем, у кого кейс будет: список приходит снаружи — проекты с вердиктом
     `good` или `medium`. Сбор не читает вердикты сам, потому что контракт слоёв
     запрещает `collect` знать про `classify`.
+
+    `started_by` — автор нажатия, когда ступень идёт следом за шагом 2 из
+    интерфейса: своя строка журнала, но записана на того же человека.
     """
-    return await _run_by_ids(
-        session,
-        project_ids,
-        provider,
-        RunOptions(now=now, refresh=refresh, quota=quota, windows=windows, stage=3),
-    )
+    options = RunOptions(stage=3, **args)
+    return await _run_by_ids(session, project_ids, provider, options, started_by=started_by)
 
 
 async def _run_by_ids(
@@ -383,22 +396,33 @@ async def _run_by_ids(
     project_ids: Sequence[int],
     provider: AhrefsProvider | None,
     options: RunOptions,
+    *,
+    run: Run | None = None,
+    started_by: int | None = None,
 ) -> RunReport:
     """Прогон по списку id: открыть, выполнить, не потерять статус при ошибке.
 
     Общее тело шага 2 и ступени кейса. Порознь они отличались только номером
     ступени, и гейт копипаста поймал это на второй же ступени — справедливо:
     две копии открытия прогона разошлись бы при первой правке реапера.
+
+    Открытый снаружи `run` продолжается, а не дублируется: иначе нажатие
+    кнопки оставляло бы в журнале две строки — пустую от человека и полную от
+    системного пользователя.
     """
     engine = provider or build_provider()
     await reap_stale_runs(session)
-    user = await system_user(session)
     projects = list(
         (await session.execute(select(Project).where(Project.id.in_(list(project_ids)))))
         .scalars()
         .all()
     )
-    run = await open_run(session, started_by=user.id, projects_total=len(projects))
+    if run is None:
+        author = started_by if started_by is not None else (await system_user(session)).id
+        stage = STAGE2 if options.stage == 2 else CASE_DATA
+        run = await open_run(session, started_by=author, projects_total=len(projects), stage=stage)
+    else:
+        run.projects_total = len(projects)
     await session.commit()
 
     try:

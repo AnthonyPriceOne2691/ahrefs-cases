@@ -69,6 +69,8 @@ export interface RunRow {
   started_by_name: string;
   /** Учётку автора удалили: в журнале он остаётся с пометкой «(удалён)». */
   started_by_deleted: boolean;
+  /** `stage1` | `stage2` | `case_data` | `cases`; пусто — прогон старше поля. */
+  stage: string;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;

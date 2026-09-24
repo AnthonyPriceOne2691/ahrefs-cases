@@ -1,4 +1,4 @@
-"""Фоновые задачи: прогон сбора и сборка пачки кейсов.
+"""Фоновые задачи: прогон сбора, шаг 2 с данными под кейс и сборка пачки кейсов.
 
 Задача живёт в другом процессе, поэтому у неё **своя** сессия и свои аргументы —
 числа и строки. Ни сессия вызывающего, ни провайдер, ни собранный кейс сюда не
@@ -15,16 +15,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases.classify.candidates import stage2_candidates
+from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.classify.verdicts import ClassifyReport, classify_all
 from ahrefs_cases.classify.windows import point_windows
-from ahrefs_cases.collect.run_journal import failure_reason
-from ahrefs_cases.collect.runner import collect_projects
+from ahrefs_cases.collect.factory import build_provider
+from ahrefs_cases.collect.run_journal import failure_reason, start_run
+from ahrefs_cases.collect.runner import collect_case_data, collect_projects, collect_stage2
 from ahrefs_cases.logs import run_context
-from ahrefs_cases.storage import RunStatus
+from ahrefs_cases.storage import Group, RunStatus
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
+from ahrefs_cases.storage.models.verdict import Verdict
 from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
 
 logger = logging.getLogger(__name__)
@@ -43,9 +50,20 @@ def collect_job(run_id: int, refresh: bool = False) -> None:
     asyncio.run(_run_guarded(run_id, _collect(run_id, refresh=refresh)))
 
 
+def stage2_job(run_id: int) -> None:
+    """Шаг 2 по кандидатам, пересчёт групп и данные под кейс — вторая кнопка.
+
+    Отдельной кнопкой, а не хвостом прогона сбора, по решению владельца
+    24.09.2026 (B6): шаг 2 и ступень кейса — дорогие ступени воронки, и тратить
+    на них units должно отдельное нажатие со своей сметой. К этому моменту
+    кандидаты уже известны, поэтому смета точная, а не «на всякий случай».
+    """
+    asyncio.run(_run_guarded(run_id, _stage2(run_id)))
+
+
 def cases_job(run_id: int) -> None:
     """Сборка пачки кейсов в ZIP по текущим вердиктам."""
-    asyncio.run(_run_guarded(run_id, _pack()))
+    asyncio.run(_run_guarded(run_id, _pack(run_id)))
 
 
 async def _collect(run_id: int, *, refresh: bool) -> str:
@@ -70,14 +88,83 @@ async def _collect(run_id: int, *, refresh: bool) -> str:
             windows=await point_windows(session),
         )
         await session.commit()
-    return f"собрано проектов: {report.projects_ok}, units: {report.units_spent}"
+        # Классификация бесплатна — Ahrefs она не трогает, — и без неё прогон из
+        # интерфейса кончался проектами без групп: «Проекты» пустые, собирать
+        # кейсы не из чего (B6). Источник — режим провайдера: им же помечено
+        # только что купленное.
+        groups = await _classify(session)
+    return f"собрано проектов: {report.projects_ok}, units: {report.units_spent}; " + "; ".join(
+        groups.as_lines()
+    )
 
 
-async def _pack() -> str:
+async def _classify(session: AsyncSession) -> ClassifyReport:
+    report = await classify_all(session, source=build_provider().source)
+    await session.commit()
+    return report
+
+
+async def _stage2(run_id: int) -> str:
+    """Кандидаты → шаг 2 → группы заново → данные под кейс тем, у кого он будет.
+
+    Шаг 2 продолжает прогон, открытый API. Ступень кейса — своя строка журнала
+    на того же автора: это второй сбор со своей ценой и своими исходами, и
+    склеивать их в один прогон значило бы дважды записать каждый домен.
+    """
+    async with get_sessionmaker()() as session:
+        run = await session.get(Run, run_id)
+        source = build_provider().source
+        windows = await point_windows(session)
+        projects = list((await session.execute(select(Project))).scalars().all())
+        candidates = await stage2_candidates(session, projects, source=source)
+        if run is not None:
+            run.projects_total = len(candidates)
+            await session.commit()
+        if not candidates:
+            return "кандидатов нет: шаг 2 не нужен — за «плохих» дорогие метрики не платятся"
+
+        second = await collect_stage2(session, candidates, run=run, windows=windows)
+        await session.commit()
+        groups = await _classify(session)
+        chosen = await _with_case(session)
+        lines = [
+            f"шаг 2: собрано {second.projects_ok} из {len(candidates)}, units {second.units_spent}",
+            *groups.as_lines(),
+        ]
+        if not chosen:
+            return "; ".join([*lines, "данных под кейс не нужно: хороших и средних нет"])
+        case = await collect_case_data(
+            session, chosen, windows=windows, started_by=run.started_by if run else None
+        )
+        await session.commit()
+    return "; ".join(
+        [*lines, f"данные под кейс: {case.projects_ok} из {len(chosen)}, units {case.units_spent}"]
+    )
+
+
+async def _with_case(session: AsyncSession) -> list[int]:
+    """Проекты, которым кейс положен: `good` и `medium` по действующей версии."""
+    ruleset = await active_ruleset(session)
+    stmt = select(Verdict.project_id).where(
+        Verdict.ruleset_id == ruleset.id, Verdict.group.in_([Group.GOOD, Group.MEDIUM])
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _pack(run_id: int) -> str:
     # Импорт внутри: `export` живёт слоем выше `workers` по контракту слоёв,
     # и тянуть его на уровень модуля значило бы связать воркер с рендером.
     from ahrefs_cases.cli.case_commands import pack_cases
 
+    # Отметка о начале — здесь, а не в `_run_guarded`: у сбора её ставит сам
+    # прогон после preflight, и отмеченный раньше он соврал бы, если квота
+    # откажет. У сборки кейсов preflight нет, и без этой строки журнал
+    # показывал её без времени начала и конца (B6).
+    async with get_sessionmaker()() as session:
+        run = await session.get(Run, run_id)
+        if run is not None:
+            await start_run(session, run)
+            await session.commit()
     code = await pack_cases()
     return f"пачка кейсов собрана, код возврата {code}"
 
@@ -118,4 +205,6 @@ async def _finish(run_id: int, status: RunStatus, note: str, *, only_if_open: bo
             return
         run.status = status
         run.error = note if status is RunStatus.FAILED else ""
+        if run.finished_at is None:
+            run.finished_at = datetime.now(UTC)
         await session.commit()

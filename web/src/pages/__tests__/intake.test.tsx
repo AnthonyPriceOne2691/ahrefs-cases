@@ -9,7 +9,7 @@
  * ему говорят при отказе и — главное — что кнопка запуска недоступна, когда
  * смета этого не позволяет. Цена ошибки здесь units заказчика, а не неудобство.
  */
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -356,6 +356,54 @@ describe('экран загрузки: прогон', () => {
     await upload();
 
     await waitFor(() => expect(screen.getByText('units по смете 1980')).toBeInTheDocument());
+  });
+});
+
+describe('вторая кнопка: шаг 2 и данные под кейс (B6)', () => {
+  it('B6: вторая кнопка — смета кандидатов и запуск шага 2', async () => {
+    rememberToken('токен');
+    const { calls } = server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': {
+        status: 200,
+        body: {
+          ...OK_ESTIMATE,
+          projects: 3,
+          units_estimated: 470,
+          requests_planned: 9,
+          requests_cached: 0,
+          scheme_lines: ['данные под кейс посчитаны по всем кандидатам — это верхняя граница'],
+        },
+      },
+      '/api/runs/12': {
+        status: 200,
+        body: {
+          id: 12,
+          status: 'done',
+          projects_total: 3,
+          projects_ok: 3,
+          projects_failed: 0,
+          units_estimated: 470,
+          units_actual: 410,
+          error: '',
+        },
+      },
+      'GET /api/runs': { status: 200, body: [] },
+      'POST /api/runs/stage2': { status: 202, body: { run_id: 12, queued_as: 'inline:12' } },
+    });
+
+    showRuns();
+    await userEvent.click(await screen.findByRole('button', { name: 'Дособрать кандидатов' }));
+    const dialog = await screen.findByRole('dialog');
+
+    // Число — кандидатов, а не всех проектов: смета второй кнопки про них.
+    expect(await within(dialog).findByText('кандидатов 3')).toBeInTheDocument();
+    // Данные под кейс — верхняя граница, и окно обязано так и сказать.
+    expect(within(dialog).getByText(/верхняя граница/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Запустить шаг 2' }));
+
+    expect(await within(dialog).findByText(/Прогон №12/)).toBeInTheDocument();
+    expect(calls).toContain('/api/runs/stage2');
   });
 });
 

@@ -91,6 +91,26 @@ describe('журнал прогонов', () => {
     expect(screen.getAllByText(/2 112 → 1 936/)).not.toHaveLength(0);
   });
 
+  it('B6: ступень названа под номером — сборка кейсов не выглядит сбором', async () => {
+    server({
+      '/api/runs': {
+        status: 200,
+        body: [
+          run(9, 'done', { stage: 'cases', projects_ok: 0, projects_skipped: 18 }),
+          run(8, 'done', { stage: 'stage2' }),
+          run(7, 'done', { stage: '' }),
+        ],
+      },
+    });
+
+    showRuns();
+
+    expect(await screen.findByText('сборка кейсов')).toBeInTheDocument();
+    expect(screen.getByText('шаг 2')).toBeInTheDocument();
+    // У прогона старше поля ступень неизвестна — и она не выдумывается.
+    expect(document.querySelectorAll('[data-stage]')).toHaveLength(2);
+  });
+
   it('E3: завершённые прогоны не опрашиваются', async () => {
     const { calls } = server({ '/api/runs': { status: 200, body: [run(2, 'done')] } });
 

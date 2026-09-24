@@ -16,7 +16,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.owned_rows import delete_owned
+from tests.owned_rows import delete_owned, isolated_ruleset
 
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
@@ -29,6 +29,9 @@ from ahrefs_cases.workers.queue import InlineQueue, RedisQueue, build_queue
 
 PASSWORD = "очень-длинный-пароль"
 EMAIL = "runner@test.local"
+RULESET = "тест-прогоны-api"
+"""Своя версия порогов: с B6 прогон классифицирует все проекты базы по
+действующей версии, и по чужой тест переписал бы вердикты стенда (Z12)."""
 
 
 @pytest.fixture(scope="module")
@@ -75,6 +78,7 @@ def jwt_secret(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -> Iterator[None]:
     _cleanup(writer)
+    undo = isolated_ruleset(writer, RULESET)
 
     async def _seed(session: object) -> None:
         session.add_all(  # type: ignore[attr-defined]
@@ -102,6 +106,7 @@ def seeded(migrated_db: None, writer: Callable[[Callable[..., object]], None]) -
 
     writer(_seed)
     yield
+    undo()
     _cleanup(writer)
 
 
@@ -196,6 +201,95 @@ def test_refresh_run_actually_starts(client: TestClient) -> None:
     assert row["units_estimated"] >= 0
 
 
+def test_ui_run_leaves_groups_behind(client: TestClient) -> None:
+    """B6: после прогона из интерфейса у проекта есть группа.
+
+    Прогон делал только шаг 1, и «Проекты» оставались без групп у всех — до
+    консольного `classify`. Классификация бесплатна, и теперь она — хвост
+    прогона. Спрашиваем экран проектов, а не базу: пустой была именно выдача.
+    """
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+
+    rows = client.get("/api/projects", params={"query": "runs.example"}, headers=headers).json()
+    assert [row["domain"] for row in rows] == ["runs.example"]
+    assert rows[0]["group"] is not None, "прогон кончился без классификации"
+
+
+def test_stage2_estimate_counts_the_candidates(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """B6: смета второй кнопки называет ровно тех, кого выбирает правило отбора.
+
+    Число сверяется с самим правилом (`stage2_candidates`), а не с константой:
+    база общая со стендом, и кандидатов в ней столько, сколько есть. Важно,
+    что экран и шаг 2 считают одних и тех же — иначе смета называла бы цену
+    чужого прогона.
+    """
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+    expected: list[int] = []
+
+    async def _count(session: object) -> None:
+        from sqlalchemy import select
+
+        from ahrefs_cases.classify.candidates import stage2_candidates
+        from ahrefs_cases.storage import MetricSource
+
+        projects = (await session.execute(select(Project))).scalars().all()  # type: ignore[attr-defined]
+        found = await stage2_candidates(session, projects, source=MetricSource.FIXTURE)  # type: ignore[arg-type]
+        expected.append(len(found))
+
+    writer(_count)
+
+    body = client.get("/api/runs/stage2/estimate", headers=headers).json()
+    assert body["projects"] == expected[0]
+    if body["projects"]:
+        assert body["units_estimated"] > 0
+        assert any("верхняя граница" in line for line in body["scheme_lines"])
+
+
+def test_stage2_button_runs_the_rest_of_the_funnel(client: TestClient) -> None:
+    """B6: вторая кнопка — шаг 2 и данные под кейс, записанные на нажавшего.
+
+    Шаг 2 продолжает прогон, открытый API, а не открывает второй от системного
+    пользователя; данные под кейс — своя строка журнала на того же автора.
+    """
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+
+    started = client.post("/api/runs/stage2", headers=headers)
+
+    assert started.status_code == 202
+    mine = [
+        row
+        for row in client.get("/api/runs", params={"limit": 100}, headers=headers).json()
+        if row["started_by_name"] == "Оператор"
+    ]
+    by_stage = {row["stage"]: row for row in mine}
+    assert by_stage["stage2"]["id"] == started.json()["run_id"]
+    assert by_stage["stage2"]["status"] in {"done", "partial"}
+    assert set(by_stage) <= {"stage1", "stage2", "case_data"}
+
+
+def test_journal_names_the_stage(client: TestClient) -> None:
+    """B6: сборка кейсов в журнале — сборка кейсов, а не сбор «0 из 18»."""
+    headers = _headers(client)
+    first = client.post("/api/runs", headers=headers).json()["run_id"]
+    cases = client.post("/api/runs/cases", headers=headers).json()["run_id"]
+
+    stages = {
+        row["id"]: row["stage"]
+        for row in client.get("/api/runs", params={"limit": 100}, headers=headers).json()
+    }
+    assert (stages[first], stages[cases]) == ("stage1", "cases")
+    card = client.get(f"/api/runs/{cases}", headers=headers).json()
+    # Сборку никто не отмечал начатой, а закрытие ставило только статус: в
+    # журнале она стояла без времени начала и конца.
+    assert card["started_at"] is not None
+    assert card["finished_at"] is not None
+
+
 def test_missing_run_is_404(client: TestClient) -> None:
     """E5: несуществующий прогон — 404, а не пустая карточка."""
     assert client.get("/api/runs/999999", headers=_headers(client)).status_code == 404
@@ -249,7 +343,7 @@ def test_job_arguments_are_plain_values() -> None:
     """E10: задача уезжает в другой процесс — сессия и объекты туда не доедут."""
     import inspect
 
-    for job in (jobs.collect_job, jobs.cases_job):
+    for job in (jobs.collect_job, jobs.stage2_job, jobs.cases_job):
         for name, parameter in inspect.signature(job).parameters.items():
             assert parameter.annotation in {"int", "bool"}, f"{job.__name__}: {name}"
     assert RedisQueue is not None  # реализация существует и импортируется без Redis

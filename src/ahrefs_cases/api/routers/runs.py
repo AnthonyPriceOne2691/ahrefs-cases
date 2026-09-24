@@ -31,18 +31,19 @@ from ahrefs_cases.api.schemas import (
     RunRow,
     RunStarted,
 )
+from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.budget import reserved_units, uncounted_spend
 from ahrefs_cases.collect.factory import build_provider, build_quota
-from ahrefs_cases.collect.plan import build_stage1_plan
+from ahrefs_cases.collect.plan import build_case_plan, build_stage1_plan, build_stage2_plan
 from ahrefs_cases.collect.quota import preflight
+from ahrefs_cases.collect.run_journal import CASES, STAGE1, STAGE2, open_run
 from ahrefs_cases.collect.run_journal import fates as run_fates
-from ahrefs_cases.collect.run_journal import open_run
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
-from ahrefs_cases.workers.jobs import cases_job, collect_job
+from ahrefs_cases.workers.jobs import cases_job, collect_job, stage2_job
 from ahrefs_cases.workers.queue import build_queue
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,17 @@ async def start_run(
     refresh: bool = False,
 ) -> RunStarted:
     """Поставить прогон сбора в очередь. Активный прогон один."""
-    return await _enqueue(session, user.id, job=collect_job, refresh=refresh)
+    return await _enqueue(session, user.id, job=collect_job, stage=STAGE1, refresh=refresh)
+
+
+@router.post("/stage2", response_model=RunStarted, status_code=status.HTTP_202_ACCEPTED)
+async def start_stage2(
+    session: SessionDep,
+    user: UserDep,
+    _: Annotated[object, Depends(require_right("run"))] = None,
+) -> RunStarted:
+    """Шаг 2 по кандидатам и данные под кейс — вторая кнопка, тот же замок (B6)."""
+    return await _enqueue(session, user.id, job=stage2_job, stage=STAGE2)
 
 
 @router.post("/cases", response_model=RunStarted, status_code=status.HTTP_202_ACCEPTED)
@@ -82,7 +93,7 @@ async def start_cases(
     _: Annotated[object, Depends(require_right("run"))] = None,
 ) -> RunStarted:
     """Поставить сборку пачки кейсов: тот же замок, та же очередь."""
-    return await _enqueue(session, user.id, job=cases_job)
+    return await _enqueue(session, user.id, job=cases_job, stage=CASES)
 
 
 DAY = timedelta(days=1)
@@ -194,20 +205,76 @@ async def estimate_run(
         now=date.today(),  # noqa: DTZ011 — календарная граница закрытого месяца
         windows=await point_windows(session),
     )
-    estimate = plan.estimated_units()
+    return await _estimate_view(
+        session,
+        projects=len(projects),
+        units=plan.estimated_units(),
+        planned=len(plan.tasks),
+        cached=len(plan.cached),
+        lines=list(plan.scheme_breakdown().as_lines()),
+    )
+
+
+@router.get("/stage2/estimate", response_model=RunEstimate)
+async def estimate_stage2(
+    session: SessionDep,
+    _: Annotated[object, Depends(require_right("read"))] = None,
+) -> RunEstimate:
+    """Во что обойдётся вторая кнопка: шаг 2 по кандидатам и данные под кейс.
+
+    Кандидаты к этому моменту известны — их выбирают действующие пороги по
+    данным шага 1, — поэтому шаг 2 посчитан точно. Данные под кейс нужны тем,
+    кто после шага 2 станет хорошим или средним, а это выяснится только после
+    него: здесь они посчитаны по всем кандидатам, это верхняя граница, и она
+    так и подписана. `projects` в ответе — число кандидатов.
+    """
+    windows = await point_windows(session)
+    source = build_provider().source
+    projects = list((await session.execute(select(Project))).scalars().all())
+    wanted = set(await stage2_candidates(session, projects, source=source))
+    chosen = [project for project in projects if project.id in wanted]
+    today = date.today()  # noqa: DTZ011 — календарная граница закрытого месяца
+    second = await build_stage2_plan(session, chosen, source=source, now=today, windows=windows)
+    case = await build_case_plan(session, chosen, source=source, now=today, windows=windows)
+    lines = [*second.scheme_breakdown().as_lines(), *case.scheme_breakdown().as_lines()]
+    if chosen:
+        lines.append(
+            "данные под кейс посчитаны по всем кандидатам — это верхняя граница: "
+            "докупаются только тем, кто после шага 2 станет хорошим или средним"
+        )
+    return await _estimate_view(
+        session,
+        projects=len(chosen),
+        units=second.estimated_units() + case.estimated_units(),
+        planned=len(second.tasks) + len(case.tasks),
+        cached=len(second.cached) + len(case.cached),
+        lines=lines,
+    )
+
+
+async def _estimate_view(
+    session: SessionDep,
+    *,
+    projects: int,
+    units: int,
+    planned: int,
+    cached: int,
+    lines: list[str],
+) -> RunEstimate:
+    """Смета против квоты — одна на обе кнопки: вторая копия разошлась бы в деньгах."""
     reserved = await reserved_units(session)
     state = await preflight(
         build_quota(),
-        needed=estimate,
+        needed=units,
         reserved=reserved,
         uncounted=await uncounted_spend(session),
     )
     return RunEstimate(
-        projects=len(projects),
-        units_estimated=estimate,
-        requests_planned=len(plan.tasks),
-        requests_cached=len(plan.cached),
-        scheme_lines=list(plan.scheme_breakdown().as_lines()),
+        projects=projects,
+        units_estimated=units,
+        requests_planned=planned,
+        requests_cached=cached,
+        scheme_lines=lines,
         quota_left=state.left,
         quota_reserved=reserved,
         verdict=state.verdict.value,
@@ -251,6 +318,7 @@ async def _enqueue(
     user_id: int,
     *,
     job: Callable[..., object],
+    stage: str,
     refresh: bool = False,
 ) -> RunStarted:
     """Создать прогон под замком и поставить задачу."""
@@ -267,7 +335,7 @@ async def _enqueue(
         )
 
     total = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
-    run = await open_run(session, started_by=user_id, projects_total=total)
+    run = await open_run(session, started_by=user_id, projects_total=total, stage=stage)
     await session.commit()
 
     queue = build_queue()
@@ -288,6 +356,7 @@ def _row(run: Run, authors: Mapping[int, User] | None = None) -> RunRow:
         # человеку говорит больше, чем `cli@local`, но пустая строка — ничего.
         started_by_name=(author.full_name or author.email) if author else "",
         started_by_deleted=bool(author and author.deleted_at is not None),
+        stage=str((run.params_snapshot or {}).get("stage") or ""),
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,

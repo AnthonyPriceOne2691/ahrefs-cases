@@ -107,23 +107,22 @@ curl -s http://127.0.0.1:8091/api/health   # status ok; migration — голов
 (`AHREFS_PROVIDER=... docker compose up -d worker`) не передавать: следующая
 команда без них молча вернёт прежнее (урок L197).
 
-## Воронка после прогона из интерфейса
+## Воронка из консоли
 
-Пока не закрыт B6 (`docs/FINDINGS.md`), кнопка «Запустить прогон» делает только
-шаг 1: групп после неё нет, и «Собрать кейсы» собирать нечего. Воронку доводит
-инженер на сервере — классификация и данные под кейс идут командами:
+С 24.09.2026 (B6) воронку проходят кнопками: «Запустить прогон» — шаг 1 и
+группы, «Дособрать кандидатов» — шаг 2 и данные под кейс, «Собрать кейсы» —
+PDF и пачка. Те же ступени из консоли — для инженера, когда нужно сузить
+список (`--only`) или разобраться:
 
 ```bash
 cd /srv/ahrefs-cases
 docker compose exec api python scripts/run_collect.py classify    # бесплатно
 docker compose exec api python scripts/run_collect.py stage2      # платно: кандидаты
-docker compose exec api python scripts/run_collect.py classify
 docker compose exec api python scripts/run_collect.py case-data   # платно: good/medium
 ```
 
-После этого «Собрать кейсы» в интерфейсе работает. В `fixture` всё бесплатно;
-перед переключением в `live` — раздел 1 `docs/FINDINGS.md`, там Z33: пустые
-домены сейчас перепокупаются в двух прогонах из трёх.
+В `fixture` всё бесплатно; перед переключением в `live` — раздел 1
+`docs/FINDINGS.md`.
 
 ## Логи
 

@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,3 +123,68 @@ async def make_active(session: AsyncSession, version: str) -> None:
     await session.flush()
     await session.execute(update(Ruleset).where(Ruleset.version == version).values(is_active=True))
     await session.flush()
+
+
+async def own_active_ruleset(session: AsyncSession, version: str) -> None:
+    """Своя версия порогов теста — единственная действующая.
+
+    Нужна каждому тесту, который запускает прогон сбора: с B6 прогон
+    классифицирует **все** проекты базы по действующей версии, а в общей базе
+    лежат проекты стенда с вердиктами по живым рядам. По чужой действующей
+    версии тест переписал бы их источник на фикстурный — ровно то, что ловит
+    сторож `stand_verdicts_survive_the_suite` (Z12). По своей версии тест пишет
+    новые строки, которые сам же и уберёт `drop_ruleset`.
+    """
+    from ahrefs_cases.classify.thresholds import load_seed
+
+    payload = {**load_seed().model_dump(mode="json"), "version": version}
+    session.add(Ruleset(version=version, payload=payload, is_active=False, note="версия теста"))
+    await session.flush()
+    await make_active(session, version)
+
+
+async def drop_ruleset(session: AsyncSession, version: str) -> None:
+    """Убрать версию теста со всем, что под ней записано: кейсы, вердикты, её саму.
+
+    От детей к родителям: кейс держит вердикт, вердикт — версию. Действующей
+    версию до вызова должен сделать другой — иначе стенд останется без порогов.
+    """
+    ruleset_id = await session.scalar(select(Ruleset.id).where(Ruleset.version == version))
+    if ruleset_id is None:
+        return
+    verdict_ids = select(Verdict.id).where(Verdict.ruleset_id == ruleset_id)
+    case_ids = select(Case.id).where(Case.verdict_id.in_(verdict_ids))
+    await session.execute(delete(CaseArtifact).where(CaseArtifact.case_id.in_(case_ids)))
+    await session.execute(delete(Case).where(Case.verdict_id.in_(verdict_ids)))
+    await session.execute(delete(Verdict).where(Verdict.ruleset_id == ruleset_id))
+    await session.execute(delete(Ruleset).where(Ruleset.id == ruleset_id))
+
+
+def isolated_ruleset(
+    write: Callable[[Callable[..., object]], None], version: str
+) -> Callable[[], None]:
+    """Сделать свою версию единственной действующей; вернуть уборку.
+
+    Уборка возвращает стенду его действующую версию и только потом сносит свою:
+    иначе между шагами база осталась бы без действующих порогов. Остаток своей
+    версии от упавшего прошлого прогона сносится до начала — и в «помнить, что
+    было активно» не попадает.
+    """
+    stand: list[str] = []
+
+    async def _setup(session: AsyncSession) -> None:
+        found = await active_versions(session)
+        stand.extend(item for item in found if item != version)
+        await drop_ruleset(session, version)
+        await own_active_ruleset(session, version)
+
+    write(_setup)
+
+    def undo() -> None:
+        async def _teardown(session: AsyncSession) -> None:
+            await restore_active(session, stand)
+            await drop_ruleset(session, version)
+
+        write(_teardown)
+
+    return undo

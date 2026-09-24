@@ -27,6 +27,7 @@ import { IntakeOutcome } from './intake/IntakeOutcome';
 import { RUNNING } from './intake/RunLine';
 import { SourceForm } from './intake/SourceForm';
 import { ESTIMATE_KEY, EstimateWindow } from './runs/EstimateWindow';
+import { Stage2Launcher } from './runs/Stage2Launcher';
 import { JournalFilters, isFiltered } from './runs/JournalFilters';
 import type { JournalFilter } from './runs/JournalFilters';
 import { RunsTable } from './runs/RunsTable';
@@ -219,6 +220,7 @@ export function RunsPage() {
             />
             <Group>
               <Button onClick={() => setShowEstimate(true)}>Смета и запуск</Button>
+              <Stage2Launcher run={run.data ?? null} onStarted={setRunId} />
             </Group>
           </Stack>
         </Paper>
