@@ -9,6 +9,7 @@
 | T3: приглушённый остаётся приглушённым | `vitest -t 'приглушённый текст остаётся приглушённым'` | passed (страж от перегиба) |
 | Фронт целиком | `vitest run` | 178 passed |
 | Типы и стиль | `tsc --noEmit`, `eslint --max-warnings 0`, `prettier --check` | чисто |
+| CI на ветке поставки | GitHub Actions, PR #16 | delivery, gates, tests — pass: https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36004440222 |
 
 ## Исполнение рисковых путей
 
