@@ -376,6 +376,7 @@ async def collect_case_data(
     provider: AhrefsProvider | None = None,
     *,
     started_by: int | None = None,
+    job_key: str = "",
     **args: Unpack[StageArgs],
 ) -> RunReport:
     """Ступень кейса: докупить кривую позиций, стоимость трафика и DR.
@@ -388,7 +389,9 @@ async def collect_case_data(
     интерфейса: своя строка журнала, но записана на того же человека.
     """
     options = RunOptions(stage=3, **args)
-    return await _run_by_ids(session, project_ids, provider, options, started_by=started_by)
+    return await _run_by_ids(
+        session, project_ids, provider, options, started_by=started_by, job_key=job_key
+    )
 
 
 async def _run_by_ids(
@@ -399,6 +402,7 @@ async def _run_by_ids(
     *,
     run: Run | None = None,
     started_by: int | None = None,
+    job_key: str = "",
 ) -> RunReport:
     """Прогон по списку id: открыть, выполнить, не потерять статус при ошибке.
 
@@ -420,7 +424,9 @@ async def _run_by_ids(
     if run is None:
         author = started_by if started_by is not None else (await system_user(session)).id
         stage = STAGE2 if options.stage == 2 else CASE_DATA
-        run = await open_run(session, started_by=author, projects_total=len(projects), stage=stage)
+        run = await open_run(
+            session, started_by=author, projects_total=len(projects), stage=stage, job_key=job_key
+        )
     else:
         run.projects_total = len(projects)
     await session.commit()

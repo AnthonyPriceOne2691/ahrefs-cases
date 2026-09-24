@@ -70,7 +70,12 @@ CASES = "cases"
 
 
 async def open_run(
-    session: AsyncSession, started_by: int, projects_total: int, *, stage: str = ""
+    session: AsyncSession,
+    started_by: int,
+    projects_total: int,
+    *,
+    stage: str = "",
+    job_key: str = "",
 ) -> Run:
     """Открыть прогон в статусе `queued` и записать, чем он считается.
 
@@ -93,6 +98,10 @@ async def open_run(
             "collect_scheme": config.ahrefs.collect_scheme,
             "fixture_seed": config.ahrefs.fixture_seed,
             "stage": stage,
+            # Ключ задачи очереди — по нему реапер спрашивает, жива ли она.
+            # Есть только у прогонов, поставленных через очередь: прогон из
+            # консоли идёт без RQ, и «задачи нет в очереди» его не касается.
+            **({"job": job_key} if job_key else {}),
         },
     )
     session.add(run)

@@ -17,6 +17,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select, text
@@ -340,12 +341,17 @@ async def _enqueue(
         )
 
     total = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
-    run = await open_run(session, started_by=user_id, projects_total=total, stage=stage)
+    key = f"run-{uuid4().hex}"
+    run = await open_run(
+        session, started_by=user_id, projects_total=total, stage=stage, job_key=key
+    )
     await session.commit()
 
     queue = build_queue()
     queued_as = (
-        await queue.enqueue(job, run.id, refresh) if refresh else await queue.enqueue(job, run.id)
+        await queue.enqueue(job, run.id, refresh, key=key)
+        if refresh
+        else await queue.enqueue(job, run.id, key=key)
     )
     logger.info("run_enqueued", extra={"run_id": run.id, "queued_as": queued_as})
     return RunStarted(run_id=run.id, queued_as=queued_as)

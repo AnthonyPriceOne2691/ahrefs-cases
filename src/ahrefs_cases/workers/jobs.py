@@ -133,8 +133,14 @@ async def _stage2(run_id: int) -> str:
         ]
         if not chosen:
             return "; ".join([*lines, "данных под кейс не нужно: хороших и средних нет"])
+        # Ключ задачи — тот же: ступень кейса идёт в той же задаче очереди, и
+        # убитая выкаткой, она должна закрываться реапером так же, как шаг 2.
         case = await collect_case_data(
-            session, chosen, windows=windows, started_by=run.started_by if run else None
+            session,
+            chosen,
+            windows=windows,
+            started_by=run.started_by if run else None,
+            job_key=str((run.params_snapshot or {}).get("job", "")) if run else "",
         )
         await session.commit()
         # Ещё один пересчёт — бесплатный и обязательный: ступень кейса купила DR
