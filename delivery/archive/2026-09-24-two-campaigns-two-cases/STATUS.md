@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_cases_pack.py::test_two_campaigns_get_two_files
 - **diagnosis:** active/diagnosis.md
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony (одобрен пункт «Две кампании — два PDF»; из задания: «Нужно: у каждой кампании свой кейс со своими данными, свой файл и своя строка в `кейсы.csv`. Имя файла — «домен + Кейс + номер сборки» (правило 18 …), разведение одинаковых имён — правило 18а (`pdf_renderer.unique_name`)»)
@@ -28,8 +28,8 @@
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** —
-- **observe_until:** —
+- **observe_signal:** на проде после ближайшей сборки кейсов (кнопка «Собрать кейсы»): PDF в пачке и строк `кейсы.csv` столько, сколько «кейс собран» минус «не попал» в логе воркера; у сайта с двумя хорошими или средними кампаниями — два PDF с разными sha256, и у двух строк `cases` последней версии разные `case_artifacts.checksum` (W1, W2)
+- **observe_until:** 2026-10-08
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
 
 ## Что решает эта поставка
