@@ -474,7 +474,7 @@ async def _skip_reason(session: AsyncSession, project: Project, *, refresh: bool
     if not cache.empty_is_remembered(checked_at):
         return None
     when = checked_at.date().isoformat() if checked_at else "?"
-    return f"истории нет, проверено {when} — повтор через {config.ahrefs.empty_retry_days} дн."
+    return f"{cache.REMEMBERED_EMPTY} {when} — повтор через {config.ahrefs.empty_retry_days} дн."
 
 
 async def _incremental_from(
