@@ -263,7 +263,7 @@ def test_two_campaigns_get_two_files(own_rows: None, writer: Write, out_dir: Pat
     """W1: две хорошие кампании одного сайта — два PDF и две строки списка.
 
     Ключом пачки был домен: вторая кампания затирала первую, и в архив уходил
-    один PDF на двоих (на стенде так у `nordvpn.com` во всех сборках, Z39).
+    один PDF на двоих — на стенде так у `nordvpn.com` во всех сборках.
     """
     _seed(writer, FIRST, SECOND)
 
