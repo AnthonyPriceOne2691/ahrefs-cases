@@ -104,3 +104,45 @@ def test_rounding_is_not_a_divergence() -> None:
     """
     assert case_mismatch(_case(after=74_654.5), _verdict(after=74_654.9)) is None
     assert case_mismatch(_case(after=74_654.5), _verdict(after=75_972.0)) == "numbers"
+
+
+BUCKETS = {"kw_top3": 10.0, "kw_top4_10": 20.0, "kw_top11_20": 30.0, "kw_top21_50": 40.0}
+
+
+def _with_keywords(case: Case, before: float, after: float) -> Case:
+    picked = [
+        *case.highlights["picked"],
+        {"subject": "kw_total", "before": before, "after": after, "label": "число ключей"},
+    ]
+    case.highlights = {"picked": picked}
+    return case
+
+
+def _verdict_with_buckets(last_before: float, last_after: float) -> Verdict:
+    verdict = _verdict()
+    verdict.point_a = {
+        **verdict.point_a,
+        "values": {**verdict.point_a["values"], **BUCKETS, "kw_top51_plus": last_before},
+    }
+    verdict.point_b = {
+        **verdict.point_b,
+        "values": {**verdict.point_b["values"], **BUCKETS, "kw_top51_plus": last_after},
+    }
+    return verdict
+
+
+def test_keywords_total_is_counted_from_the_verdict_buckets() -> None:
+    """«Число ключей» вердикт не хранит — сверка считает его из корзин вердикта.
+
+    Раньше сверка искала `kw_total` среди точек вердикта, не находила и
+    называла кейс устаревшим с рождения: интерфейс прятал кнопку скачивания у
+    каждого кейса с числом ключей (сквозной прогон 24.09.2026).
+    """
+    case = _with_keywords(_case(), before=150.0, after=200.0)
+    assert case_mismatch(case, _verdict_with_buckets(50.0, 100.0)) is None
+
+
+def test_keywords_total_still_catches_changed_buckets() -> None:
+    """Сверка по корзинам не вслепую: другие корзины — другое число, кейс устарел."""
+    case = _with_keywords(_case(), before=150.0, after=200.0)
+    assert case_mismatch(case, _verdict_with_buckets(50.0, 900.0)) == "numbers"

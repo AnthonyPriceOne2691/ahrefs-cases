@@ -164,16 +164,28 @@ def _changes(verdict: VerdictView) -> tuple[Change, ...]:
     )
 
 
-def _with_keywords_total(point: Point) -> Point:
-    """Добавить к точке «число ключей» — сумму пяти корзин распределения.
+def keywords_total(values: Mapping[Metric, float] | Mapping[str, float]) -> float | None:
+    """«Число ключей» — сумма пяти корзин распределения, или `None`.
 
     Считается, только если есть **все пять**: сумма четырёх корзин выглядит как
     число ключей, но им не является, и занижение никак не видно в кейсе.
     Корзины не покупали — метрики в кейсе просто нет (урок L30).
+
+    Одна функция на сборку кейса и сверку его свежести (`cases/freshness.py`):
+    классификация этой величины не хранит, и сверка обязана считать её так же,
+    как считала сборка, — иначе кейс с числом ключей «устаревал» с рождения
+    (найдено 24.09.2026).
     """
-    if any(bucket not in point.values for bucket in _KEYWORD_BUCKETS):
+    if any(bucket not in values for bucket in _KEYWORD_BUCKETS):
+        return None
+    return sum(values[bucket] for bucket in _KEYWORD_BUCKETS)
+
+
+def _with_keywords_total(point: Point) -> Point:
+    """Добавить к точке «число ключей» (`keywords_total`), если корзины есть все."""
+    total = keywords_total(point.values)
+    if total is None:
         return point
-    total = sum(point.values[bucket] for bucket in _KEYWORD_BUCKETS)
     return Point(
         at=point.at,
         values=point.values,

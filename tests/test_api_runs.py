@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterator
-from datetime import date
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -293,6 +294,38 @@ def test_stage2_button_runs_the_rest_of_the_funnel(client: TestClient) -> None:
     assert by_stage["stage2"]["id"] == started.json()["run_id"]
     assert by_stage["stage2"]["status"] in {"done", "partial"}
     assert set(by_stage) <= {"stage1", "stage2", "case_data"}
+
+
+def test_cases_after_the_second_button_are_downloadable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B6: кейсы, собранные после второй кнопки, не «устарели» с рождения.
+
+    Ступень кейса докупает DR и стоимость трафика ПОСЛЕ классификации, кейс их
+    печатает, а сверка свежести (`cases/freshness.py`) считает метрику, которой
+    нет у вердикта, расхождением. Без пересчёта групп после ступени кейса
+    каждый кейс из интерфейса выходил «устаревшим» и не отдавался на скачивание
+    — найдено браузером на боевых образах 24.09.2026.
+    """
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+    client.post("/api/runs/stage2", headers=headers)
+    before = datetime.now(UTC)
+    client.post("/api/runs/cases", headers=headers)
+
+    # Только собранные этим тестом: в библиотеке лежат и кейсы стенда, а они
+    # сверяются с версией порогов теста и законно не совпадают с ней.
+    cases = [
+        row
+        for row in client.get("/api/cases", params={"limit": 100}, headers=headers).json()
+        if datetime.fromisoformat(row["created_at"]) >= before
+    ]
+    assert cases, "сборка не дала ни одного кейса — проверять нечего"
+    stale = {row["domain"]: row["outdated"] for row in cases if row.get("outdated")}
+    assert not stale, f"кейсы устарели с рождения: {stale}"
 
 
 def test_journal_names_the_stage(client: TestClient) -> None:
