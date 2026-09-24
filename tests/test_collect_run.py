@@ -19,10 +19,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
-from ahrefs_cases.collect.cache import empty_since
+from ahrefs_cases.collect.cache import REMEMBERED_EMPTY, empty_since
 from ahrefs_cases.collect.endpoints import METRICS_HISTORY
 from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
 from ahrefs_cases.collect.quota import FixtureQuota
+from ahrefs_cases.collect.run_journal import CASES, add_item, finish_run, open_run, system_user
 from ahrefs_cases.collect.runner import collect_all, collect_projects
 from ahrefs_cases.intake.accept import accept
 from ahrefs_cases.intake.csv_source import read_csv
@@ -228,6 +229,46 @@ async def test_empty_memory_outlives_its_own_hits(db_session: AsyncSession, tmp_
         .all()
     )
     assert await empty_since(db_session, project_id) == real_checks[-1]
+
+
+async def test_cases_stage_does_not_break_empty_memory(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """Y5: судьба от сборки кейсов — не проверка домена, и память о пустом её не видит.
+
+    Сборка кейсов пишет судьбу каждому проекту, пустому домену тоже («вердикта
+    этой версии нет»). Посчитай её последним исходом проекта — цепочка «нет
+    данных» подряд рвётся, и следующий сбор покупает пустоту заново: вживую от
+    50 units за домен после каждой сборки кейсов (класс Z33).
+    """
+    await _load(db_session, tmp_path, ["empty.example.com"])
+    for _ in range(2):
+        await collect_all(db_session, AhrefsFixture())
+    project_id = (await db_session.execute(select(Project.id))).scalars().one()
+    checked = await empty_since(db_session, project_id)
+    assert checked is not None, "два пустых ответа подряд включают память"
+
+    author = await system_user(db_session)
+    run = await open_run(db_session, author.id, projects_total=1, stage=CASES)
+    await add_item(
+        db_session,
+        run,
+        project_id=project_id,
+        raw_domain="empty.example.com",
+        outcome=RunItemOutcome.CASE_NO_VERDICT,
+        reason="нет вердикта по действующим порогам",
+    )
+    await finish_run(db_session, run)
+
+    assert await empty_since(db_session, project_id) == checked
+    await collect_all(db_session, AhrefsFixture())
+    last = (
+        (await db_session.execute(select(RunItem).order_by(RunItem.id.desc()).limit(1)))
+        .scalars()
+        .one()
+    )
+    assert last.outcome is RunItemOutcome.OK
+    assert last.reason.startswith(REMEMBERED_EMPTY), "пустота взята из памяти, а не куплена"
 
 
 async def test_short_history_is_marked_not_dropped(
