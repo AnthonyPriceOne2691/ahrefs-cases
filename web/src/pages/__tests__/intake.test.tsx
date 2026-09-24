@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { forgetToken, rememberToken } from '../../api/client';
 import { renderApp } from '../../test/render';
 import { RunsPage } from '../RunsPage';
-import { SHEET_ACCESS, SHEET_COLUMNS } from '../intake/SheetHelp';
+import { FILE_CSV, FILE_FORMAT, SHEET_ACCESS } from '../intake/ListHelp';
 
 /** Раздел живёт в маршрутизаторе: признак открытого окна сметы держится в
  *  адресе, и без `Router` экран падает на `useLocation`. */
@@ -438,6 +438,87 @@ describe('кнопка загрузки файла', () => {
   });
 });
 
+/** `later` стоит в документе после `earlier`. */
+function follows(earlier: Element, later: Element): boolean {
+  return Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+describe('отказ целиком — у своего поля', () => {
+  const REFUSED = 'Файл «список.csv» не подходит: нет колонок period_start, geo.';
+
+  it('V16: отказ по файлу — красная плашка под полем файла, отчёта нет', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': { status: 400, body: { detail: REFUSED } },
+    });
+    showRuns();
+
+    await upload(new File(['x'], 'список.csv'));
+
+    const refusal = await screen.findByText(REFUSED);
+    // Под полем файла и НАД полем ссылки: отказ стоит там, где список давали.
+    expect(follows(screen.getByLabelText('Файл со списком'), refusal)).toBe(true);
+    expect(follows(refusal, screen.getByLabelText('Ссылка на Google Sheet'))).toBe(true);
+    expect(screen.queryByText(/Принято из/)).not.toBeInTheDocument();
+  });
+
+  it('V17: отказ по ссылке — плашка под полем ссылки, а не под файлом', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/link': {
+        status: 400,
+        body: { detail: 'Таблица по ссылке не подходит: нет колонок client, owner.' },
+      },
+    });
+    showRuns();
+
+    await userEvent.type(
+      screen.getByLabelText('Ссылка на Google Sheet'),
+      'https://docs.google.com/spreadsheets/d/abc/edit#gid=7',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Загрузить по ссылке' }));
+
+    const refusal = await screen.findByText(/Таблица по ссылке не подходит/);
+    expect(follows(screen.getByLabelText('Ссылка на Google Sheet'), refusal)).toBe(true);
+    expect(screen.queryByText(/Принято из/)).not.toBeInTheDocument();
+  });
+
+  it('V22: файл больше 2 МБ — отказ у поля, и на сервер он не уходит', async () => {
+    // Сервер тоже отказал бы (413), но через прокси его ответ не доходит: он
+    // рвёт соединение, не дочитав тело, и прокси отвечает «500» (замер в Chrome).
+    rememberToken('токен');
+    const { calls } = server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    showRuns();
+
+    await upload(new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'выгрузка.csv'));
+
+    const refusal = await screen.findByText(/«выгрузка.csv» больше 2 МБ/);
+    expect(follows(screen.getByLabelText('Файл со списком'), refusal)).toBe(true);
+    expect(calls.filter((path) => path.startsWith('/api/intake'))).toEqual([]);
+  });
+
+  it('V20: после выбора поле выбора пустеет — тот же файл можно выбрать снова', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': { status: 400, body: { detail: REFUSED } },
+    });
+    showRuns();
+
+    await upload(new File(['x'], 'список.csv'));
+    await screen.findByText(REFUSED);
+
+    // Браузер не шлёт `change`, если выбран тот же файл, что уже стоит в поле:
+    // список, поправленный после отказа, иначе не уходит вовсе — кнопка
+    // молчит. Пустое поле выбора — условие того, что выбор сработает снова.
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.files).toHaveLength(0);
+  });
+});
+
 describe('справка о таблице', () => {
   it('значок стоит у поля ссылки и назван словами', async () => {
     rememberToken('токен');
@@ -450,23 +531,27 @@ describe('справка о таблице', () => {
     expect(help).toBeInTheDocument();
   });
 
-  it('справка называет ровно те колонки, которых требует приём', () => {
-    // Содержимое проверяется данными, а не раскрытием карточки: попапы Mantine
-    // в jsdom разворачиваются секундами (грабли Ф6). Список здесь обязан
-    // совпадать с REQUIRED_COLUMNS из `intake/validate.py` — расхождение
-    // означает, что человек соберёт таблицу по нашей же неверной подсказке.
-    expect(SHEET_COLUMNS.map((column) => column.name)).toEqual([
-      'domain',
-      'period_start',
-      'period_end',
-      'niche',
-      'geo',
-      'service_type',
-      'work_volume',
-      'client',
-      'owner',
-      'publishable',
-    ]);
+  it('V18: у поля файла свой «?», названный словами', async () => {
+    rememberToken('токен');
+    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    showRuns();
+
+    // Карточку не раскрываем: попап Mantine в jsdom открывался здесь двадцать
+    // две секунды (замер этой поставки, урок L76). Что в ней нарисовано —
+    // проверяют данные ниже, `tests/test_intake_list_format.py` и браузер.
+    expect(await screen.findByLabelText('каким должен быть файл')).toBeInTheDocument();
+    expect(screen.getByLabelText('какой должна быть таблица')).toBeInTheDocument();
+  });
+
+  it('V18: про файл сказано, какие форматы, какой лист, разделитель и кодировка', () => {
+    expect(FILE_FORMAT).toMatch(/XLSX/);
+    expect(FILE_FORMAT).toMatch(/CSV/);
+    expect(FILE_FORMAT).toMatch(/2 МБ/);
+    expect(FILE_FORMAT).toMatch(/первый лист/);
+    expect(FILE_CSV).toMatch(/точка с запятой/);
+    expect(FILE_CSV).toMatch(/Windows-1251/);
+    // Абзац про доступ по ссылке — у таблицы; файлу он ни к чему.
+    expect(`${FILE_FORMAT} ${FILE_CSV}`).not.toMatch(/по ссылке|Авторизация/);
   });
 
   it('справка прямо говорит, что авторизация не нужна, а приватная таблица не годится', () => {

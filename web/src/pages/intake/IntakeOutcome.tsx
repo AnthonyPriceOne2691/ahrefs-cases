@@ -6,8 +6,12 @@
  *
  * Отказы не сворачиваются в «7 ошибок»: ТЗ требует отчёт, по которому строку
  * можно найти и починить, а для этого нужны её номер и причина.
+ *
+ * Отчёт бывает только у списка, годного целиком. Пустой файл, одна шапка, нет
+ * колонок — отказ сервера, и он стоит у поля, а не здесь: прежде такой файл
+ * приходил отчётом «Принято из …» с нулём принятых.
  */
-import { Alert, Badge, Group, Stack, Table, Text, Title } from '@mantine/core';
+import { Badge, Group, Stack, Table, Text, Title } from '@mantine/core';
 
 import type { IntakeReport, RejectionRow } from '../../api/types';
 
@@ -15,9 +19,7 @@ const REASONS: Record<string, string> = {
   empty_domain: 'пустой домен',
   invalid_domain: 'домен не разобран',
   ip_address: 'вместо домена IP-адрес',
-  empty_source: 'в источнике нет колонок',
   missing_field: 'пустое обязательное поле',
-  missing_column: 'в файле нет колонки',
   bad_date: 'дата не разобрана',
   period_order: 'конец периода раньше начала',
   bad_geo: 'гео не двухбуквенный код',
@@ -58,15 +60,6 @@ export function IntakeOutcome({ report }: { report: IntakeReport }) {
           </Badge>
         )}
       </Group>
-
-      {report.accepted === 0 && report.rejected_rows === 0 && (
-        <Alert color="yellow" variant="light">
-          <Text size="sm">
-            В источнике не нашлось ни одной строки. Проверьте, что список лежит на первом листе и у
-            него есть строка заголовка.
-          </Text>
-        </Alert>
-      )}
 
       {report.rejections.length > 0 && (
         <Rows title="Строки, которые не приняты" rows={report.rejections} />

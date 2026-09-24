@@ -11,6 +11,11 @@ intake`. Загружают его PR-отдел и руководители —
 
 Разбор при этом тот же, что у консольного приёма (`intake.read_upload`): у
 одного файла не должно быть двух правд о том, какие строки годны.
+
+**Два брака — два ответа.** Брак строк — отчёт `200`: годные строки приняты,
+битые названы номером и причиной. Брак файла (нет колонок, одна шапка, книга
+не читается) — отказ `400` целиком, и ни строки не записано: отчёт «принято 0»
+над таким файлом выглядел успешным приёмом.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import IntakeLink, IntakeReportView, RejectionRow
 from ahrefs_cases.intake.accept import UnknownSourceError, accept, read_upload
 from ahrefs_cases.intake.gsheet_source import SheetAccessError, SheetLinkError, read_gsheet
-from ahrefs_cases.intake.rejections import Notice, Rejection
+from ahrefs_cases.intake.rejections import Notice, Rejection, UnfitSourceError
 from ahrefs_cases.intake.report import IntakeReport
 from ahrefs_cases.intake.rows import RawTable
 
@@ -52,23 +57,41 @@ async def intake_file(
     """Принять список из файла: XLSX или CSV телом запроса."""
     data = await _read_body(request)
     try:
-        table = read_upload(filename, data)
+        return await _accept(session, read_upload(filename, data))
     except UnknownSourceError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return await _accept(session, table)
+    except UnfitSourceError as exc:
+        raise _unfit(f"Файл «{filename}»", exc) from exc
 
 
 @router.post("/link", response_model=IntakeReportView)
 async def intake_link(session: SessionDep, link: IntakeLink) -> IntakeReportView:
-    """Принять список из опубликованной Google Sheet."""
+    """Принять список из опубликованной Google Sheet.
+
+    Таблица проверяется целиком так же, как файл: путь тот же (`_accept`), и
+    отказ тот же — отличается только подлежащее.
+    """
     try:
-        table = read_gsheet(link.url)
+        return await _accept(session, read_gsheet(link.url))
     except (SheetLinkError, SheetAccessError) as exc:
         # Закрытая таблица отвечает **страницей входа со статусом 200** (L10).
         # Читатель это различает; роутер обязан донести причину как отказ, а не
-        # показать «принято 0» — иначе человек пойдёт чинить свой файл.
+        # показать «принято 0» — иначе человек пойдёт чинить свой файл. Это
+        # своя причина — «откройте доступ», — и она не смешивается с «не подходит».
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return await _accept(session, table)
+    except UnfitSourceError as exc:
+        raise _unfit("Таблица по ссылке", exc) from exc
+
+
+def _unfit(subject: str, exc: UnfitSourceError) -> HTTPException:
+    """Брак файла: отказ целиком, база не тронута. Кто прислал — говорит вызывающий.
+
+    Отказ пишется в лог полем, а не текстом: по нему видно, сколько списков не
+    доходит до приёма и почему, — без этого прод молчит о них так же, как
+    раньше молчал ответ «принято 0».
+    """
+    logger.info("intake_refused", extra={"subject": subject, "reason": str(exc)})
+    return HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"{subject} не подходит: {exc}")
 
 
 async def _read_body(request: Request) -> bytes:
@@ -93,7 +116,10 @@ async def _read_body(request: Request) -> bytes:
         chunks.append(chunk)
     body = b"".join(chunks)
     if not body:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="пустое тело запроса: файла нет")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="файл пуст: в нём нет ни одного байта. Выберите файл со списком.",
+        )
     return body
 
 
