@@ -56,7 +56,15 @@ def _stack_is_up() -> bool:
 
 @pytest.fixture
 def _scratch_db() -> object:
-    """Отдельная база под восстановление: рабочую трогать нельзя."""
+    """Отдельная база под восстановление: рабочую трогать нельзя.
+
+    Пропуск без стека живёт здесь, а не в теле теста: фикстура исполняется
+    раньше тела, и `createdb` без стека падал ассертом — задуманный пропуск
+    становился ERROR. CI, где компоуз-стека нет вовсе, был красным на этом
+    с 19.09.2026, хотя сам бэкап там ни разу не проверялся.
+    """
+    if not _stack_is_up():
+        pytest.skip("дев-стек не поднят — восстанавливать неоткуда")
     _compose("exec", "-T", "postgres", "dropdb", "-U", "cases", "--if-exists", _PROBE_DB)
     created = _compose("exec", "-T", "postgres", "createdb", "-U", "cases", _PROBE_DB)
     assert created.returncode == 0, created.stderr.decode()
@@ -86,9 +94,6 @@ def _tables_in(db: str) -> set[str]:
 @pytest.mark.slow
 @pytest.mark.usefixtures("_scratch_db")
 def test_the_dump_actually_restores(tmp_path: Path) -> None:
-    if not _stack_is_up():
-        pytest.skip("дев-стек не поднят — восстанавливать неоткуда")
-
     made = subprocess.run(
         ["bash", str(_ROOT / "scripts" / "backup.sh")],
         cwd=_ROOT,

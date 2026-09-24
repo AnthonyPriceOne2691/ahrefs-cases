@@ -14,6 +14,7 @@ import asyncio
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -443,6 +444,35 @@ def test_selection_names_the_cases_it_could_not_give(
 
     assert response.status_code == 404
     assert "999999" in response.json()["detail"]
+
+
+def test_selection_does_not_pose_as_the_pack(
+    client: TestClient, seeded: dict[str, int], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Выборка не подменяет пачку и не оседает в каталоге выгрузки.
+
+    Пачку ищут как самый свежий `*.zip` каталога выгрузки, а выборка писала
+    туда же `выборка-кейсов.zip`. После чужой выборки из двух кейсов «Скачать
+    пачку» отдавала её вместо полной пачки — у всех. Найдено сквозным прогоном
+    на боевых образах 24.09.2026; этот же тест до правки оставлял огрызок
+    выборки в `data/out` дев-стенда.
+    """
+    from ahrefs_cases import config
+
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setattr(config.export, "output_dir", out)
+    pack = out / "кейсы-2026-09-11.zip"
+    pack.write_bytes("PK\x03\x04полная пачка".encode())
+    headers = _token(client)
+
+    selection = client.get(f"/api/cases/selection/download?ids={seeded['case']}", headers=headers)
+    assert selection.status_code == 200
+    assert "выборка-кейсов.zip" in unquote(selection.headers["content-disposition"])
+
+    assert client.get("/api/cases/pack", headers=headers).json()["filename"] == pack.name
+    assert client.get("/api/cases/pack/download", headers=headers).content == pack.read_bytes()
+    assert [path.name for path in out.rglob("*.zip")] == [pack.name]
 
 
 def test_selection_word_does_not_become_a_case_id(client: TestClient) -> None:

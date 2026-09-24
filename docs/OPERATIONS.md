@@ -144,17 +144,19 @@ scripts/backup.sh
 BACKUP_DIR=/srv/backups KEEP=30 scripts/backup.sh
 ```
 
-По расписанию — cron на сервере:
+По расписанию — cron на сервере. Как это устроено на проде (где лежат копии,
+как зайти, как обновлять) — `docs/PROD.md`. Строка для файла в `/etc/cron.d/` —
+с полем пользователя, в отличие от `crontab -e`:
 
 ```cron
-30 3 * * * cd /srv/ahrefs-cases && BACKUP_DIR=/srv/backups scripts/backup.sh >> /var/log/ahrefs-cases-backup.log 2>&1
+30 3 * * * root cd /srv/ahrefs-cases && BACKUP_DIR=/srv/backups/ahrefs-cases scripts/backup.sh >> /var/log/ahrefs-cases-backup.log 2>&1
 ```
 
 Восстановление затирает базу, поэтому требует явного подтверждения:
 
 ```bash
-scripts/restore.sh /srv/backups/2026-09-13-0300          # только покажет, что сделает
-scripts/restore.sh /srv/backups/2026-09-13-0300 --yes    # выполнит
+scripts/restore.sh /srv/backups/ahrefs-cases/2026-09-13-0300          # только покажет, что сделает
+scripts/restore.sh /srv/backups/ahrefs-cases/2026-09-13-0300 --yes    # выполнит
 ```
 
 **Бэкап, который ни разу не восстанавливали, бэкапом не является.** Проверьте
