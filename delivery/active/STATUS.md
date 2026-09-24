@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** text-keeps-its-ink-in-any-browser
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** web/src/app/__tests__/text-ink.test.tsx::текст без цвета не берёт чужую переменную
+- **diagnosis:** active/diagnosis.md
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-24 by=human:anthony («открыл сервис на проде и сразу на темной теме увидел кучу косяков, на многих страницах не видно текст»; «текст черный и ничего не видно»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт только на экране
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/theme.ts reason=цвет текста решает каскад браузера, а jsdom его не считает: тест видит щит, но не цвет на экране
+- **irreversible_surfaces:** none reason=автомерж в репозитории выключен, каждый PR сливает человек; отправки наружу в коде нет, выкатка в прод — ручная, по `docs/PROD.md`, только из слитого в main, а ssh на боевую машину агенту даёт человек; `live` включает только владелец
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде в тёмной теме у владельца абзацы, плашки и значения порогов светлые — в том же браузере, где 24.09 были чёрными
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
