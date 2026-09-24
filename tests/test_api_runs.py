@@ -249,6 +249,29 @@ def test_stage2_estimate_counts_the_candidates(
         assert any("верхняя граница" in line for line in body["scheme_lines"])
 
 
+def test_stage2_estimate_without_candidates_claims_nothing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Кандидатов нет — смета не говорит «данные уже куплены».
+
+    Пустой план печатает «нечего собирать: данные по этому списку уже
+    куплены» — верно про список, где всё собрано, и неверно про список, где
+    собирать не по кому. Так окно второй кнопки и заговорило на проде
+    24.09.2026, где проектов ещё нет. Объяснять пустоту — дело окна.
+    """
+    from ahrefs_cases.api.routers import runs as runs_router
+
+    async def nobody(*_args: object, **_kwargs: object) -> list[int]:
+        return []
+
+    monkeypatch.setattr(runs_router, "stage2_candidates", nobody)
+
+    body = client.get("/api/runs/stage2/estimate", headers=_headers(client)).json()
+
+    assert (body["projects"], body["units_estimated"]) == (0, 0)
+    assert body["scheme_lines"] == []
+
+
 def test_stage2_button_runs_the_rest_of_the_funnel(client: TestClient) -> None:
     """B6: вторая кнопка — шаг 2 и данные под кейс, записанные на нажавшего.
 
