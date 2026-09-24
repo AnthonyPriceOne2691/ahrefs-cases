@@ -17,7 +17,7 @@ import pytest
 
 from ahrefs_cases.cases.model import CaseData, Change, Period
 from ahrefs_cases.classify.deltas import Delta
-from ahrefs_cases.export.archive import MANIFEST_NAME, EmptyArchiveError, pack
+from ahrefs_cases.export.archive import MANIFEST_NAME, EmptyArchiveError, ToPack, pack
 from ahrefs_cases.export.pdf_renderer import filename
 from ahrefs_cases.storage._enums import Group
 
@@ -96,8 +96,10 @@ def test_unsafe_characters_are_cleaned() -> None:
 def test_archive_holds_cases_and_the_list(tmp_path: Path) -> None:
     """E4 и E5: три PDF и список, по которому пачку смотрят перед публикацией."""
     cases = [
-        ("example.com", _case()),
-        ("example.org", _case(title="сайт в нише travel", anonymized=True, niche="travel")),
+        ToPack(1, "example.com", _case()),
+        ToPack(
+            2, "example.org", _case(title="сайт в нише travel", anonymized=True, niche="travel")
+        ),
     ]
 
     bundle = pack(cases, output_dir=tmp_path)
@@ -114,7 +116,7 @@ def test_archive_holds_cases_and_the_list(tmp_path: Path) -> None:
 
 def test_blocked_case_stays_out_and_says_why(tmp_path: Path) -> None:
     """E6: запрещённый кейс не попадает в пачку, и молчания об этом нет."""
-    cases = [("example.com", _case()), ("forbidden.example", _case(geo="RU"))]
+    cases = [ToPack(1, "example.com", _case()), ToPack(2, "forbidden.example", _case(geo="RU"))]
 
     bundle = pack(cases, output_dir=tmp_path)
 
@@ -128,7 +130,8 @@ def test_identical_titles_do_not_collide(tmp_path: Path) -> None:
     """E8: два проекта одной ниши дают одно имя, и второй затёр бы первого."""
     anonymous = _case(title="сайт в нише travel", anonymized=True, niche="travel")
     bundle = pack(
-        [("a.example", anonymous), ("b.example", replace(anonymous))], output_dir=tmp_path
+        [ToPack(1, "a.example", anonymous), ToPack(2, "b.example", replace(anonymous))],
+        output_dir=tmp_path,
     )
 
     arcnames = [item.arcname for item in bundle.packed]
@@ -139,7 +142,7 @@ def test_identical_titles_do_not_collide(tmp_path: Path) -> None:
 
 def test_second_pack_rebuilds_the_archive(tmp_path: Path) -> None:
     """E9: архив — снимок пачки, а не журнал: повтор пересобирает его целиком."""
-    cases = [("example.com", _case())]
+    cases = [ToPack(1, "example.com", _case())]
 
     first = pack(cases, output_dir=tmp_path, name="кейсы.zip")
     second = pack(cases, output_dir=tmp_path, name="кейсы.zip")
