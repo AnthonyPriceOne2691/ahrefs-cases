@@ -24,7 +24,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from ahrefs_cases import config
 from ahrefs_cases.collect.scheme import PointWindows, history_span
-from ahrefs_cases.storage._enums import Metric, MetricSource, RunItemOutcome
+from ahrefs_cases.storage._enums import CASE_OUTCOMES, Metric, MetricSource, RunItemOutcome
 from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run, RunItem
@@ -199,7 +199,10 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
     пустых ответов домен успели собрать, память не действует вовсе.
 
     Исходы, взятые из самой памяти (`REMEMBERED_EMPTY`), пропускаются: они не
-    проверки, и срок отсчитывается от последнего настоящего запроса.
+    проверки, и срок отсчитывается от последнего настоящего запроса. Исходы
+    сборки кейсов (`CASE_OUTCOMES`) — тоже: Ahrefs она не спрашивает, а судьбу
+    пишет каждому проекту, пустому домену тоже, и «вердикта нет» после двух
+    «нет данных» рвало бы цепочку — следующий сбор покупал бы пустоту заново.
     """
     needed = config.ahrefs.empty_confirmations
     from_memory = (RunItem.outcome == RunItemOutcome.OK) & RunItem.reason.startswith(
@@ -208,7 +211,11 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
     stmt = (
         select(RunItem.outcome, Run.finished_at)
         .join(Run, Run.id == RunItem.run_id)
-        .where(RunItem.project_id == project_id, ~from_memory)
+        .where(
+            RunItem.project_id == project_id,
+            ~from_memory,
+            RunItem.outcome.not_in(CASE_OUTCOMES),
+        )
         .order_by(RunItem.id.desc())
         .limit(needed)
     )

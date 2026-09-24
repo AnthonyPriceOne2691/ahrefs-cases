@@ -9,7 +9,9 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import TextIO
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,9 +23,9 @@ from ahrefs_cases.cases.store import next_version, store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.cli.source import reading_source
-from ahrefs_cases.export.archive import EmptyArchiveError, Packed, ToPack, pack
+from ahrefs_cases.export.archive import EmptyArchiveError, Packed, SkippedCase, ToPack, pack
 from ahrefs_cases.export.pdf_renderer import render_pdf
-from ahrefs_cases.storage._enums import MetricSource
+from ahrefs_cases.storage._enums import MetricSource, RunItemOutcome
 from ahrefs_cases.storage.session import get_sessionmaker
 
 EXIT_BAD_SOURCE = 2
@@ -155,18 +157,116 @@ async def pack_cases(source: MetricSource | None = None) -> int:
     """
     async with get_sessionmaker()() as session:
         await seed_thresholds(session)
-        report = await build_cases(session, source=reading_source(source))
-        print("\n".join(report.as_lines()))
-        _print_refusals(report)
-        try:
-            bundle = await _pack_and_store(session, report)
-        except EmptyArchiveError as exc:
-            print(str(exc), file=sys.stderr)
-            return EXIT_BAD_SOURCE
+        result = await pack_built(session, reading_source(source))
         await session.commit()
 
-    print("\n".join(bundle.as_lines()))
-    return EXIT_CONTENT_BLOCKED if bundle.skipped else 0
+    print("\n".join(result.report.as_lines()))
+    _print_refusals(result.report)
+    if result.bundle is None:
+        print(result.empty, file=sys.stderr)
+        return EXIT_BAD_SOURCE
+    print("\n".join(result.bundle.as_lines()))
+    return EXIT_CONTENT_BLOCKED if result.skipped else 0
+
+
+@dataclass(frozen=True, slots=True)
+class CasePack:
+    """Сборка пачки целиком: исходы по проектам и архив, если он собрался.
+
+    Одна на команду `pack` и на задачу очереди за кнопкой «Собрать кейсы»:
+    команда её печатает, задача пишет в журнал прогона. Пока задача получала
+    от сборки только код возврата, журнал говорил «собрано 0» при собранной
+    пачке, а сводка жила в логе воркера (Z46, урок L130).
+    """
+
+    report: CaseReport
+    bundle: Packed | None
+    """`None` — архива нет: собирать было нечего."""
+
+    skipped: tuple[SkippedCase, ...]
+    """Не попали в архив по контент-запрету — и когда он собран, и когда нет."""
+
+    empty: str = ""
+    """Почему архива нет; пусто — архив есть."""
+
+    def lines(self) -> list[str]:
+        """Сводка для лога: исходы сборки, потом архив или почему его нет."""
+        return [*self.report.as_lines(), *(self.bundle.as_lines() if self.bundle else [self.empty])]
+
+
+async def pack_built(session: AsyncSession, source: MetricSource) -> CasePack:
+    """Собрать кейсы, упаковать собранные и записать каждому его строку `cases`.
+
+    В сессии вызывающего и без коммита: задача коммитит вместе со строками
+    журнала прогона — одной транзакцией, чтобы записанный кейс и его судьба в
+    журнале не разошлись.
+    """
+    report = await build_cases(session, source=source)
+    try:
+        bundle = await _pack_and_store(session, report)
+    except EmptyArchiveError as exc:
+        return CasePack(report=report, bundle=None, skipped=exc.skipped, empty=str(exc))
+    return CasePack(report=report, bundle=bundle, skipped=bundle.skipped)
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFate:
+    """Судьба проекта в сборке кейсов — строка журнала прогона."""
+
+    project_id: int
+    domain: str
+    outcome: RunItemOutcome
+    reason: str
+
+
+_QUIET_FATES: Mapping[CaseOutcome, tuple[RunItemOutcome, str]] = MappingProxyType(
+    {
+        CaseOutcome.NOT_ELIGIBLE: (
+            RunItemOutcome.CASE_NOT_ELIGIBLE,
+            "группа «плохой»: кейс по ТЗ собирают хорошим и средним",
+        ),
+        CaseOutcome.INSUFFICIENT_DATA: (
+            RunItemOutcome.CASE_INSUFFICIENT_DATA,
+            "группа «данных не хватает»: почему — в карточке проекта, «Почему эта группа»",
+        ),
+    }
+)
+"""Исходы, у которых причина одна на всех: её называет группа вердикта."""
+
+
+def case_fates(result: CasePack) -> list[CaseFate]:
+    """Судьба каждого рассмотренного проекта — исход и причина словами.
+
+    Собранный кейс — `ok` с именем файла в пачке, собранный и не отданный —
+    `case_blocked` с причиной запрета: оба ищутся по номеру проекта, домен у
+    двух кампаний одного сайта один (Z39). У «вердикт не про эти данные» —
+    объяснение и совет сборки (`builder._mismatch`).
+    """
+    packed = {one.project_id: one.arcname for one in result.bundle.packed} if result.bundle else {}
+    blocked = {one.project_id: one.reason for one in result.skipped}
+    version = result.report.ruleset_version
+    fates: list[CaseFate] = []
+    for attempt in result.report.attempts:
+        pid = attempt.project_id
+        if pid is None:
+            continue
+        if attempt.outcome is CaseOutcome.BUILT:
+            outcome, reason = (
+                (RunItemOutcome.OK, f"кейс собран: {packed[pid]}")
+                if pid in packed
+                else (RunItemOutcome.CASE_BLOCKED, blocked[pid])
+            )
+        elif attempt.outcome is CaseOutcome.NO_VERDICT:
+            outcome = RunItemOutcome.CASE_NO_VERDICT
+            reason = (
+                f"нет вердикта по действующим порогам «{version}»: его вынесет сбор или пересчёт"
+            )
+        elif attempt.outcome is CaseOutcome.VERDICT_MISMATCH:
+            outcome, reason = RunItemOutcome.CASE_VERDICT_MISMATCH, attempt.detail
+        else:
+            outcome, reason = _QUIET_FATES[attempt.outcome]
+        fates.append(CaseFate(pid, attempt.domain, outcome, reason))
+    return fates
 
 
 async def _pack_and_store(session: AsyncSession, report: CaseReport) -> Packed:
