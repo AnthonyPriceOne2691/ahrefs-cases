@@ -29,6 +29,7 @@ from ahrefs_cases.collect.run_journal import failure_reason, start_run
 from ahrefs_cases.collect.runner import collect_case_data, collect_projects, collect_stage2
 from ahrefs_cases.logs import run_context
 from ahrefs_cases.storage import Group, RunStatus
+from ahrefs_cases.storage.locks import work_lock
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -186,10 +187,15 @@ async def _run_guarded(run_id: int, work: object) -> None:
     Всё внутри помечается идентификатором прогона: задачи идут параллельно,
     и без метки их строки в логе не разделить. Ручной `extra={"run_id": …}`
     ниже оставлен намеренно — он не мешает и читается на месте.
+
+    Вся работа — под замком работы, и хвост после `finish_run` тоже: задача ещё
+    раздаёт месяцы кампаниям и пересчитывает группы, и удаление проекта в нём
+    уронило бы её, а `_finish` переписал бы честный `done` в `failed`.
     """
     with run_context(run_id):
         try:
-            summary = await work  # type: ignore[misc]
+            async with work_lock():
+                summary = await work  # type: ignore[misc]
             await _finish(run_id, RunStatus.DONE, str(summary), only_if_open=True)
         except Exception as exc:
             logger.exception("job_failed", extra={"run_id": run_id})

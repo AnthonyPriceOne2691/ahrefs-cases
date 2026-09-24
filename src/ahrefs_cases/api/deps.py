@@ -30,12 +30,12 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 # Права как строки; роль — набор. Добавить право группе = правка этой таблицы,
-# а не поиск сравнений с ролью по всему коду.
+# а не поиск сравнений с ролью по всему коду. `delete_projects` — своё право, а
+# не `run` (решение владельца 24.09.2026): списки грузит и PR-отдел.
+_MANAGING = frozenset({"run", "read", "edit_thresholds", "manage_users", "delete_projects"})
 _GROUP_RIGHTS: dict[UserGroup, frozenset[str]] = {
-    UserGroup.ENGINEER: frozenset(
-        {"run", "read", "edit_thresholds", "manage_users", "change_technical_settings"}
-    ),
-    UserGroup.ADMIN: frozenset({"run", "read", "edit_thresholds", "manage_users"}),
+    UserGroup.ENGINEER: _MANAGING | {"change_technical_settings"},
+    UserGroup.ADMIN: _MANAGING,
     UserGroup.USER: frozenset({"run", "read"}),
 }
 

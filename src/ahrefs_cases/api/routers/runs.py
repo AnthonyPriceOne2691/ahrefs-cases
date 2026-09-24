@@ -20,7 +20,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.api.schemas import (
@@ -41,6 +41,7 @@ from ahrefs_cases.collect.quota import preflight
 from ahrefs_cases.collect.run_journal import CASES, STAGE1, STAGE2, open_run
 from ahrefs_cases.collect.run_journal import fates as run_fates
 from ahrefs_cases.storage import RunStatus
+from ahrefs_cases.storage.locks import hold_start
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
@@ -55,15 +56,6 @@ MAX_FATES = 200
 """Потолок списка судеб: сто проектов прогона плюс запас. Граница нужна не от
 жадности — у прогона столько проектов, сколько в списке заказчика, и выдача без
 границы ломается ровно на большом прогоне (гейт `unbounded-list`)."""
-
-_START_LOCK_KEY = 4_242_001
-"""Ключ блокировки Postgres на время постановки прогона.
-
-Проверка «нет активных» и создание строки обязаны быть неделимыми: между ними
-помещается второй запрос, и тогда замок пропускает оба прогона. Советующая
-блокировка транзакции дешевле таблицы-семафора и умирает вместе с транзакцией —
-даже если процесс убьют.
-"""
 
 
 @router.post("", response_model=RunStarted, status_code=status.HTTP_202_ACCEPTED)
@@ -313,6 +305,7 @@ async def run_status(
                 outcome=fate.outcome.value,
                 reason=fate.reason,
                 units_actual=fate.units_actual,
+                project_deleted=fate.project_deleted,
             )
             for fate in fates
         ],
@@ -327,8 +320,12 @@ async def _enqueue(
     stage: str,
     refresh: bool = False,
 ) -> RunStarted:
-    """Создать прогон под замком и поставить задачу."""
-    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _START_LOCK_KEY})
+    """Создать прогон под замком постановки и поставить задачу.
+
+    «Нет активных» и строка прогона неделимы: между ними поместился бы второй
+    запрос. Тем же замком берёт удаление проекта (`storage.locks`).
+    """
+    await hold_start(session)
     active = (
         (await session.execute(select(Run).where(Run.status.in_(ACTIVE_STATUSES)).limit(1)))
         .scalars()

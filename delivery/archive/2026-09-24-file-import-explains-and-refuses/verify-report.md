@@ -109,7 +109,7 @@ headless) против боевой сборки ветки (`vite build` + `vit
 имена колонок не принимаются — оба вопроса открыты (спека, decisions).
 
 ## Verdict
-- [x] READY FOR HANDOFF — ждёт подписи human:anthony (verifier)
+- [x] READY FOR HANDOFF — подписал human:anthony at=2026-09-24 («Сливай и выкатывай» — импорт «как только будет зелёным и проверенным»)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
 

@@ -1,8 +1,10 @@
-"""Проекты: список с группами и карточка с объяснением вердикта.
+"""Проекты: список с группами, карточка с объяснением вердикта и удаление.
 
 Карточка показывает **записанный** вердикт, а не пересчитанный на лету: экран
 обязан отвечать то же, что таблица и PDF (урок L41). Пересчёт — отдельное
 действие со своей версией порогов.
+
+Удаление — жёсткое, каскадом, под правом `delete_projects` (владелец, 24.09.2026).
 """
 
 from __future__ import annotations
@@ -11,15 +13,18 @@ import logging
 from datetime import date
 from typing import Annotated, Any
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
+from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
     ChartBlock,
     ComparisonRow,
     ProjectCard,
+    ProjectDeletion,
     ProjectRow,
     ReasonRow,
     SeriesRow,
@@ -35,12 +40,16 @@ from ahrefs_cases.classify.series import load_series
 from ahrefs_cases.classify.verdicts import source_mismatch
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
+from ahrefs_cases.export import removal
+from ahrefs_cases.export.archive import newest_pack
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.export.html_renderer import POINTS_NOTE
-from ahrefs_cases.storage import Group, Metric, MetricSource
+from ahrefs_cases.storage import Group, Metric, MetricSource, RunStatus
+from ahrefs_cases.storage.locks import hold_start, work_is_idle
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
+from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.verdict import Verdict
 
 logger = logging.getLogger(__name__)
@@ -194,6 +203,88 @@ async def project_charts(
         grouping=grouping,
     )
     return [ChartBlock(**block) for block in blocks]
+
+
+DeleteDep = Annotated[object, Depends(require_right("delete_projects"))]
+
+
+@router.get("/{project_id}/deletion", response_model=ProjectDeletion)
+async def deletion_preview(
+    project_id: int, session: SessionDep, _: DeleteDep = None
+) -> ProjectDeletion:
+    """Что уйдёт вместе с проектом — ничего не удаляя; та же форма, что у удаления."""
+    _, view = await _deletion(session, await _project_or_404(session, project_id))
+    return view
+
+
+@router.delete("/{project_id}", response_model=ProjectDeletion)
+async def delete_project(
+    project_id: int, session: SessionDep, _: DeleteDep = None
+) -> ProjectDeletion:
+    """Удалить проект со всем, что ему принадлежит: замки → проверки → удаление →
+    коммит → файлы. Замок постановки не пустит новый прогон между проверкой и
+    удалением; идущей работе удаление отказывает — посреди неё оно роняло прогон
+    на внешнем ключе раньше записи расхода (урок L202)."""
+    await hold_start(session)
+    project = await _project_or_404(session, project_id)
+    await _refuse_while_working(session)
+    trace, view = await _deletion(session, project)
+    await removal.delete_rows(session, project)
+    await session.commit()
+    files = await removal.own_files(session, project.id, trace, config.export.output_dir)
+    removed = await anyio.to_thread.run_sync(removal.remove_files, files)
+    logger.info("project_deleted", extra={**view.model_dump(), "files": removed})
+    return view.model_copy(update={"files": removed})
+
+
+async def _project_or_404(session: SessionDep, project_id: int) -> Project:
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"проекта {project_id} нет"
+        )
+    return project
+
+
+async def _refuse_while_working(session: SessionDep) -> None:
+    """Отказ, пока кто-то пишет строки проектов, — с тем, чего ждать."""
+    busy = select(Run).where(Run.status.in_([RunStatus.QUEUED, RunStatus.RUNNING])).limit(1)
+    active = (await session.execute(busy)).scalars().first()
+    if active is not None:
+        detail = (
+            f"прогон {active.id} ещё идёт ({active.status.value}): он пишет строки проектов "
+            "— удалите проект, когда прогон закончится"
+        )
+    elif not await work_is_idle(session):
+        detail = (
+            "сервис дописывает результаты по проектам — хвост прогона или пересчёт порогов: "
+            "удалите проект через минуту"
+        )
+    else:
+        return
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
+async def _deletion(
+    session: SessionDep, project: Project
+) -> tuple[removal.ProjectTrace, ProjectDeletion]:
+    trace = await removal.trace_of(session, project)
+    files = await removal.own_files(session, project.id, trace, config.export.output_dir)
+    pack = await anyio.to_thread.run_sync(newest_pack, config.export.output_dir)
+    blocked = pack is not None and await removal.holds_deleted_case(
+        session, pack, without=project.id
+    )
+    return trace, ProjectDeletion(
+        project_id=project.id,
+        domain=project.domain,
+        metric_points=trace.metric_points,
+        verdicts=trace.verdicts,
+        cases=trace.cases,
+        files=len(files),
+        run_items=trace.run_items,
+        twin_campaigns=trace.twin_campaigns,
+        pack_blocked=blocked,
+    )
 
 
 def _window(payload: dict[str, Any] | None, *, forward: bool) -> list[date]:

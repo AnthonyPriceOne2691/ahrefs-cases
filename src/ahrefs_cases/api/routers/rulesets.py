@@ -36,6 +36,7 @@ from ahrefs_cases.classify.preview import preview as preview_report
 from ahrefs_cases.classify.recalc import activate, recalc
 from ahrefs_cases.classify.rulesets import by_version
 from ahrefs_cases.classify.thresholds import ThresholdsError
+from ahrefs_cases.storage.locks import hold_work
 from ahrefs_cases.storage.models.ruleset import Ruleset
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,11 @@ async def activate_ruleset(version: str, session: SessionDep, _: EditDep = None)
 
 @router.post("/{version}/recalc")
 async def recalc_ruleset(version: str, session: SessionDep, _: EditDep = None) -> dict[str, object]:
-    """Пересчитать вердикты по версии. Ahrefs не трогается — это бесплатно."""
+    """Пересчитать вердикты по версии. Ahrefs не трогается — это бесплатно.
+
+    Под замком работы: удаление проекта посреди пересчёта отказывает, а не роняет его.
+    """
+    await hold_work(session)
     try:
         report = await recalc(session, version, source=configured_source())
     except ThresholdsError as exc:

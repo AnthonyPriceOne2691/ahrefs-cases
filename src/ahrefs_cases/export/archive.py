@@ -14,17 +14,21 @@ L1: пустой ответ и недоступный ответ — разны�
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from ahrefs_cases import config
 from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.export.pdf_renderer import filename, render_pdf, unique_name
+
+logger = logging.getLogger(__name__)
 
 MANIFEST_NAME = "кейсы.csv"
 MANIFEST_NOTE = "внутренний список: домены всех проектов пачки, клиенту не отдаётся"
@@ -135,3 +139,42 @@ def manifest(packed: Sequence[PackedCase]) -> bytes:
 
 def _default_name() -> str:
     return f"кейсы-{datetime.now(UTC).date().isoformat()}.zip"
+
+
+def newest_pack(directory: Path) -> Path | None:
+    """Самый свежий архив каталога выгрузки — или `None`, если его там нет.
+
+    Сборка одного дня переписывает архив того же имени, поэтому «свежий» — это
+    время файла, а не имя (урок L89). Обращение к диску синхронное: вызывают
+    его из потока, иначе медленный том останавливает цикл событий.
+    """
+    if not directory.is_dir():
+        return None
+    dated: list[tuple[float, Path]] = []
+    for path in directory.glob("*.zip"):
+        try:
+            dated.append((path.stat().st_mtime, path))
+        except OSError:
+            # Файл исчез между перечислением и опросом: пачку пересобирают
+            # прямо сейчас. Это не отказ выдачи — остальные архивы на месте,
+            # и правильный ответ здесь «пропустить», а не «упасть».
+            continue
+    if not dated:
+        return None
+    return max(dated)[1]
+
+
+def packed_checksums(path: Path) -> frozenset[str] | None:
+    """sha256 каждого PDF внутри пачки: артефакт кейса хранит сумму того же файла,
+    что лёг в архив, — содержимое опознаёт кейс, имя нет (правило 18а).
+    `None` — архив не читается, и сказать о его составе нечего."""
+    try:
+        with ZipFile(path) as bundle:
+            return frozenset(
+                hashlib.sha256(bundle.read(item)).hexdigest()
+                for item in bundle.infolist()
+                if item.filename.lower().endswith(".pdf")
+            )
+    except (BadZipFile, OSError) as exc:
+        logger.warning("pack_unreadable", extra={"path": str(path), "error": str(exc)})
+        return None
