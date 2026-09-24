@@ -91,11 +91,17 @@ beforeEach(() => {
   saved = null;
   // jsdom не умеет ни `createObjectURL`, ни настоящее скачивание: подменяем обе
   // половины и смотрим, что именно ушло бы в файл.
-  vi.stubGlobal('URL', {
-    ...URL,
-    createObjectURL: vi.fn(() => 'blob:кейс'),
-    revokeObjectURL: vi.fn(),
-  });
+  //
+  // Подмена — наследник, а не объект `{ ...URL }`: разворот класса теряет сам
+  // конструктор, а маршрутизатор собирает адрес через `new URL`. Листалка и
+  // тумблер версий роняли его вне теста — тесты зеленели, прогон выходил с 1.
+  vi.stubGlobal(
+    'URL',
+    class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:кейс');
+      static revokeObjectURL = vi.fn();
+    },
+  );
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
     this: HTMLAnchorElement,
   ) {
