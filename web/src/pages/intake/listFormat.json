@@ -1,0 +1,23 @@
+{
+  "columns": [
+    { "name": "domain", "what": "домен проекта", "example": "example.com" },
+    { "name": "period_start", "what": "начало работ", "example": "2024-12-01" },
+    { "name": "period_end", "what": "конец работ", "example": "2025-12-01" },
+    { "name": "niche", "what": "ниша", "example": "медицина" },
+    { "name": "geo", "what": "страна, две буквы", "example": "RU" },
+    { "name": "service_type", "what": "услуга", "example": "seo" },
+    { "name": "work_volume", "what": "объём работ", "example": "120", "mayBeEmpty": true },
+    { "name": "client", "what": "клиент", "example": "ООО «Ромашка»" },
+    { "name": "owner", "what": "ответственный", "example": "Пётр" },
+    { "name": "publishable", "what": "называть ли домен в кейсе", "example": "да" }
+  ],
+  "optional": [
+    {
+      "name": "target_mode",
+      "what": "как считать домен в Ahrefs: по умолчанию subdomains, prefix — раздел сайта, exact"
+    },
+    { "name": "notes", "what": "заметки к проекту" }
+  ],
+  "fileSuffixes": [".xlsx", ".xlsm", ".csv"],
+  "maxMegabytes": 2
+}

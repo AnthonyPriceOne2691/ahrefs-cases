@@ -13,7 +13,7 @@ import pytest
 
 from ahrefs_cases.intake.csv_source import parse_csv_text
 from ahrefs_cases.intake.drafts import ProjectDraft
-from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason
+from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason, UnfitSourceError
 from ahrefs_cases.intake.report import IntakeReport
 from ahrefs_cases.intake.validate import validate_table
 from ahrefs_cases.storage._enums import TargetMode
@@ -194,13 +194,25 @@ def test_report_lines_name_row_and_reason() -> None:
     assert RejectReason.BAD_FLAG.value in lines[-1]
 
 
-def test_empty_file_is_one_rejection_not_ten() -> None:
-    """B15: пустой файл — один отказ «источник пуст», а не десять «нет колонки».
+def test_empty_file_is_one_refusal_not_ten() -> None:
+    """B15: пустой файл — один отказ «строк нет», а не десять «нет колонки».
 
     Десять одинаковых строк в отчёте выглядят как десять проблем; проблема одна,
-    и человек должен увидеть её одной строкой.
+    и человек должен увидеть её одной строкой. С 24.09.2026 это отказ файла
+    целиком, а не строка отчёта: отчёт отвечал «принято» (пример V6).
     """
-    drafts, rejections, _notices = validate_table(parse_csv_text("", origin="empty.csv"))
+    with pytest.raises(UnfitSourceError, match="нет ни одной строки") as refused:
+        validate_table(parse_csv_text("", origin="empty.csv"))
 
-    assert not drafts
-    assert [item.reason for item in rejections] == [RejectReason.EMPTY_SOURCE]
+    assert "нет колонки" not in str(refused.value)
+
+
+def test_blank_first_line_is_named_not_called_empty() -> None:
+    """V5: пустая первая строка над списком — не «в файле ничего нет».
+
+    `csv` отдаёт пустую первую строку пустым списком, и таблица выходит без
+    колонок — ровно как у пустого файла. Сказать «строк нет» про файл со
+    списком значит отправить человека искать не то.
+    """
+    with pytest.raises(UnfitSourceError, match="первая строка пуста"):
+        validate_table(parse_csv_text(f"\n{COLUMNS}\n{BASE}\n", origin="gap.csv"))

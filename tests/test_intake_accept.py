@@ -21,7 +21,7 @@ from ahrefs_cases.intake.accept import (
     read_source,
 )
 from ahrefs_cases.intake.csv_source import read_csv
-from ahrefs_cases.intake.rejections import RejectReason
+from ahrefs_cases.intake.rejections import RejectReason, UnfitSourceError
 from ahrefs_cases.storage.models.project import Project
 
 COLUMNS = (
@@ -188,10 +188,14 @@ async def test_duplicate_in_source_is_reported(db_session: AsyncSession, tmp_pat
     assert project.notes == "вторая"
 
 
-async def test_missing_column_is_one_rejection_not_hundred(
+async def test_missing_column_is_one_refusal_not_hundred(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """B15: нет колонки — брак файла, одна строка в отчёте, а не сто одинаковых."""
+    """B15: нет колонки — брак файла, один отказ, а не сто одинаковых строк.
+
+    С 24.09.2026 отказ целиком (`UnfitSourceError`), а не строка отчёта: отчёт
+    отвечал «принято 0» — ошибка файла выглядела успешным приёмом (V1).
+    """
     path = tmp_path / "no_client.csv"
     path.write_text(
         "\n".join(
@@ -205,10 +209,10 @@ async def test_missing_column_is_one_rejection_not_hundred(
         encoding="utf-8",
     )
 
-    report = await accept(db_session, read_csv(path))
+    with pytest.raises(UnfitSourceError) as refused:
+        await accept(db_session, read_csv(path))
 
-    assert report.accepted == 0
-    assert report.by_reason() == {RejectReason.MISSING_COLUMN: 1}
+    assert str(refused.value).startswith("нет колонки client.")
     assert await _count_projects(db_session) == 0
 
 
