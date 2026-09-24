@@ -175,7 +175,7 @@ describe('состояния экрана', () => {
   });
 });
 
-it('PD6: право удалять проекты подписано словами, а не ключом', async () => {
+it('K6: право удалять проекты подписано словами, а не ключом', async () => {
   const withDelete = {
     rights: [...CATALOG.rights, 'delete_projects'],
     groups: { ...CATALOG.groups, engineer: [...CATALOG.groups.engineer, 'delete_projects'] },

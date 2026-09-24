@@ -884,8 +884,14 @@ const PREVIEW = {
 
 /** Сервер удаления: `DELETE` отвечает `answer`, остальное — карточка. Путь
  *  карточки и удаления один, различает их только метод. */
+interface Reply {
+  status: number;
+  body: unknown;
+}
+
 function deletionServer(
-  answer: { status: number; body: unknown } = { status: 200, body: PREVIEW },
+  answer: Reply = { status: 200, body: PREVIEW },
+  preview: Reply = { status: 200, body: PREVIEW },
 ) {
   const seen: string[] = [];
   vi.stubGlobal(
@@ -895,7 +901,7 @@ function deletionServer(
       seen.push(`${init?.method ?? 'GET'} ${path}`);
       const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
       if (init?.method === 'DELETE') return reply(answer.body, answer.status);
-      if (path.endsWith('/deletion')) return reply(PREVIEW);
+      if (path.endsWith('/deletion')) return reply(preview.body, preview.status);
       if (path.endsWith('/charts')) return reply(CHARTS);
       if (path.includes('/api/cases')) return reply([]);
       return reply({ project: PROJECT, verdict: VERDICT, series: [], source_mismatch: null });
@@ -905,7 +911,7 @@ function deletionServer(
 }
 
 describe('удаление проекта с карточки', () => {
-  it('PD1: без права кнопки нет, и предпросмотр не спрашивается', async () => {
+  it('K1: без права кнопки нет, и предпросмотр не спрашивается', async () => {
     const seen = deletionServer();
 
     renderCard(['read']);
@@ -915,7 +921,7 @@ describe('удаление проекта с карточки', () => {
     expect(seen.some((call) => call.endsWith('/deletion'))).toBe(false);
   });
 
-  it('PD2: подтверждение называет числами, что уйдёт и что останется', async () => {
+  it('K2: подтверждение называет числами, что уйдёт и что останется', async () => {
     deletionServer();
 
     renderCard(['read', 'delete_projects']);
@@ -932,7 +938,7 @@ describe('удаление проекта с карточки', () => {
     expect(ask).toHaveTextContent('пачка кейсов не скачается до пересборки');
   });
 
-  it('PD3: «Отмена» закрывает подтверждение и ничего не удаляет', async () => {
+  it('K3: «Отмена» закрывает подтверждение и ничего не удаляет', async () => {
     const seen = deletionServer();
 
     renderCard(['read', 'delete_projects']);
@@ -944,7 +950,7 @@ describe('удаление проекта с карточки', () => {
     expect(screen.getByText('klinika.example')).toBeInTheDocument();
   });
 
-  it('PD4: удаление сменяет карточку итогом с числами ответа', async () => {
+  it('K4: удаление сменяет карточку итогом с числами ответа', async () => {
     const seen = deletionServer({ status: 200, body: { ...PREVIEW, files: 4 } });
 
     renderCard(['read', 'delete_projects']);
@@ -963,7 +969,7 @@ describe('удаление проекта с карточки', () => {
     expect(window.location.pathname).toBe('/projects');
   });
 
-  it('PD5: отказ сервера показан его словами, карточка на месте', async () => {
+  it('K5: отказ сервера показан его словами, карточка на месте', async () => {
     const detail = 'прогон 1814 ещё идёт (running): он пишет строки проектов';
     deletionServer({ status: 409, body: { detail } });
 
@@ -973,5 +979,18 @@ describe('удаление проекта с карточки', () => {
 
     expect(await screen.findByText(detail)).toBeInTheDocument();
     expect(screen.getByText('Почему эта группа')).toBeInTheDocument();
+  });
+
+  it('K5: отказ уже на предпросмотре — словами сервера, и удалять нечем', async () => {
+    // Право отобрали, пока вкладка была открыта: `/me` прочитан при загрузке (Z44).
+    const detail = 'нет права delete_projects: группа engineer';
+    const seen = deletionServer(undefined, { status: 403, body: { detail } });
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+
+    expect(await screen.findByText(detail)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Да, удалить' })).toBeDisabled();
+    expect(seen.some((call) => call.startsWith('DELETE'))).toBe(false);
   });
 });
