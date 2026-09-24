@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** uncounted-spend-per-key
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** hotfix
+- **repro_test:** tests/test_uncounted_spend_per_key.py::test_spend_of_another_key_is_not_deducted
+- **diagnosis:** n/a reason=причина названа сметой прода словами: «остаток 10000, потрачено помимо счётчика 10460» — 10 460 это ровно живые траты 24.09 старым ключом, а `live_spend_since` фильтрует журнал только по режиму прогона и окну, не по ключу
+- **phase:** implement
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («это нужно хотфиксом сделать сейчас — правка вычета по старому ключу»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** src/ahrefs_cases/collect/budget.py reason=решает, пустит ли смета прогон на проде с живым ключом; тест видит правило, а не ответ сметы на проде после смены ключа
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`; правка не тратит units и не пишет в базу, кроме нового поля снимка у новых прогонов
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде смета отвечает `may_start: true` сразу после выкладки (не дожидаясь 18:10 MSK), «помимо счётчика» — 0; у следующего живого прогона в снимке есть `api_key_fp`
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
