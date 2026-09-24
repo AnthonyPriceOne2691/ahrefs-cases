@@ -288,6 +288,13 @@ class RunRow(BaseModel):
     units_estimated: int
     units_actual: int
     error: str = ""
+    live: bool = False
+    """Прогон ходил в настоящий Ahrefs — правилом, которым считается «потрачено»
+    (`budget._live_run`). `False` — units прогона условные, расходом не считаются."""
+
+    mode: str = ""
+    """Режим, записанный при открытии прогона: `live`, `fixture`; пусто — прогон
+    старше этого поля. Для слова на экране; живой ли прогон, решает `live`."""
 
 
 class RunItemView(BaseModel):
