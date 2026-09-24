@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_api_projects_delete.py::test_journal_keeps_each_deleted_project_apart
 - **diagnosis:** n/a reason=не дефект, а новая возможность по решению владельца; попутный дефект свёртки судеб (все удалённые проекты прогона сливались в одну судьбу) виден в коде без поиска — ключ `_fold_by_project` по `project_id`, который удаление обнуляет
-- **phase:** verify
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-24 by=human:anthony («введи функционал удаления проектов…»; на развилки: «Новое право», «Удалять вместе», «Не отдавать до пересборки»)
