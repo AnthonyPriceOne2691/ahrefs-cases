@@ -289,15 +289,17 @@ describe('раскрытие показывает только проблемы'
   });
 });
 
-describe('расход units', () => {
-  const USAGE = {
-    spent: 5872,
-    reserved: 2112,
-    remaining: 9500,
-    uncounted: 0,
-    per_hundred_domains: 21120,
-  };
+const USAGE = {
+  spent: 5872,
+  conditional: 0,
+  reserved: 2112,
+  remaining: 9500,
+  uncounted: 0,
+  live_domains: 28,
+  per_hundred_domains: 21120,
+};
 
+describe('расход units', () => {
   it('E6: потрачено, резерв и остаток — три разных числа', async () => {
     server({
       '/api/usage': { status: 200, body: USAGE },
@@ -323,7 +325,6 @@ describe('расход units', () => {
 
     // Ноль читался бы как «квота кончилась» — то есть как запрет запускать.
     expect(await screen.findByText('остаток неизвестен')).toBeInTheDocument();
-    expect(screen.getByText(/прогонов не было/)).toBeInTheDocument();
   });
 
   it('E11: расход, которого счётчик Ahrefs ещё не видит, назван отдельно', async () => {
@@ -385,6 +386,59 @@ describe('расход units', () => {
     renderApp(<UsagePage />);
 
     expect(await screen.findByText(/Поводов нет/)).toBeInTheDocument();
+  });
+});
+
+describe('расход units: только живые прогоны', () => {
+  it('R6: стенд с одними fixture-прогонами — условные units названы, а не выданы за расход', async () => {
+    // Как на проде до живого ключа: живого расхода нет, fixture-прогоны
+    // насчитали условные units. Прежний текст «прогонов не было» здесь был бы
+    // неправдой: прогоны были, в Ahrefs они не ходили.
+    server({
+      '/api/usage': {
+        status: 200,
+        body: {
+          ...USAGE,
+          spent: 0,
+          conditional: 15414,
+          live_domains: 0,
+          per_hundred_domains: null,
+        },
+      },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    expect(await screen.findByText('потрачено 0')).toBeInTheDocument();
+    expect(screen.getByText(/^Условные units: 15 414 — /)).toBeInTheDocument();
+    expect(screen.getByText(/живых прогонов с расходом ещё не было/)).toBeInTheDocument();
+    expect(screen.queryByText(/прогонов не было/)).not.toBeInTheDocument();
+  });
+
+  it('R7: стоимость на сто доменов — со своими слагаемыми, без строки об условных units', async () => {
+    server({
+      '/api/usage': {
+        status: 200,
+        body: {
+          ...USAGE,
+          spent: 11952,
+          conditional: 0,
+          live_domains: 62,
+          per_hundred_domains: 19277,
+        },
+      },
+      '/api/alerts': { status: 200, body: [] },
+    });
+
+    renderApp(<UsagePage />);
+
+    expect(
+      await screen.findByText(
+        'Стоимость запуска на сто доменов по факту: 19 277 units (потрачено 11 952 units, оплачено доменов — 62).',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Условные units/)).not.toBeInTheDocument();
   });
 });
 
