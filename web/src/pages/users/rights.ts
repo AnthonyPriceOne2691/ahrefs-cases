@@ -22,6 +22,7 @@ const LABELS: Record<string, string> = {
   edit_thresholds: 'править пороги',
   manage_users: 'добавлять пользователей',
   change_technical_settings: 'технические настройки',
+  delete_projects: 'удалять проекты',
 };
 
 export function rightLabel(right: string): string {

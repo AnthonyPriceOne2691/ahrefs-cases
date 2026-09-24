@@ -14,6 +14,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { deleteUser } from '../../api/users';
+import { ConfirmDelete } from '../../components/ConfirmDelete';
 import type { UserRow } from '../../api/types';
 import { failureText } from '../cases/failure';
 
@@ -52,19 +53,11 @@ export function DeleteUser({ user, onDeleted }: Props) {
             Удалить {user.email}? Войти он больше не сможет, а прогоны, которые он запускал,
             останутся в журнале — там он будет помечен как удалённый.
           </Text>
-          <Group mt="sm">
-            <Button
-              size="compact-sm"
-              color="red"
-              loading={drop.isPending}
-              onClick={() => drop.mutate()}
-            >
-              Да, удалить
-            </Button>
-            <Button size="compact-sm" variant="subtle" onClick={() => setAsked(false)}>
-              Отмена
-            </Button>
-          </Group>
+          <ConfirmDelete
+            busy={drop.isPending}
+            onConfirm={() => drop.mutate()}
+            onCancel={() => setAsked(false)}
+          />
         </Alert>
       )}
 

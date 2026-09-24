@@ -13,10 +13,12 @@ import { useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { fetchProjectCard, fetchProjectCharts } from '../api/projects';
 import type { Grouping } from '../api/projects';
+import type { ProjectDeletion } from '../api/types';
 
 import { CardHeader } from './card/CardHeader';
 import { CasePdf } from './card/CasePdf';
 import { Comparison } from './card/Comparison';
+import { DeleteProject, ProjectDeleted, useDeletedProject } from './card/DeleteProject';
 import { Dynamics } from './card/Dynamics';
 import { Hero } from './card/Hero';
 import { Reasons } from './card/Reasons';
@@ -29,6 +31,14 @@ const FOOTNOTE =
 export function ProjectCardPage() {
   const { projectId } = useParams();
   const id = Number(projectId);
+  const { deleted, forget } = useDeletedProject(id);
+  // Удалённой карточки больше нет: она снята целиком, вместе со своими запросами —
+  // повторный запрос упёрся бы в `404` и сменил бы итог удаления отказом.
+  if (deleted) return <ProjectDeleted result={deleted} />;
+  return <ProjectCard id={id} onDeleted={forget} />;
+}
+
+function ProjectCard({ id, onDeleted }: { id: number; onDeleted: (r: ProjectDeletion) => void }) {
   // Шаг кривой — состояние экрана, а не вердикта: таблицу А → Б и условия он
   // не трогает, они принадлежат записанному решению.
   const [grouping, setGrouping] = useState<Grouping>('month');
@@ -121,6 +131,8 @@ export function ProjectCardPage() {
         <Text size="xs" c="dimmed">
           {FOOTNOTE}
         </Text>
+
+        <DeleteProject projectId={id} domain={card.data.project.domain} onDeleted={onDeleted} />
       </Stack>
     </Container>
   );

@@ -292,6 +292,21 @@ describe('пачка', () => {
     expect(await screen.findByText('пачка ещё не собиралась')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Скачать ZIP' })).toBeDisabled();
   });
+
+  it('K8: пачку с кейсом удалённого проекта не предлагают скачать', async () => {
+    const note = 'в пачке кейс удалённого проекта — пересоберите кейсы, и архив соберётся без него';
+    server({
+      '/api/auth/me': me(['read', 'run']),
+      '/api/cases': { status: 200, body: [caseRow(1)] },
+      '/api/cases/pack': { status: 200, body: { ...PACK, note, outdated: 'project_deleted' } },
+    });
+
+    show();
+
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Скачать ZIP' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Пересобрать кейсы' })).toBeEnabled();
+  });
 });
 
 describe('статусы кейсов', () => {

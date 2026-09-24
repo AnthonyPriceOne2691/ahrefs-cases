@@ -7,11 +7,12 @@
  */
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetToken, rememberToken } from '../../api/client';
-import { renderScreen } from '../../test/render';
+import { AuthProvider } from '../../auth/AuthProvider';
+import { renderApp } from '../../test/render';
 import { ProjectCardPage } from '../ProjectCardPage';
 
 const PROJECT = {
@@ -83,12 +84,29 @@ const CHARTS = [
 
 /** Карточка читает номер проекта из адреса, поэтому рендерится маршрутом — так
  *  же, как в приложении. Без маршрута `useParams` пуст, и экран честно висит на
- *  «загружаем», а тест списывает это на медленный сервер. */
-function renderCard() {
-  return renderScreen(
-    <Routes>
-      <Route path="/projects/:projectId" element={<ProjectCardPage />} />
-    </Routes>,
+ *  «загружаем», а тест списывает это на медленный сервер.
+ *
+ *  «Кто я» отвечает обёртка поверх заглушки теста: права решают, видна ли
+ *  кнопка удаления, а заглушкам карточки про `/api/auth/me` знать незачем. */
+function renderCard(rights: string[] = ['read']) {
+  const inner = globalThis.fetch;
+  const me = { email: 'eng@test.local', full_name: 'Инженер', group: 'engineer', rights };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).endsWith('/api/auth/me')
+        ? new Response(JSON.stringify(me), { status: 200 })
+        : inner(input, init),
+    ),
+  );
+  return renderApp(
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/projects/:projectId" element={<ProjectCardPage />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>,
   );
 }
 
@@ -849,5 +867,130 @@ describe('место под кривые на первой загрузке', ()
     net.let_go();
     await waitFor(() => expect(document.querySelector('[data-step="month"]')).not.toBeNull());
     expect(document.querySelector('[data-drawing="true"]')).toBeNull();
+  });
+});
+
+const PREVIEW = {
+  project_id: 7,
+  domain: 'klinika.example',
+  metric_points: 116,
+  verdicts: 1,
+  cases: 11,
+  files: 5,
+  run_items: 4,
+  twin_campaigns: 1,
+  pack_blocked: true,
+};
+
+/** Сервер удаления: `DELETE` отвечает `answer`, остальное — карточка. Путь
+ *  карточки и удаления один, различает их только метод. */
+interface Reply {
+  status: number;
+  body: unknown;
+}
+
+function deletionServer(
+  answer: Reply = { status: 200, body: PREVIEW },
+  preview: Reply = { status: 200, body: PREVIEW },
+) {
+  const seen: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input).split('?')[0] ?? '';
+      seen.push(`${init?.method ?? 'GET'} ${path}`);
+      const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+      if (init?.method === 'DELETE') return reply(answer.body, answer.status);
+      if (path.endsWith('/deletion')) return reply(preview.body, preview.status);
+      if (path.endsWith('/charts')) return reply(CHARTS);
+      if (path.includes('/api/cases')) return reply([]);
+      return reply({ project: PROJECT, verdict: VERDICT, series: [], source_mismatch: null });
+    }),
+  );
+  return seen;
+}
+
+describe('удаление проекта с карточки', () => {
+  it('K1: без права кнопки нет, и предпросмотр не спрашивается', async () => {
+    const seen = deletionServer();
+
+    renderCard(['read']);
+    await screen.findByText('органический трафик');
+
+    expect(screen.queryByRole('button', { name: 'Удалить проект' })).toBeNull();
+    expect(seen.some((call) => call.endsWith('/deletion'))).toBe(false);
+  });
+
+  it('K2: подтверждение называет числами, что уйдёт и что останется', async () => {
+    deletionServer();
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+    const ask = (await screen.findByText(/Удалить klinika\.example\?/)).closest('[data-delete]');
+
+    expect(ask).toHaveTextContent('точек рядов: 116');
+    expect(ask).toHaveTextContent('повторная загрузка купит их заново');
+    expect(ask).toHaveTextContent('вердиктов: 1');
+    expect(ask).toHaveTextContent('кейсов: 11');
+    expect(ask).toHaveTextContent('файлов PDF: 5');
+    expect(ask).toHaveTextContent('строк журнала прогонов: 4');
+    expect(ask).toHaveTextContent('другие кампании этого сайта: 1');
+    expect(ask).toHaveTextContent('пачка кейсов не скачается до пересборки');
+  });
+
+  it('K3: «Отмена» закрывает подтверждение и ничего не удаляет', async () => {
+    const seen = deletionServer();
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Отмена' }));
+
+    expect(screen.queryByRole('button', { name: 'Да, удалить' })).toBeNull();
+    expect(seen.some((call) => call.startsWith('DELETE'))).toBe(false);
+    expect(screen.getByText('klinika.example')).toBeInTheDocument();
+  });
+
+  it('K4: удаление сменяет карточку итогом с числами ответа', async () => {
+    const seen = deletionServer({ status: 200, body: { ...PREVIEW, files: 4 } });
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Да, удалить' }));
+    const done = (await screen.findByText('Проект klinika.example удалён')).closest(
+      '[data-deleted]',
+    );
+
+    expect(seen).toContain('DELETE /api/projects/7');
+    // Числа — ответа удаления, а не предпросмотра: файл мог не стереться.
+    expect(done).toHaveTextContent('файлов PDF: 4');
+    expect(done).toHaveTextContent('строк журнала прогонов: 4');
+    expect(screen.queryByText('Почему эта группа')).toBeNull();
+    await userEvent.click(screen.getByText('← к списку проектов'));
+    expect(window.location.pathname).toBe('/projects');
+  });
+
+  it('K5: отказ сервера показан его словами, карточка на месте', async () => {
+    const detail = 'прогон 1814 ещё идёт (running): он пишет строки проектов';
+    deletionServer({ status: 409, body: { detail } });
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Да, удалить' }));
+
+    expect(await screen.findByText(detail)).toBeInTheDocument();
+    expect(screen.getByText('Почему эта группа')).toBeInTheDocument();
+  });
+
+  it('K5: отказ уже на предпросмотре — словами сервера, и удалять нечем', async () => {
+    // Право отобрали, пока вкладка была открыта: `/me` прочитан при загрузке (Z44).
+    const detail = 'нет права delete_projects: группа engineer';
+    const seen = deletionServer(undefined, { status: 403, body: { detail } });
+
+    renderCard(['read', 'delete_projects']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Удалить проект' }));
+
+    expect(await screen.findByText(detail)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Да, удалить' })).toBeDisabled();
+    expect(seen.some((call) => call.startsWith('DELETE'))).toBe(false);
   });
 });
