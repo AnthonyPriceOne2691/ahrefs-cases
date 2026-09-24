@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 import pytest
@@ -21,13 +22,14 @@ from ahrefs_cases.workers import jobs
 
 @pytest.fixture
 def _quiet_finish(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Предмет теста — метка, а не закрытие прогона: база здесь лишняя."""
+    """Предмет теста — метка, а не закрытие прогона и не замок: база здесь лишняя."""
 
     async def _noop(*_args: Any, **_kwargs: Any) -> None:
         return None
 
     monkeypatch.setattr(jobs, "_finish", _noop)
     monkeypatch.setattr(jobs, "dispose_engine", _noop)
+    monkeypatch.setattr(jobs, "work_lock", contextlib.nullcontext)
 
 
 @pytest.mark.usefixtures("_quiet_finish")

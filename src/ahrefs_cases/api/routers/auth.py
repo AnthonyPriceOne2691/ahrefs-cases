@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from ahrefs_cases import config
-from ahrefs_cases.api.deps import SessionDep, UserDep, rights_of
+from ahrefs_cases.api.deps import SessionDep, UserDep, rights_of_user
 from ahrefs_cases.api.security import (
     SecretMissingError,
     TokenClaims,
@@ -103,18 +103,22 @@ async def login(payload: LoginRequest, session: SessionDep) -> TokenResponse:
         access_token=token,
         expires_in_hours=config.auth.jwt_ttl_hours,
         group=user.group.value,
-        rights=sorted(rights_of(user.group)),
+        rights=sorted(rights_of_user(user)),
     )
 
 
 @router.get("/me", response_model=WhoAmI)
 async def me(user: UserDep) -> WhoAmI:
-    """Кто я и что мне можно. Интерфейс рисует навигацию по этому списку."""
+    """Кто я и что мне можно. Интерфейс рисует навигацию по этому списку.
+
+    Итог с личными решениями — той же функцией, что проверяют роутеры: набор
+    группы обещал бы на экране не то, что разрешит сервер.
+    """
     return WhoAmI(
         email=user.email,
         full_name=user.full_name,
         group=user.group.value,
-        rights=sorted(rights_of(user.group)),
+        rights=sorted(rights_of_user(user)),
     )
 
 
