@@ -53,6 +53,7 @@ Ahrefs API оплачивается поштучно (units), и прогон п
 | Файл | О чём |
 |---|---|
 | [docs/OPERATIONS.md](docs/OPERATIONS.md) | **инструкция того, кто пользуется сервисом**: прогон, пороги, расход units, поводы, бэкапы |
+| [docs/PROD.md](docs/PROD.md) | **прод**: как зайти на сервер, обновить, откатить, смотреть логи, заводить людей, восстанавливать бэкап |
 | [docs/UNITS_OPTIMIZATION.md](docs/UNITS_OPTIMIZATION.md) | во что обходится прогон и почему; таблицу считает `scripts/units_profile.py` |
 | [docs/RESEARCH_AHREFS_API.md](docs/RESEARCH_AHREFS_API.md) | Ahrefs API v3: history-endpoint'ы, параметры, стоимость units |
 | [docs/DOMAIN_MODEL.md](docs/DOMAIN_MODEL.md) | сущности, статусы, инварианты, расчёт точек А → Б |
