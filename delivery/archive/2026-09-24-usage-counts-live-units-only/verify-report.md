@@ -169,7 +169,7 @@ R7	expect(screen.queryByText(/Условные units/)).not.toBeInTheDocument();
 asserts_without_example: 0
 
 ## Verdict
-- [x] READY FOR HANDOFF — ждёт подписи human:anthony (verifier)
+- [x] READY FOR HANDOFF — подписал human:anthony at=2026-09-24 («Сливай и выкатывай» — ответ на предложение слить #20–#23 и выкатить)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
 
