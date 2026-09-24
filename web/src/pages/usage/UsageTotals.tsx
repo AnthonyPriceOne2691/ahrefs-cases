@@ -10,6 +10,10 @@
  * вычетом из остатка: остаток обязан совпадать с кабинетом Ahrefs, иначе
  * расхождение читалось бы как ошибка сервиса. Прогон при этом считается по
  * разнице — её экран и называет словами.
+ *
+ * «Потрачено» — только живые прогоны. Условные units fixture-прогонов сервис
+ * считает той же формулой, но в Ahrefs они не ходили: экран называет их
+ * отдельной строкой и словами, а не складывает с настоящими (Z38).
  */
 import { Badge, Group, Text } from '@mantine/core';
 
@@ -25,8 +29,26 @@ function lagNote(usage: UsageView): string {
   return `Прогон считается по остатку ${num(usage.remaining - usage.uncounted)} units: счётчик Ahrefs обновляется не сразу, и свежий расход в его ответе ещё не учтён.`;
 }
 
+/**
+ * Условные units — гипотетическая величина, и она называет свою гипотезу.
+ * Пустая строка — fixture-прогонов с тратой не было.
+ */
+function conditionalNote(usage: UsageView): string {
+  if (usage.conditional <= 0) return '';
+  return `Условные units: ${num(usage.conditional)} — столько стоили бы прогоны без живого ключа (fixture), если бы ходили в Ahrefs. Это не расход: ни в «потрачено», ни в стоимость на сто доменов они не входят.`;
+}
+
+/** Стоимость на сто доменов — с числами, из которых она выведена. */
+function perHundredNote(usage: UsageView): string {
+  if (usage.per_hundred_domains === null) {
+    return 'Стоимость запуска на сто доменов по факту пока не из чего вывести: живых прогонов с расходом ещё не было.';
+  }
+  return `Стоимость запуска на сто доменов по факту: ${num(usage.per_hundred_domains)} units (потрачено ${num(usage.spent)} units, оплачено доменов — ${num(usage.live_domains)}).`;
+}
+
 export function UsageTotals({ usage }: { usage: UsageView }) {
   const lag = lagNote(usage);
+  const conditional = conditionalNote(usage);
 
   return (
     <>
@@ -51,10 +73,13 @@ export function UsageTotals({ usage }: { usage: UsageView }) {
           {lag}
         </Text>
       )}
-      <Text size="sm">
-        {usage.per_hundred_domains === null
-          ? 'Стоимость запуска на сто доменов пока не из чего вывести: прогонов не было.'
-          : `Стоимость запуска на сто доменов по факту: ${num(usage.per_hundred_domains)} units.`}
+      {conditional && (
+        <Text size="sm" data-usage="conditional">
+          {conditional}
+        </Text>
+      )}
+      <Text size="sm" data-usage="per-hundred">
+        {perHundredNote(usage)}
       </Text>
     </>
   );

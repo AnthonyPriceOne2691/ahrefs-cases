@@ -7,14 +7,22 @@
 В fixture-режиме units условные, но считаются моделью стоимости живого API
 (`EndpointSpec.estimate_units`). Ноль здесь означал бы, что экран расхода и
 смета разрабатываются на нулях и проверяются впервые в Ф7 — на деньгах заказчика.
+
+**Условные units — не расход.** Отличить их от настоящих можно только по
+прогону, и это правило живёт здесь одно (`_live_run`): вычет из остатка
+(`live_spend_since`) и экран расхода (`spend_summary`) спрашивают его, а не
+суммируют журнал сами. До 24.09.2026 экран суммировал журнал в роутере, и
+«потрачено» складывало условные units с настоящими (Z38).
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
@@ -29,6 +37,41 @@ _LIVE_PROVIDER = "live"
 """Значение `params_snapshot['provider']` у прогона, который ходил в настоящий
 Ahrefs. Строкой, а не enum'ом: снимок параметров — это JSON, записанный в тот
 день, и он обязан читаться даже если имена режимов потом поменяются."""
+
+_HUNDRED = 100
+
+
+def _live_run() -> ColumnElement[bool]:
+    """Прогон ходил в настоящий Ahrefs — единственное место этого правила.
+
+    Режим — свойство прогона, а не строки журнала: снимок параметров пишется
+    при открытии прогона (`run_journal.open_run`). Прогон без режима в снимке
+    (следы старых тестов) живым не считается: настоящим расход признаётся
+    только тогда, когда журнал это знает.
+    """
+    rule: ColumnElement[bool] = Run.params_snapshot["provider"].astext == _LIVE_PROVIDER
+    return rule
+
+
+def _spent(*columns: ColumnElement[Any]) -> Select[Any]:
+    """Вопрос к строкам расхода — каркас каждого «сколько ушло» и «за что платили»."""
+    return select(*columns).where(UnitsLedger.kind == LedgerKind.SPENT)
+
+
+def _live(stmt: Select[Any]) -> Select[Any]:
+    """Тот же вопрос, но только к живым прогонам."""
+    return stmt.join(Run, Run.id == UnitsLedger.run_id).where(_live_run())
+
+
+def _units() -> ColumnElement[Any]:
+    """Сумма `units_actual`; пустая сумма — ноль, а не `NULL`."""
+    return func.coalesce(func.sum(UnitsLedger.units_actual), 0)
+
+
+async def _total(session: AsyncSession, stmt: Select[Any]) -> int:
+    """Одно число из запроса; пустой ответ — ноль, а не `None`."""
+    total: int | None = (await session.execute(stmt)).scalar_one()
+    return total or 0
 
 
 def estimate_drift_pct(result: HistoryResult) -> float | None:
@@ -123,7 +166,7 @@ async def reserved_units(session: AsyncSession) -> int:
 async def live_spend_since(session: AsyncSession, moment: datetime) -> int:
     """Сколько units потратили **живые** прогоны с этого момента, по журналу.
 
-    Живые — по снимку параметров прогона (`provider`), а не по всем строкам:
+    Живые — по снимку параметров прогона (`_live_run`), а не по всем строкам:
     fixture-прогоны считают условные units по той же формуле, и вычитать их из
     настоящего остатка Ahrefs значило бы уменьшать чужое число своей игрой.
 
@@ -131,17 +174,7 @@ async def live_spend_since(session: AsyncSession, moment: datetime) -> int:
     сверяет счётчик Ahrefs с нашим журналом. Две копии разошлись бы ровно тогда,
     когда сверка начнёт что-то значить.
     """
-    stmt = (
-        select(func.coalesce(func.sum(UnitsLedger.units_actual), 0))
-        .join(Run, Run.id == UnitsLedger.run_id)
-        .where(
-            UnitsLedger.kind == LedgerKind.SPENT,
-            Run.params_snapshot["provider"].astext == _LIVE_PROVIDER,
-            UnitsLedger.created_at >= moment,
-        )
-    )
-    total: int | None = (await session.execute(stmt)).scalar_one()
-    return total or 0
+    return await _total(session, _live(_spent(_units())).where(UnitsLedger.created_at >= moment))
 
 
 async def uncounted_spend(session: AsyncSession, *, now: datetime | None = None) -> int:
@@ -163,6 +196,55 @@ async def uncounted_spend(session: AsyncSession, *, now: datetime | None = None)
     """
     moment = (now or datetime.now(UTC)) - timedelta(hours=config.ahrefs.units_counter_lag_hours)
     return await live_spend_since(session, moment)
+
+
+@dataclass(frozen=True, slots=True)
+class SpendSummary:
+    """Расход по журналу, разделённый правилом «условные units — не расход»."""
+
+    live: int
+    """Настоящий расход: строки `SPENT` живых прогонов."""
+
+    conditional: int
+    """Всё остальное в журнале: столько насчитали прогоны без живого ключа по
+    формуле живого API. Не расход — но и не ноль: экран называет их отдельно,
+    иначе «потрачено 0» спорило бы с журналом прогонов, где у каждого есть факт."""
+
+    live_domains: int
+    """Сколько доменов оплачено живьём: различные `target` тех же строк, что
+    дают `live`. Числитель и знаменатель берутся из одного журнала одним
+    правилом, а журнал удаление проектов не трогает — стоимость на сто не
+    меняется оттого, что проект убрали из списка."""
+
+    def per_hundred(self) -> int | None:
+        """«Стоимость запуска на 100 URL» по факту — метрика успеха из ТЗ.
+
+        Живые units на оплаченные живьём домены. Прежний знаменатель (все
+        проекты базы) разбавлял стоимость проектами, которые в Ahrefs не
+        ходили, и рос бы от одного удаления проекта. `None` — живого расхода
+        нет, и ноль здесь читался бы как «бесплатно» (L191).
+        """
+        if not self.live or not self.live_domains:
+            return None
+        return round(self.live / self.live_domains * _HUNDRED)
+
+
+async def spend_summary(session: AsyncSession) -> SpendSummary:
+    """Что показать на экране расхода — по тому же правилу, что вычет из остатка.
+
+    Одним запросом, а не тремя: экран опрашивают и во время живого прогона, а
+    каждый запрос в `READ COMMITTED` видит свой снимок. Строка, записанная между
+    суммой живых и суммой всех, попала бы в разницу — и экран чисто живого
+    журнала на миг показал бы «условные units» прогона, который в Ahrefs ходил.
+    """
+    live = _live_run()
+    stmt = _spent(
+        func.coalesce(func.sum(UnitsLedger.units_actual).filter(live), 0),
+        _units(),
+        func.count(func.distinct(UnitsLedger.target)).filter(live),
+    ).outerjoin(Run, Run.id == UnitsLedger.run_id)
+    spent, everything, domains = (await session.execute(stmt)).one()
+    return SpendSummary(live=spent, conditional=everything - spent, live_domains=domains)
 
 
 async def record_cached(session: AsyncSession, run_id: int, endpoint: str, target: str) -> None:
@@ -200,9 +282,8 @@ async def run_spend(session: AsyncSession, run_id: int) -> int:
     Считается запросом, а не суммированием по дороге: журнал — источник правды о
     расходе, и второй счётчик рано или поздно разойдётся с ним именно в тот
     прогон, который придётся объяснять.
+
+    Режим прогона здесь не спрашивается: у одного прогона он один, и его цена
+    не смешивает условные units с настоящими.
     """
-    stmt = select(func.coalesce(func.sum(UnitsLedger.units_actual), 0)).where(
-        UnitsLedger.run_id == run_id, UnitsLedger.kind == LedgerKind.SPENT
-    )
-    total: int | None = (await session.execute(stmt)).scalar_one()
-    return total or 0
+    return await _total(session, _spent(_units()).where(UnitsLedger.run_id == run_id))
