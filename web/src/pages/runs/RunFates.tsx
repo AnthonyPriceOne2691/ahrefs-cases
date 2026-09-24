@@ -30,12 +30,14 @@ const COLLECTED = 'ok';
 type Fate = RunCard['fates'][number];
 
 /** Сколько собрано без замечаний — одной строкой: собранные не пропадают
- *  молча, но и не занимают по строке каждый. */
-function Collected({ count }: { count: number }) {
+ *  молча, но и не занимают по строке каждый. Удалённые с тех пор проекты среди
+ *  них названы числом: в «Проектах» их уже нет, и счёт иначе не сошёлся бы. */
+function Collected({ count, deleted }: { count: number; deleted: number }) {
   if (count <= 0) return null;
   return (
     <Text size="xs" c="dimmed" data-fates-collected={count}>
       без замечаний собрано: {count}
+      {deleted > 0 && `, из них проектов удалено: ${deleted}`}
     </Text>
   );
 }
@@ -49,7 +51,17 @@ function TroubleTable({ fates }: { fates: Fate[] }) {
         {fates.map((fate, index) => (
           <Table.Tr key={`${fate.domain}#${index}`} data-fate={fate.domain}>
             <Table.Td>
-              <Text size="xs">{fate.domain}</Text>
+              <Text size="xs">
+                {fate.domain}
+                {/* Строка журнала пережила проект: домен в «Проектах» уже не
+                    найти, и пометка говорит почему (поставка удаления, L159). */}
+                {fate.project_deleted && (
+                  <Text span size="xs" c="dimmed">
+                    {' '}
+                    (проект удалён)
+                  </Text>
+                )}
+              </Text>
             </Table.Td>
             <Table.Td>
               <Text size="xs">{fateWord(fate.outcome)}</Text>
@@ -91,10 +103,14 @@ function Fates({ runId }: { runId: number }) {
   }
 
   const trouble = card.data.fates.filter((fate) => fate.outcome !== COLLECTED);
+  const collected = card.data.fates.filter((fate) => fate.outcome === COLLECTED);
   return (
     <Stack gap={4}>
       {trouble.length > 0 && <TroubleTable fates={trouble} />}
-      <Collected count={card.data.fates.length - trouble.length} />
+      <Collected
+        count={collected.length}
+        deleted={collected.filter((fate) => fate.project_deleted).length}
+      />
     </Stack>
   );
 }
