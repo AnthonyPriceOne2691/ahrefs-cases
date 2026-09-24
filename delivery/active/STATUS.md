@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** file-import-explains-and-refuses
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** tests/test_api_intake.py::test_unfit_file_is_refused_and_nothing_is_written
+- **diagnosis:** n/a reason=не дефект, а просьба владельца; попутные пятисотки (нечитаемая книга, двоичный CSV) видны без поиска — исключение разбора не ловит никто, разобраны в decisions
+- **phase:** tasks
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-24 by=human:anthony («нужно напротив импорта файла добавить вопросик с описанием полей в таблице (как это сделано для импорта гугл шитс) + нужен валидатор на файл, чтобы такой импорт не принял файл который не подходит»; «думаю валидатор нужен и на импорт гугл шинс»; «валидация на гугл шитс еще и на саму таблицу, колонки»)
+- **human_ok_plan:** n/a reason=класс M без рискованного плана: правка приёма списка и одного экрана, без миграций и внешних вызовов
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт в ответе API и на экране
+- **ci-oracles:** tooling
+- **worktree:** .claude/worktrees/agent-a2082642ffd964560 (ветка `feature/file-import-explains-and-refuses` от `origin/main`)
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/pages/intake/ reason=всплывающую подсказку, место плашки отказа и повторный выбор того же файла решает браузер: jsdom раскрывает HoverCard секундами и шлёт change на любой выбор файла, а Chrome — только на новый
+- **irreversible_surfaces:** none reason=автомерж в репозитории выключен, каждый PR сливает человек; отправки наружу в коде нет, выкатка в прод — ручная, по `docs/PROD.md`, только из слитого в main; `live` включает только владелец
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде файл и таблица по ссылке без нужных колонок получают красную плашку «не подходит» у своего поля, а не «Принято из …»; годный список принимается как прежде (V1, V6, V17)
+- **observe_until:** 2026-10-08
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
