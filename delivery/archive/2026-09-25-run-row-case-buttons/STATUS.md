@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/run-cases.test.tsx
 - **diagnosis:** n/a reason=не дефект: экран к выдаче `run-keeps-its-pack` — кнопки в строке журнала по просьбе владельца
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-25 by=human:anthony («выгрузить кейсы по прогону… кнопочкой на прогоне, чтобы сразу»; выбран вариант «Скачать собранное»: у сборки — «Скачать», у «данных под кейс» — «Собрать кейсы», весь путь на экране «Прогоны»)
