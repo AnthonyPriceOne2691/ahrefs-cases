@@ -18,7 +18,7 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
@@ -27,7 +27,16 @@ from ahrefs_cases.classify.rulesets import active_ruleset, seed_thresholds
 from ahrefs_cases.classify.verdicts import ClassifyReport, classify_all
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.factory import build_provider
-from ahrefs_cases.collect.run_journal import add_item, failure_reason, finish_run, start_run
+from ahrefs_cases.collect.run_journal import (
+    CASES,
+    CHAIN,
+    STAGE2,
+    add_item,
+    failure_reason,
+    finish_run,
+    open_run,
+    start_run,
+)
 from ahrefs_cases.collect.runner import collect_case_data, collect_projects, collect_stage2
 from ahrefs_cases.logs import run_context
 from ahrefs_cases.storage import Group, RunStatus
@@ -67,6 +76,59 @@ def stage2_job(run_id: int) -> None:
 def cases_job(run_id: int) -> None:
     """Сборка пачки кейсов в ZIP по текущим вердиктам."""
     asyncio.run(_run_guarded(run_id, _pack(run_id)))
+
+
+def chain_job(run_id: int) -> None:
+    """Весь цикл одной кнопкой: шаг 1 → шаг 2 с данными под кейс → сборка.
+
+    Решение владельца 25.09.2026 — «почему бы не сделать сразу прогон по
+    ахрефсу и формирование кейсов». Отдельные кнопки (B6) остаются: цепочка —
+    ещё один путь, и деньги в нём сторожит смета всего цикла до запуска
+    (`POST /api/runs/chain`) плюс preflight каждой платной ступени внутри,
+    как у отдельных кнопок. Ступени — те же функции, что у кнопок (урок L63).
+    """
+    asyncio.run(_chain(run_id))
+
+
+async def _chain(run_id: int) -> None:
+    """Ступени по очереди; ступень кончилась не `done`/`partial` — цепочка стоит.
+
+    Упавшая ступень бросает исключение из `_run_guarded` — оно и останавливает
+    цепочку, и роняет задачу в очереди, как у отдельной кнопки. Отклонённая
+    квотой ступень не бросает, её останавливает `_open_next`.
+    """
+    await _run_guarded(run_id, _collect(run_id, refresh=False))
+    second = await _open_next(run_id, STAGE2)
+    if second is None:
+        return
+    await _run_guarded(second, _stage2(second))
+    build = await _open_next(second, CASES)
+    if build is not None:
+        await _run_guarded(build, _pack(build))
+
+
+async def _open_next(run_id: int, stage: str) -> int | None:
+    """Открыть следующую ступень цепочки — тем же автором и ключом задачи.
+
+    `None` — предыдущая ступень не удалась (упала, отклонена квотой): платить
+    дальше за то, что держится на её данных, нельзя. Ключ задачи общий: реапер
+    спрашивает очередь по нему, а журнал по нему же узнаёт цепочку.
+    """
+    async with get_sessionmaker()() as session:
+        previous = await session.get(Run, run_id)
+        if previous is None or previous.status not in (RunStatus.DONE, RunStatus.PARTIAL):
+            return None
+        total = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
+        run = await open_run(
+            session,
+            started_by=previous.started_by,
+            projects_total=total,
+            stage=stage,
+            job_key=str((previous.params_snapshot or {}).get("job", "")),
+        )
+        run.params_snapshot = {**(run.params_snapshot or {}), CHAIN: True}
+        await session.commit()
+        return run.id
 
 
 async def _collect(run_id: int, *, refresh: bool) -> str:

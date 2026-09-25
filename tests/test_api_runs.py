@@ -776,3 +776,125 @@ def test_run_without_pack_says_why(
     assert client.get(f"/api/runs/{stage1}/pack", headers=headers).status_code == 404
     assert client.get(f"/api/runs/{made[0]}/pack", headers=headers).status_code == 404
     assert client.get(f"/api/runs/{stage1}/pack").status_code == 401
+
+
+def _mine_since(client: TestClient, headers: dict[str, str], first: int) -> list[dict[str, object]]:
+    """Прогоны этого теста начиная с номера `first` — старые сверху вниз."""
+    rows = client.get("/api/runs", params={"limit": 100}, headers=headers).json()
+    return sorted((row for row in rows if row["id"] >= first), key=lambda row: row["id"])
+
+
+def test_chain_estimate_covers_the_whole_cycle(client: TestClient) -> None:
+    """C1: смета цикла — шаг 1 плюс шаг 2 и данные под кейс по верхней границе.
+
+    `runs.example` шагом 1 ещё не собран: его группа неизвестна, и цикл обязан
+    посчитать ему шаг 2 и данные под кейс — иначе смета занизила бы цену.
+    """
+    headers = _headers(client)
+    first = client.get("/api/runs/estimate", headers=headers).json()
+    chain = client.get("/api/runs/chain/estimate", headers=headers)
+
+    assert chain.status_code == 200, chain.text
+    body = chain.json()
+    assert body["units_estimated"] > first["units_estimated"]
+    assert any("верхняя граница" in line for line in body["scheme_lines"])
+
+
+def test_chain_runs_every_stage_to_a_pack(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C2: одна кнопка — шаг 1, шаг 2, данные под кейс, сборка; у сборки — пачка."""
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    headers = _headers(client)
+    started = client.post("/api/runs/chain", headers=headers)
+
+    assert started.status_code == 202, started.text
+    rows = _mine_since(client, headers, int(started.json()["run_id"]))
+    assert [row["stage"] for row in rows] == ["stage1", "stage2", "case_data", "cases"]
+    assert all(row["chain"] for row in rows)
+    assert {row["started_by_name"] for row in rows} == {"Оператор"}
+    assert rows[-1]["status"] == "done"
+    assert rows[-1]["pack"] is True
+
+
+def test_chain_refuses_when_the_cycle_does_not_fit(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C3: на весь цикл не хватает units — 409 словами сметы, прогон не открыт."""
+    from ahrefs_cases.api.routers import runs
+    from ahrefs_cases.collect.quota import FixtureQuota
+
+    headers = _headers(client)
+    needed = client.get("/api/runs/chain/estimate", headers=headers).json()["units_estimated"]
+    assert needed > 0, "цикл ничего не стоит — отказывать не в чем"
+    before = client.get("/api/runs", params={"limit": 1}, headers=headers).json()
+    monkeypatch.setattr(runs, "build_quota", lambda: FixtureQuota(left=needed - 1))
+
+    refused = client.post("/api/runs/chain", headers=headers)
+
+    assert refused.status_code == 409
+    assert "весь цикл" in refused.json()["detail"]
+    assert client.get("/api/runs", params={"limit": 1}, headers=headers).json() == before
+
+
+def test_chain_stops_on_a_failed_stage(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C4: шаг 2 упал — сборки после него нет, цепочка стоит."""
+    from ahrefs_cases import config
+
+    async def _broken(_run_id: int) -> str:
+        message = "шаг 2 нарочно сломан"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    monkeypatch.setattr(jobs, "_stage2", _broken)
+    headers = _headers(client)
+    started = client.post("/api/runs/chain", headers=headers)
+
+    rows = _mine_since(client, headers, int(started.json()["run_id"]))
+    assert [(row["stage"], row["status"]) for row in rows] == [
+        ("stage1", "done"),
+        ("stage2", "failed"),
+    ]
+
+
+def test_only_the_fresh_end_of_a_chain_continues(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """C5: «цепочка ещё пойдёт» — у самого нового прогона цепочки, кончившегося не сборкой и недавно."""
+    from datetime import timedelta
+
+    from sqlalchemy import select as _select
+
+    made: dict[str, int] = {}
+
+    def _add(name: str, stage: str, status: RunStatus, ago: timedelta) -> None:
+        async def _open(session: object) -> None:
+            author = (await session.execute(_select(User).where(User.email == EMAIL))).scalar_one()  # type: ignore[attr-defined]
+            run = Run(
+                started_by=author.id,
+                status=status,
+                finished_at=datetime.now(UTC) - ago,
+                params_snapshot={"stage": stage, "chain": True, "job": f"run-chain-{name}"},
+            )
+            session.add(run)  # type: ignore[attr-defined]
+            await session.flush()  # type: ignore[attr-defined]
+            made[name] = run.id
+
+        writer(_open)
+
+    headers = _headers(client)
+    _add("fresh", "stage2", RunStatus.DONE, timedelta(seconds=1))
+    assert _journal(client, headers)[made["fresh"]]["continues"] is True
+
+    _add("stale", "stage2", RunStatus.DONE, timedelta(minutes=10))
+    rows = _journal(client, headers)
+    assert (rows[made["fresh"]]["continues"], rows[made["stale"]]["continues"]) == (False, False)
+
+    _add("built", "cases", RunStatus.DONE, timedelta(seconds=1))
+    assert _journal(client, headers)[made["built"]]["continues"] is False
+    _add("failed", "stage2", RunStatus.FAILED, timedelta(seconds=1))
+    assert _journal(client, headers)[made["failed"]]["continues"] is False

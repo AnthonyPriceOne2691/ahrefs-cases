@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 from uuid import uuid4
@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
+from ahrefs_cases.api.run_rows import journal_context, run_row
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
     RunAuthor,
@@ -42,7 +43,7 @@ from ahrefs_cases.collect.budget import live_runs, reserved_units, uncounted_spe
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.plan import build_case_plan, build_stage1_plan, build_stage2_plan
 from ahrefs_cases.collect.quota import preflight
-from ahrefs_cases.collect.run_journal import CASE_DATA, CASES, STAGE1, STAGE2, open_run
+from ahrefs_cases.collect.run_journal import CASES, CHAIN, STAGE1, STAGE2, open_run
 from ahrefs_cases.collect.run_journal import fates as run_fates
 from ahrefs_cases.export.archive import run_pack_path
 from ahrefs_cases.export.removal import holds_deleted_case
@@ -52,7 +53,7 @@ from ahrefs_cases.storage.locks import hold_start
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
-from ahrefs_cases.workers.jobs import cases_job, collect_job, stage2_job
+from ahrefs_cases.workers.jobs import cases_job, chain_job, collect_job, stage2_job
 from ahrefs_cases.workers.queue import build_queue
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,28 @@ async def start_cases(
     return await _enqueue(session, user.id, job=cases_job, stage=CASES)
 
 
+@router.post("/chain", response_model=RunStarted, status_code=status.HTTP_202_ACCEPTED)
+async def start_chain(
+    session: SessionDep,
+    user: UserDep,
+    _: Annotated[object, Depends(require_right("run"))] = None,
+) -> RunStarted:
+    """«Довести до кейсов»: весь цикл одной кнопкой (решение владельца 25.09.2026).
+
+    Не хватает units на весь цикл по верхней границе — отказ до открытия
+    прогона: «если юнитов мало и не хватит на полный цикл, то просто не давать
+    запускать». Экран показывает ту же смету, но решает здесь сервер.
+    """
+    estimate = await _chain_estimate(session)
+    if not estimate.may_start:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"на весь цикл не хватает units: нужно до {estimate.units_estimated}, "
+            f"{estimate.reason or 'смета не пускает'}",
+        )
+    return await _enqueue(session, user.id, job=chain_job, stage=STAGE1, chain=True)
+
+
 DAY = timedelta(days=1)
 """Шаг верхней границы отбора: `until` включает весь названный день."""
 
@@ -132,8 +155,8 @@ async def list_runs(
         stmt = stmt.where(Run.created_at < datetime.combine(until, time.min, tzinfo=UTC) + DAY)
     runs = list((await session.execute(stmt.limit(limit).offset(offset))).scalars().all())
     authors, live = await _authors(session, runs), await live_runs(session, [r.id for r in runs])
-    offers = await _offers_build(session)
-    return [_row(run, authors, live, offers) for run in runs]
+    journal = await journal_context(session, runs)
+    return [run_row(run, authors, live, journal) for run in runs]
 
 
 @router.get("/authors", response_model=list[RunAuthor])
@@ -254,6 +277,54 @@ async def estimate_stage2(
     )
 
 
+@router.get("/chain/estimate", response_model=RunEstimate)
+async def estimate_chain(
+    session: SessionDep,
+    _: Annotated[object, Depends(require_right("read"))] = None,
+) -> RunEstimate:
+    """Смета кнопки «Довести до кейсов» — весь цикл по верхней границе."""
+    return await _chain_estimate(session)
+
+
+async def _chain_estimate(session: AsyncSession) -> RunEstimate:
+    """Шаг 1 по всем проектам, шаг 2 и данные под кейс — по верхней границе.
+
+    Кандидаты шага 2 выясняются только шагом 1, поэтому границу дают нынешние
+    кандидаты и проекты, за которых шаг 1 заплатит впервые: группа новых до
+    шага 1 неизвестна, и считать их «не кандидатами» значило бы занизить цену
+    цикла, который потом упрётся в квоту посередине. Одна смета на обе
+    ступени, потому что и подтверждение одно.
+    """
+    windows = await point_windows(session)
+    source = build_provider().source
+    today = date.today()  # noqa: DTZ011 — календарная граница закрытого месяца
+    projects = list((await session.execute(select(Project))).scalars().all())
+    first = await build_stage1_plan(session, projects, source=source, now=today, windows=windows)
+    unknown = {task.project_id for task in first.tasks}
+    wanted = set(await stage2_candidates(session, projects, source=source)) | unknown
+    chosen = [project for project in projects if project.id in wanted]
+    second = await build_stage2_plan(session, chosen, source=source, now=today, windows=windows)
+    case = await build_case_plan(session, chosen, source=source, now=today, windows=windows)
+    lines = [
+        *first.scheme_breakdown().as_lines(),
+        *second.scheme_breakdown().as_lines(),
+        *case.scheme_breakdown().as_lines(),
+    ]
+    if chosen:
+        lines.append(
+            "шаг 2 и данные под кейс посчитаны по нынешним кандидатам и новым проектам — "
+            "это верхняя граница: докупаются только тем, кто после шага 1 окажется кандидатом"
+        )
+    return await _estimate_view(
+        session,
+        projects=len(projects),
+        units=first.estimated_units() + second.estimated_units() + case.estimated_units(),
+        planned=len(first.tasks) + len(second.tasks) + len(case.tasks),
+        cached=len(first.cached) + len(second.cached) + len(case.cached),
+        lines=lines,
+    )
+
+
 async def _estimate_view(
     session: SessionDep,
     *,
@@ -307,8 +378,10 @@ async def run_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
     fates = await run_fates(session, run_id, limit=MAX_FATES)
     return RunCard(
-        **_row(
-            run, live=await live_runs(session, [run.id]), offers=await _offers_build(session)
+        **run_row(
+            run,
+            live=await live_runs(session, [run.id]),
+            journal=await journal_context(session, [run]),
         ).model_dump(),
         fates=[
             RunItemView(
@@ -372,6 +445,7 @@ async def _enqueue(
     job: Callable[..., object],
     stage: str,
     refresh: bool = False,
+    chain: bool = False,
 ) -> RunStarted:
     """Создать прогон под замком постановки и поставить задачу.
 
@@ -395,6 +469,8 @@ async def _enqueue(
     run = await open_run(
         session, started_by=user_id, projects_total=total, stage=stage, job_key=key
     )
+    if chain:
+        run.params_snapshot = {**(run.params_snapshot or {}), CHAIN: True}
     await session.commit()
 
     queue = build_queue()
@@ -405,59 +481,3 @@ async def _enqueue(
     )
     logger.info("run_enqueued", extra={"run_id": run.id, "queued_as": queued_as})
     return RunStarted(run_id=run.id, queued_as=queued_as)
-
-
-FINISHED = frozenset({RunStatus.DONE, RunStatus.PARTIAL})
-
-
-async def _offers_build(session: AsyncSession) -> int:
-    """Номер прогона, предлагающего «Собрать кейсы», — или 0.
-
-    Это последний «данные под кейс», и только если он закончился, а сборки
-    после него не было: после сборки следующий шаг — «Скачать» у неё самой.
-    Считается по всем прогонам, а не по странице журнала: страница может
-    кончиться раньше, чем найдётся более поздняя сборка.
-    """
-    stage = Run.params_snapshot["stage"].astext
-    stmt = select(stage, func.max(Run.id)).where(stage.in_((CASE_DATA, CASES))).group_by(stage)
-    last: dict[str, int] = dict((await session.execute(stmt)).tuples().all())
-    data = last.get(CASE_DATA, 0)
-    if not data or data < last.get(CASES, 0):
-        return 0
-    run = await session.get(Run, data)
-    return data if run is not None and run.status in FINISHED else 0
-
-
-def _row(
-    run: Run,
-    authors: Mapping[int, User] | None = None,
-    live: Collection[int] = (),
-    offers: int = 0,
-) -> RunRow:
-    author = (authors or {}).get(run.started_by)
-    cases = (run.params_snapshot or {}).get("pack_cases")
-    return RunRow(
-        id=run.id,
-        status=run.status.value,
-        started_by=run.started_by,
-        # Имя, а если его не заполняли — почта: «Прогон из командной строки»
-        # человеку говорит больше, чем `cli@local`, но пустая строка — ничего.
-        started_by_name=(author.full_name or author.email) if author else "",
-        started_by_deleted=bool(author and author.deleted_at is not None),
-        stage=str((run.params_snapshot or {}).get("stage") or ""),
-        created_at=run.created_at,
-        started_at=run.started_at,
-        finished_at=run.finished_at,
-        projects_total=run.projects_total,
-        projects_ok=run.projects_ok,
-        projects_failed=run.projects_failed,
-        projects_skipped=max(0, run.projects_total - run.projects_ok - run.projects_failed),
-        units_estimated=run.units_estimated,
-        units_actual=run.units_actual,
-        error=run.error,
-        live=run.id in live,
-        mode=str((run.params_snapshot or {}).get("provider") or ""),
-        pack=bool((run.params_snapshot or {}).get("pack")),
-        pack_cases=cases if isinstance(cases, int) else 0,
-        build_cases=run.id == offers,
-    )
