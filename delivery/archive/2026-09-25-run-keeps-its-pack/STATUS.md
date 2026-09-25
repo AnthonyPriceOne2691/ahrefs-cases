@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_api_runs.py::test_cases_run_keeps_its_own_pack
 - **diagnosis:** n/a reason=не дефект: новая выдача по просьбе владельца — кейсы по прогону кнопкой на прогоне
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-25 by=human:anthony («выгрузить кейсы по прогону… кнопочкой на прогоне, чтобы сразу»; из трёх вариантов выбран «Скачать собранное»: у сборки кейсов — архив ровно этой сборки, у «данных под кейс» — «Собрать кейсы»)
