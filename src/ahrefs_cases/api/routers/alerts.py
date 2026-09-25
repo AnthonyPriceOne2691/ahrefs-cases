@@ -14,15 +14,18 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
+from ahrefs_cases.api.routers.cases import PACK_OF_DELETED
 from ahrefs_cases.api.schemas import AlertView
 from ahrefs_cases.collect.factory import build_quota
+from ahrefs_cases.export.archive import cases_inside, newest_pack
+from ahrefs_cases.export.removal import holds_deleted_case
 from ahrefs_cases.storage import RunStatus
-from ahrefs_cases.storage.models.case import CaseArtifact
 from ahrefs_cases.storage.models.run import Run
 
 logger = logging.getLogger(__name__)
@@ -95,22 +98,36 @@ async def _failed_runs(session: SessionDep) -> list[AlertView]:
 
 
 async def _ready_bundle(session: SessionDep) -> list[AlertView]:
-    """Готовая пачка кейсов — повод забрать, а не тревога."""
-    artifact = (
-        (
-            await session.execute(
-                select(CaseArtifact).order_by(CaseArtifact.built_at.desc()).limit(1)
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if artifact is None:
+    """Готовая пачка кейсов — повод забрать, а не тревога.
+
+    Пачка — тот архив, что отдаёт «Скачать ZIP» (`newest_pack`), и повод
+    называет его и число кейсов в нём. Прежде здесь стоял самый свежий артефакт
+    кейса: «готов кейс <файл>» при пачке из десятков и даже тогда, когда сборка
+    не положила в каталог выгрузки ни одного архива (Z46). Пачку с кейсом
+    удалённого проекта не отдают до пересборки — готовой её не называем.
+    """
+    path = await anyio.to_thread.run_sync(newest_pack, config.export.output_dir)
+    if path is None:
         return []
+    name = f"пачка кейсов «{path.name}»"
+    if await holds_deleted_case(session, path):
+        return [
+            AlertView(
+                kind="cases_pack_blocked",
+                severity="warning",
+                message=f"{name} не отдаётся: {PACK_OF_DELETED}",
+            )
+        ]
+    inside = await anyio.to_thread.run_sync(cases_inside, path)
+    size = (
+        "сколько в ней кейсов, прочитать не удалось"
+        if inside is None
+        else f"кейсов внутри — {inside}"
+    )
     return [
         AlertView(
             kind="cases_ready",
             severity="good",
-            message=f"готов кейс {artifact.filename} — проверьте перед публикацией",
+            message=f"готова {name}: {size} — проверьте перед публикацией",
         )
     ]

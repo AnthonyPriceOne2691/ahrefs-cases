@@ -474,6 +474,38 @@ async def test_month_bought_into_the_window_after_the_verdict_stops_the_case(
     assert "точка А" in refused[0].detail
 
 
+async def test_mismatch_advice_is_the_verdicts_own_rows(db_session: AsyncSession) -> None:
+    """Совет у «вердикт не про эти данные» — пересчёт по рядам вердикта.
+
+    Вердикт по живым рядам при сборке по фикстурным (Y3) получает совет
+    `classify --source live`, а не по режиму провайдера: на проде в `fixture`
+    пересчёт «по этому источнику» переписал бы живые вердикты фикстурными.
+    Когда источник один, а числа разошлись (ряд докупили в окно), ряды вердикта
+    и есть ряды сборки. Каждая попытка знает свой проект — журнал пишет судьбу
+    по номеру проекта, а не по домену. Y4.
+    """
+    ruleset = await _stored_ruleset(db_session, VERSION, active=True)
+    other = await _stored_project(db_session, "other-rows.example")
+    await _stored_verdict(db_session, other, ruleset, Group.GOOD, source=MetricSource.LIVE)
+    await _stored_points(db_session, other, MATCHING_SERIES, source=MetricSource.FIXTURE)
+    moved = await _stored_project(db_session, "moved.example")
+    await _stored_verdict(db_session, moved, ruleset, Group.GOOD)
+    await _stored_points(
+        db_session, moved, MATCHING_SERIES | {PERIOD_START: 400.0}, source=MetricSource.FIXTURE
+    )
+
+    report = await build_cases(db_session, source=MetricSource.FIXTURE)
+
+    advice = {item.domain: item.detail for item in report.by_outcome(CaseOutcome.VERDICT_MISMATCH)}
+    assert "`classify --source live`" in advice["other-rows.example"]
+    assert "--source fixture" not in advice["other-rows.example"]
+    assert "`classify --source fixture`" in advice["moved.example"]
+    assert {item.domain: item.project_id for item in report.attempts} == {
+        "moved.example": moved.id,
+        "other-rows.example": other.id,
+    }
+
+
 def test_metric_bought_after_the_verdict_is_not_a_mismatch() -> None:
     """E5: докупленная метрика — предупреждение, а не отказ (урок L41).
 

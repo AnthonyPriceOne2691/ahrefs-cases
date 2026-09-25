@@ -36,7 +36,16 @@ MANIFEST_NOTE = "внутренний список: домены всех про
 
 
 class EmptyArchiveError(RuntimeError):
-    """Собирать нечего. Не ошибка выгрузки, а её отсутствие — и это разные вещи."""
+    """Собирать нечего. Не ошибка выгрузки, а её отсутствие — и это разные вещи.
+
+    Несёт кейсы, не попавшие по контент-запрету: пачка из одних запрещённых —
+    тоже пустая, и журнал прогона обязан назвать, кому отказано, а не только
+    что архива нет.
+    """
+
+    def __init__(self, message: str, skipped: Sequence[SkippedCase] = ()) -> None:
+        super().__init__(message)
+        self.skipped = tuple(skipped)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +139,7 @@ def pack(
 
     if not packed:
         message = "кейсов для архива не набралось: собирать нечего"
-        raise EmptyArchiveError(message)
+        raise EmptyArchiveError(message, skipped)
 
     archive_path = target_dir / (name or _default_name())
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as bundle:
@@ -265,13 +274,29 @@ def packed_checksums(path: Path) -> frozenset[str] | None:
     """sha256 каждого PDF внутри пачки: артефакт кейса хранит сумму того же файла,
     что лёг в архив, — содержимое опознаёт кейс, имя нет (правило 18а).
     `None` — архив не читается, и сказать о его составе нечего."""
+    pdfs = _packed_pdfs(path)
+    return None if pdfs is None else frozenset(hashlib.sha256(pdf).hexdigest() for pdf in pdfs)
+
+
+def cases_inside(path: Path) -> int | None:
+    """Сколько кейсов в пачке — PDF внутри архива; список `кейсы.csv` не в счёт.
+
+    Считается по архиву, а не по базе: оповещение говорит о том, что человек
+    получит, нажав «Скачать ZIP». `None` — архив не читается.
+    """
+    pdfs = _packed_pdfs(path)
+    return None if pdfs is None else len(pdfs)
+
+
+def _packed_pdfs(path: Path) -> list[bytes] | None:
+    """Содержимое каждого PDF пачки; `None` — архив не читается."""
     try:
         with ZipFile(path) as bundle:
-            return frozenset(
-                hashlib.sha256(bundle.read(item)).hexdigest()
+            return [
+                bundle.read(item)
                 for item in bundle.infolist()
                 if item.filename.lower().endswith(".pdf")
-            )
+            ]
     except (BadZipFile, OSError) as exc:
         logger.warning("pack_unreadable", extra={"path": str(path), "error": str(exc)})
         return None

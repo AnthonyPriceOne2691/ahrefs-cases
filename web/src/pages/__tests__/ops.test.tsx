@@ -384,6 +384,64 @@ describe('раскрытие показывает только проблемы'
   });
 });
 
+describe('журнал сборки кейсов', () => {
+  /** Судьбы прогона сборки кейсов в пропорциях прода 24.09.2026 (10 собрано,
+   *  41 «плохой», 2 «данных не хватило») и по одной на оставшиеся исходы — в
+   *  порядке, в котором их отдаёт API: по домену, вперемешку (урок L214). */
+  function casesRun() {
+    const fates = [
+      ...Array.from({ length: 10 }, (_, i) => ({
+        domain: `built${i}.example`,
+        outcome: 'ok',
+        reason: `кейс собран: built${i}.example — Кейс v3.pdf`,
+      })),
+      ...Array.from({ length: 41 }, (_, i) => ({
+        domain: `c${i}.example`,
+        outcome: 'case_not_eligible',
+        reason: 'группа «плохой»: кейс по ТЗ собирают хорошим и средним',
+      })),
+      { domain: 'a-thin.example', outcome: 'case_insufficient_data', reason: 'первая' },
+      { domain: 'd-thin.example', outcome: 'case_insufficient_data', reason: 'вторая' },
+      {
+        domain: 'b-live.example',
+        outcome: 'case_verdict_mismatch',
+        reason:
+          'вердикт вынесен по рядам «live», а показаны «fixture» — переклассифицируйте по рядам «live»',
+      },
+      { domain: 'ozon.ru', outcome: 'case_blocked', reason: 'контент-запрет: гео: «RU»' },
+    ]
+      .sort((a, b) => a.domain.localeCompare(b.domain))
+      .map((fate) => ({ units_actual: 0, ...fate }));
+    const row = run(31, 'done', {
+      stage: 'cases',
+      projects_total: 55,
+      projects_ok: 10,
+      projects_skipped: 45,
+    });
+    server({
+      '/api/runs': { status: 200, body: [row] },
+      '/api/runs/31': { status: 200, body: { ...row, fates } },
+    });
+  }
+
+  it('Y6: строками — только то, что требует действия; собранные и «плохие» — числом', async () => {
+    casesRun();
+
+    showRuns();
+    await userEvent.click(await screen.findByLabelText('почему пропущены'));
+
+    expect(await screen.findByText('a-thin.example')).toBeInTheDocument();
+    expect(screen.getAllByText('данных не хватило')).toHaveLength(2);
+    expect(screen.getByText('вердикт не про эти данные')).toBeInTheDocument();
+    expect(screen.getByText(/переклассифицируйте по рядам «live»/)).toBeInTheDocument();
+    expect(screen.getByText('не отдан: контент-запрет')).toBeInTheDocument();
+    expect(document.querySelectorAll('tr[data-fate]')).toHaveLength(4);
+    expect(screen.getByText('без замечаний собрано: 10')).toBeInTheDocument();
+    expect(screen.getByText('не положен по группе: 41')).toBeInTheDocument();
+    expect(screen.queryByText('c0.example')).not.toBeInTheDocument();
+  });
+});
+
 const USAGE = {
   spent: 5872,
   conditional: 0,
