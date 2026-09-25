@@ -17,6 +17,7 @@ import csv
 import hashlib
 import io
 import logging
+import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -187,6 +188,77 @@ def newest_pack(directory: Path) -> Path | None:
     if not dated:
         return None
     return max(dated)[1]
+
+
+RUN_PACKS = "runs"
+"""Подкаталог копий пачек по прогонам. `newest_pack` смотрит только корень
+каталога выгрузки (`glob("*.zip")`), поэтому копия прогона «свежей пачкой»
+не становится никогда."""
+
+PackStamp = tuple[Path, int]
+"""Свежая пачка и время её записи в наносекундах."""
+
+
+def pack_stamp(directory: Path) -> PackStamp | None:
+    """Отпечаток свежей пачки — чтобы после сборки узнать, собрала ли она свою.
+
+    Путь **и** время, а не имя: сборка того же дня переписывает архив того же
+    имени (урок L89), и по одному имени новая пачка неотличима от прежней.
+    """
+    path = newest_pack(directory)
+    if path is None:
+        return None
+    try:
+        return path, path.stat().st_mtime_ns
+    except OSError as exc:
+        logger.warning("pack_stamp_unreadable", extra={"path": str(path), "error": str(exc)})
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class KeptPack:
+    """Копия пачки прогона: путь от каталога выгрузки и сколько в ней кейсов."""
+
+    path: str
+    cases: int
+
+
+def keep_run_pack(directory: Path, run_id: int, before: PackStamp | None) -> KeptPack | None:
+    """Отложить копию пачки, собранной прогоном; путь копии — от каталога выгрузки.
+
+    `None` — прогон архива не собрал: свежая пачка та же, что до сборки. Так
+    бывает, когда собирать нечего, — и прежний архив остаётся самым свежим;
+    приписать его прогону значило бы отдать по его кнопке чужую сборку.
+
+    Копия, а не ссылка на пачку дня: следующая сборка того же дня перепишет
+    пачку, а прогон обязан отдавать то, что собрал сам.
+    """
+    after = pack_stamp(directory)
+    if after is None or after == before:
+        return None
+    source = after[0]
+    target = directory / RUN_PACKS / str(run_id) / f"{source.stem}-прогон-{run_id}.zip"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+    # Число кейсов — рядом с путём: кнопка в журнале говорит, сколько файлов
+    # придёт, и «54 проекта» строки сборки перестаёт читаться как «54 кейса».
+    with ZipFile(target) as bundle:
+        cases = sum(1 for name in bundle.namelist() if name.lower().endswith(".pdf"))
+    return KeptPack(path=target.relative_to(directory).as_posix(), cases=cases)
+
+
+def run_pack_path(directory: Path, kept: str) -> Path | None:
+    """Файл копии пачки прогона — или `None`, если его нет или путь ведёт наружу.
+
+    Путь берётся из снимка прогона, и пишет его только `keep_run_pack`. Но
+    отдаётся файл по HTTP, поэтому выход за `runs/` отсекается здесь, а не
+    доверием к записи.
+    """
+    base = (directory / RUN_PACKS).resolve()
+    path = (directory / kept).resolve()
+    if base not in path.parents or not path.is_file():
+        return None
+    return path
 
 
 def packed_checksums(path: Path) -> frozenset[str] | None:

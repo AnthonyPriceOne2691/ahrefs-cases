@@ -16,10 +16,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases import config
 from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.rulesets import active_ruleset
 from ahrefs_cases.classify.verdicts import ClassifyReport, classify_all
@@ -167,6 +169,7 @@ async def _pack(run_id: int) -> str:
     # Импорт внутри: `export` живёт слоем выше `workers` по контракту слоёв,
     # и тянуть его на уровень модуля значило бы связать воркер с рендером.
     from ahrefs_cases.cli.case_commands import pack_cases
+    from ahrefs_cases.export.archive import pack_stamp
 
     # Отметка о начале — здесь, а не в `_run_guarded`: у сбора её ставит сам
     # прогон после preflight, и отмеченный раньше он соврал бы, если квота
@@ -177,8 +180,38 @@ async def _pack(run_id: int) -> str:
         if run is not None:
             await start_run(session, run)
             await session.commit()
+    before = await asyncio.to_thread(pack_stamp, config.export.output_dir)
     code = await pack_cases()
-    return f"пачка кейсов собрана, код возврата {code}"
+    kept = await _keep_pack(run_id, before)
+    summary = f"пачка кейсов собрана, код возврата {code}"
+    return f"{summary}; копия прогона: {kept}" if kept else summary
+
+
+async def _keep_pack(run_id: int, before: tuple[Path, int] | None) -> str | None:
+    """Отложить копию пачки этой сборки и записать её путь в снимок прогона.
+
+    Копия нужна кнопке «Скачать» в строке журнала: пачка дня одна, следующая
+    сборка её перепишет, а прогон отдаёт то, что собрал сам. Не отложилась
+    (нет места, нет прав на томе) — сборка остаётся сборкой: пачка на «Кейсах»
+    цела, прогон остаётся без копии, и лог говорит об этом с номером прогона.
+    """
+    from ahrefs_cases.export.archive import keep_run_pack
+
+    try:
+        kept = await asyncio.to_thread(keep_run_pack, config.export.output_dir, run_id, before)
+    except OSError:
+        logger.exception("run_pack_not_kept", extra={"run_id": run_id})
+        return None
+    if kept is None:
+        return None
+    async with get_sessionmaker()() as session:
+        run = await session.get(Run, run_id)
+        if run is not None:
+            # JSONB: правка словаря на месте сессии не видна — заменяется целиком.
+            snapshot = {**(run.params_snapshot or {}), "pack": kept.path, "pack_cases": kept.cases}
+            run.params_snapshot = snapshot
+            await session.commit()
+    return kept.path
 
 
 async def _run_guarded(run_id: int, work: object) -> None:
