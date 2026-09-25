@@ -776,3 +776,146 @@ def test_run_without_pack_says_why(
     assert client.get(f"/api/runs/{stage1}/pack", headers=headers).status_code == 404
     assert client.get(f"/api/runs/{made[0]}/pack", headers=headers).status_code == 404
     assert client.get(f"/api/runs/{stage1}/pack").status_code == 401
+
+
+def _file_project(writer: Callable[[Callable[..., object]], None]) -> int:
+    """Номер проекта `runs.example` — «файл» из одного проекта."""
+    from sqlalchemy import select as _select
+
+    found: list[int] = []
+
+    async def _find(session: object) -> None:
+        stmt = _select(Project.id).where(Project.domain == "runs.example")
+        found.append((await session.execute(stmt)).scalar_one())  # type: ignore[attr-defined]
+
+    writer(_find)
+    return found[0]
+
+
+def _mine_since(client: TestClient, headers: dict[str, str], first: int) -> list[dict[str, object]]:
+    """Строки журнала начиная с номера `first` — старые сверху."""
+    rows = client.get("/api/runs", params={"limit": 100}, headers=headers).json()
+    return sorted((row for row in rows if row["id"] >= first), key=lambda row: row["id"])
+
+
+def test_cycle_estimate_counts_only_the_file(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """C1: смета цикла — по проектам файла, а не по всей базе; шаг 2 — верхней границей.
+
+    Второй проект база получает здесь же — вторая кампания того же сайта: в чистой
+    базе CI проект теста единственный, и «база шире файла» держалась бы только на
+    данных дев-стенда (L8, L58).
+    """
+    headers = _headers(client)
+    project = _file_project(writer)
+
+    async def _second(session: object) -> None:
+        session.add(  # type: ignore[attr-defined]
+            Project(
+                domain="runs.example",
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 1),
+                niche="fintech",
+                geo="US",
+                service_type="seo",
+                client="Acme",
+                owner="i.petrov",
+                publishable=True,
+                notes="",
+            )
+        )
+
+    writer(_second)
+    whole = client.get("/api/runs/estimate", headers=headers).json()
+    cycle = client.get("/api/runs/chain/estimate", params={"projects": [project]}, headers=headers)
+
+    assert cycle.status_code == 200, cycle.text
+    body = cycle.json()
+    assert body["projects"] == 1 < whole["projects"]
+    assert body["units_estimated"] > 0
+    assert any("верхняя граница" in line for line in body["scheme_lines"])
+
+
+def test_cycle_runs_the_file_to_its_own_pack(
+    client: TestClient,
+    writer: Callable[[Callable[..., object]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """C2: одна строка на весь цикл; архив — кейсы проектов файла; пачка дня не тронута."""
+    from ahrefs_cases import config
+    from ahrefs_cases.export.archive import newest_pack
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path / "out")
+    headers = _headers(client)
+    started = client.post(
+        "/api/runs/chain", json={"project_ids": [_file_project(writer)]}, headers=headers
+    )
+
+    assert started.status_code == 202, started.text
+    rows = _mine_since(client, headers, int(started.json()["run_id"]))
+    assert [(row["stage"], row["status"], row["projects_total"]) for row in rows] == [
+        ("cycle", "done", 1)
+    ]
+    cycle = rows[0]
+    assert cycle["pack"] is True
+    got = client.get(f"/api/runs/{cycle['id']}/pack", headers=headers)
+    pdfs = _pdfs(got.content, tmp_path / "spare.zip")
+    assert pdfs and all(name.startswith("runs.example") for name in pdfs)
+    assert cycle["pack_cases"] == len(pdfs)
+    assert newest_pack(tmp_path / "out") is None, "цикл по файлу переписал пачку дня"
+    card = client.get(f"/api/runs/{cycle['id']}", headers=headers).json()
+    assert {"stage1", "cases"} <= {fate["stage"] for fate in card["fates"]}
+
+
+def test_cycle_refuses_when_it_does_not_fit(
+    client: TestClient,
+    writer: Callable[[Callable[..., object]], None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C3: на весь цикл не хватает units — 409 словами сметы, строка не открыта."""
+    from ahrefs_cases.api import run_estimates
+    from ahrefs_cases.collect.quota import FixtureQuota
+
+    headers = _headers(client)
+    project = _file_project(writer)
+    needed = client.get(
+        "/api/runs/chain/estimate", params={"projects": [project]}, headers=headers
+    ).json()["units_estimated"]
+    before = client.get("/api/runs", params={"limit": 1}, headers=headers).json()
+    monkeypatch.setattr(run_estimates, "build_quota", lambda: FixtureQuota(left=needed - 1))
+
+    refused = client.post("/api/runs/chain", json={"project_ids": [project]}, headers=headers)
+
+    assert refused.status_code == 409
+    assert "весь цикл" in refused.json()["detail"]
+    assert client.get("/api/runs", params={"limit": 1}, headers=headers).json() == before
+
+
+def test_cycle_stops_on_a_failed_step(
+    client: TestClient,
+    writer: Callable[[Callable[..., object]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """C4: шаг 2 упал — цикл «упал» с его причиной, архива нет, ступени не видны."""
+    from ahrefs_cases import config
+
+    async def _broken(_run_id: int, **_kwargs: object) -> str:
+        message = "шаг 2 нарочно сломан"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    monkeypatch.setattr(jobs, "_stage2", _broken)
+    headers = _headers(client)
+    started = client.post(
+        "/api/runs/chain", json={"project_ids": [_file_project(writer)]}, headers=headers
+    )
+
+    rows = _mine_since(client, headers, int(started.json()["run_id"]))
+    assert [(row["stage"], row["status"], row["current_stage"]) for row in rows] == [
+        ("cycle", "failed", "stage2")
+    ]
+    assert "нарочно сломан" in str(rows[0]["error"])
+    assert rows[0]["pack"] is False

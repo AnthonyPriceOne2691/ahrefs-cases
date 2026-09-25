@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -67,6 +67,14 @@ CASES = "cases"
 как сбор «0 из 18, пропущено 18» (B6). Ступень пишется в снимок, а не колонкой:
 это свойство прогона того же рода, что провайдер и группировка, и миграция ради
 неё не нужна. У прогонов старше этого поля ступени нет — это «неизвестно»."""
+
+CYCLE = "cycle"
+"""Цикл по проектам файла одной кнопкой (решение владельца 25.09.2026): одна
+строка журнала — родитель, а шаг 1, шаг 2, данные под кейс и сборка — его
+дочерние прогоны под тем же ключом задачи (`params_snapshot["job"]`). В
+журнале видна только строка цикла; она идёт, пока идут ступени, поэтому
+экран не теряет её в щели между ними (урок L228). Проекты цикла — в снимке
+(`params_snapshot["projects"]`)."""
 
 
 async def open_run(
@@ -360,3 +368,27 @@ async def _apply_project_status(session: AsyncSession, item: TaskOutcome) -> Non
     project = await session.get(Project, item.task.project_id)
     if project is not None:
         project.status = status
+
+
+def cycle_projects(snapshot: Mapping[str, object] | None) -> list[int]:
+    """Проекты цикла по файлу из снимка его строки; не список — пусто."""
+    raw = (snapshot or {}).get("projects")
+    return [pid for pid in raw if isinstance(pid, int)] if isinstance(raw, list) else []
+
+
+async def cycle_children(session: AsyncSession, parent: Run) -> list[Run]:
+    """Ступени цикла — прогоны с ключом задачи родителя, кроме него самого, по порядку.
+
+    Метки «чей я ребёнок» у ступеней нет: данные под кейс открывает шаг 2
+    через сбор, и тащить метку сквозь слой сбора ради журнала незачем — ключ
+    задачи у всех ступеней цикла и так общий (его же спрашивает реапер).
+    """
+    key = (parent.params_snapshot or {}).get("job")
+    if not key:
+        return []
+    stmt = (
+        select(Run)
+        .where(Run.params_snapshot["job"].astext == str(key), Run.id != parent.id)
+        .order_by(Run.id)
+    )
+    return list((await session.execute(stmt)).scalars().all())

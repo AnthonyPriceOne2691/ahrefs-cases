@@ -9,8 +9,9 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
+from pathlib import Path
 from types import MappingProxyType
 from typing import TextIO
 
@@ -194,16 +195,23 @@ class CasePack:
         return [*self.report.as_lines(), *(self.bundle.as_lines() if self.bundle else [self.empty])]
 
 
-async def pack_built(session: AsyncSession, source: MetricSource) -> CasePack:
+async def pack_built(
+    session: AsyncSession,
+    source: MetricSource,
+    *,
+    only: Collection[int] | None = None,
+    output_dir: Path | None = None,
+    name: str | None = None,
+) -> CasePack:
     """Собрать кейсы, упаковать собранные и записать каждому его строку `cases`.
 
     В сессии вызывающего и без коммита: задача коммитит вместе со строками
     журнала прогона — одной транзакцией, чтобы записанный кейс и его судьба в
     журнале не разошлись.
     """
-    report = await build_cases(session, source=source)
+    report = await build_cases(session, source=source, only=only)
     try:
-        bundle = await _pack_and_store(session, report)
+        bundle = await _pack_and_store(session, report, output_dir=output_dir, name=name)
     except EmptyArchiveError as exc:
         return CasePack(report=report, bundle=None, skipped=exc.skipped, empty=str(exc))
     return CasePack(report=report, bundle=bundle, skipped=bundle.skipped)
@@ -269,7 +277,13 @@ def case_fates(result: CasePack) -> list[CaseFate]:
     return fates
 
 
-async def _pack_and_store(session: AsyncSession, report: CaseReport) -> Packed:
+async def _pack_and_store(
+    session: AsyncSession,
+    report: CaseReport,
+    *,
+    output_dir: Path | None = None,
+    name: str | None = None,
+) -> Packed:
     """Упаковать собранные кейсы и записать каждому проекту его строку и его файл.
 
     Ключ — проект, а не домен. У двух кампаний одного сайта домен один, и
@@ -289,7 +303,7 @@ async def _pack_and_store(session: AsyncSession, report: CaseReport) -> Packed:
         version = await next_version(session, item.project_id)
         wanted.append(ToPack(item.project_id, item.domain, replace(item.case, version=version)))
 
-    bundle = pack(wanted)
+    bundle = pack(wanted, output_dir=output_dir, name=name)
     for one in bundle.packed:
         case_row = await store_case(
             session, project_id=one.project_id, verdict_id=verdicts[one.project_id], case=one.case
