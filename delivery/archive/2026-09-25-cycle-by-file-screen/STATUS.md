@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/cycle.test.tsx
 - **diagnosis:** n/a reason=не дефект: экран к циклу по файлу (`cycle-by-file`) по картине владельца
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-25 by=human:anthony («прикрепил ссылку или файл… предварительная смета, потом стартует прогон и появляется строка в журнале прогонов на фронте с неактивной кнопкой скачать кейсы… по окончании прогона… становится активной кнопка скачать»; охват — «только проекты файла»)
