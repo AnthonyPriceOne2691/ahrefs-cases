@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import Collection
 from dataclasses import dataclass
@@ -52,6 +53,16 @@ def _live_run() -> ColumnElement[bool]:
     """
     rule: ColumnElement[bool] = Run.params_snapshot["provider"].astext == _LIVE_PROVIDER
     return rule
+
+
+def key_fingerprint(key: str) -> str | None:
+    """Отпечаток ключа Ahrefs — первые 12 знаков sha256. Сам ключ не пишется никуда.
+
+    Остаток квоты принадлежит **ключу**, поэтому вычитать из него можно только
+    траты этого ключа. Прогон запоминает отпечаток при открытии
+    (`run_journal.open_run`), и по нему вычет узнаёт, кто платил.
+    """
+    return hashlib.sha256(key.encode()).hexdigest()[:12] if key else None
 
 
 async def live_runs(session: AsyncSession, run_ids: Collection[int]) -> frozenset[int]:
@@ -188,7 +199,16 @@ async def live_spend_since(session: AsyncSession, moment: datetime) -> int:
     сверяет счётчик Ahrefs с нашим журналом. Две копии разошлись бы ровно тогда,
     когда сверка начнёт что-то значить.
     """
-    return await _total(session, _live(_spent(_units())).where(UnitsLedger.created_at >= moment))
+    # Только траты текущего ключа (Z49): остаток из API — остаток ключа. 25.09.2026
+    # владелец сменил ключ, и вычет, не знавший, кто платил, снял вчерашние траты
+    # старого ключа с остатка нового — смета отказала каждому прогону на сутки.
+    # Прогон без отпечатка открыт до этой правки и оплачен неизвестным ключом.
+    current = key_fingerprint(config.ahrefs.api_key)
+    if current is None:
+        return 0
+    paid_by_current = Run.params_snapshot["api_key_fp"].astext == current
+    stmt = _live(_spent(_units())).where(UnitsLedger.created_at >= moment, paid_by_current)
+    return await _total(session, stmt)
 
 
 async def uncounted_spend(session: AsyncSession, *, now: datetime | None = None) -> int:

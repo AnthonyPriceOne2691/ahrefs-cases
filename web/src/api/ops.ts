@@ -4,7 +4,8 @@
  * Три запроса рядом, потому что отвечают на один вопрос оператора — «что
  * сейчас с сервисом и сколько денег осталось».
  */
-import { request } from './client';
+import { download, request } from './client';
+import type { DownloadedFile } from './client';
 import type { AlertView, RunAuthor, RunCard, RunRow, UsageView } from './types';
 
 /** Журнал: свежие сверху. Потолок выдачи держит сервер, здесь — размер страницы. */
@@ -47,4 +48,10 @@ export function fetchUsage(): Promise<UsageView> {
 
 export function fetchAlerts(): Promise<AlertView[]> {
   return request<AlertView[]>('/api/alerts');
+}
+
+/** Пачка, которую собрал прогон, — не пачка дня: ту переписывает каждая
+ *  следующая сборка, а прогон отдаёт то, что собрал сам. */
+export function downloadRunPack(runId: number): Promise<DownloadedFile> {
+  return download(`/api/runs/${runId}/pack`, `кейсы-прогон-${runId}.zip`);
 }

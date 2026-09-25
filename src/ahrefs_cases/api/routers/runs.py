@@ -19,9 +19,13 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 from uuid import uuid4
 
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
@@ -38,8 +42,10 @@ from ahrefs_cases.collect.budget import live_runs, reserved_units, uncounted_spe
 from ahrefs_cases.collect.factory import build_provider, build_quota
 from ahrefs_cases.collect.plan import build_case_plan, build_stage1_plan, build_stage2_plan
 from ahrefs_cases.collect.quota import preflight
-from ahrefs_cases.collect.run_journal import CASES, STAGE1, STAGE2, open_run
+from ahrefs_cases.collect.run_journal import CASE_DATA, CASES, STAGE1, STAGE2, open_run
 from ahrefs_cases.collect.run_journal import fates as run_fates
+from ahrefs_cases.export.archive import run_pack_path
+from ahrefs_cases.export.removal import holds_deleted_case
 from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.locks import hold_start
@@ -126,7 +132,8 @@ async def list_runs(
         stmt = stmt.where(Run.created_at < datetime.combine(until, time.min, tzinfo=UTC) + DAY)
     runs = list((await session.execute(stmt.limit(limit).offset(offset))).scalars().all())
     authors, live = await _authors(session, runs), await live_runs(session, [r.id for r in runs])
-    return [_row(run, authors, live) for run in runs]
+    offers = await _offers_build(session)
+    return [_row(run, authors, live, offers) for run in runs]
 
 
 @router.get("/authors", response_model=list[RunAuthor])
@@ -300,7 +307,9 @@ async def run_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
     fates = await run_fates(session, run_id, limit=MAX_FATES)
     return RunCard(
-        **_row(run, live=await live_runs(session, [run.id])).model_dump(),
+        **_row(
+            run, live=await live_runs(session, [run.id]), offers=await _offers_build(session)
+        ).model_dump(),
         fates=[
             RunItemView(
                 # Журнал хранит канон — его отправили в Ahrefs; человек читает
@@ -314,6 +323,46 @@ async def run_status(
             for fate in fates
         ],
     )
+
+
+RUN_PACK_OF_DELETED = (
+    "в пачке этого прогона кейс удалённого проекта — её больше не отдаём; "
+    "соберите кейсы заново, и новая пачка соберётся без него"
+)
+"""Почему копию пачки прогона не отдают — то же правило, что у пачки дня."""
+
+
+@router.get("/{run_id}/pack")
+async def download_run_pack(
+    run_id: int,
+    session: SessionDep,
+    _: Annotated[object, Depends(require_right("read"))] = None,
+) -> FileResponse:
+    """Пачка, которую собрал этот прогон, — кнопка «Скачать» в строке журнала.
+
+    Не пачка дня: её переписывает каждая следующая сборка, а прогон отдаёт то,
+    что собрал сам (`export.archive.keep_run_pack`). Копию с кейсом удалённого
+    проекта не отдаём — то же правило, что у пачки (решение владельца 24.09.2026).
+    """
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
+    kept = (run.params_snapshot or {}).get("pack")
+    if not kept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="этот прогон своей пачки не оставил: её оставляют сборки кейсов, "
+            "собравшие архив, начиная с 25.09.2026",
+        )
+    path = await anyio.to_thread.run_sync(run_pack_path, config.export.output_dir, str(kept))
+    if path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"файла пачки прогона {run_id} на диске нет",
+        )
+    if await holds_deleted_case(session, path):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=RUN_PACK_OF_DELETED)
+    return FileResponse(path, filename=path.name, media_type="application/zip")
 
 
 async def _enqueue(
@@ -358,8 +407,35 @@ async def _enqueue(
     return RunStarted(run_id=run.id, queued_as=queued_as)
 
 
-def _row(run: Run, authors: Mapping[int, User] | None = None, live: Collection[int] = ()) -> RunRow:
+FINISHED = frozenset({RunStatus.DONE, RunStatus.PARTIAL})
+
+
+async def _offers_build(session: AsyncSession) -> int:
+    """Номер прогона, предлагающего «Собрать кейсы», — или 0.
+
+    Это последний «данные под кейс», и только если он закончился, а сборки
+    после него не было: после сборки следующий шаг — «Скачать» у неё самой.
+    Считается по всем прогонам, а не по странице журнала: страница может
+    кончиться раньше, чем найдётся более поздняя сборка.
+    """
+    stage = Run.params_snapshot["stage"].astext
+    stmt = select(stage, func.max(Run.id)).where(stage.in_((CASE_DATA, CASES))).group_by(stage)
+    last: dict[str, int] = dict((await session.execute(stmt)).tuples().all())
+    data = last.get(CASE_DATA, 0)
+    if not data or data < last.get(CASES, 0):
+        return 0
+    run = await session.get(Run, data)
+    return data if run is not None and run.status in FINISHED else 0
+
+
+def _row(
+    run: Run,
+    authors: Mapping[int, User] | None = None,
+    live: Collection[int] = (),
+    offers: int = 0,
+) -> RunRow:
     author = (authors or {}).get(run.started_by)
+    cases = (run.params_snapshot or {}).get("pack_cases")
     return RunRow(
         id=run.id,
         status=run.status.value,
@@ -381,4 +457,7 @@ def _row(run: Run, authors: Mapping[int, User] | None = None, live: Collection[i
         error=run.error,
         live=run.id in live,
         mode=str((run.params_snapshot or {}).get("provider") or ""),
+        pack=bool((run.params_snapshot or {}).get("pack")),
+        pack_cases=cases if isinstance(cases, int) else 0,
+        build_cases=run.id == offers,
     )

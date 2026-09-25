@@ -30,6 +30,7 @@ import { ESTIMATE_KEY, EstimateWindow } from './runs/EstimateWindow';
 import { Stage2Launcher } from './runs/Stage2Launcher';
 import { JournalFilters, isFiltered } from './runs/JournalFilters';
 import type { JournalFilter } from './runs/JournalFilters';
+import { NextStep } from './runs/NextStep';
 import { RunsTable } from './runs/RunsTable';
 
 const POLL_MS = 5_000;
@@ -222,6 +223,7 @@ export function RunsPage() {
               <Button onClick={() => setShowEstimate(true)}>Смета и запуск</Button>
               <Stage2Launcher run={run.data ?? null} onStarted={setRunId} />
             </Group>
+            <NextStep />
           </Stack>
         </Paper>
 

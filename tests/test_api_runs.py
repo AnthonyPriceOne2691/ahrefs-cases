@@ -14,6 +14,8 @@ import asyncio
 from collections.abc import Callable, Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
+from urllib.parse import unquote
+from zipfile import ZipFile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -618,3 +620,159 @@ def test_journal_calls_live_what_spending_counts(
 
     counted = sum(units[mode] for mode, run_id in ids.items() if run_id in live)
     assert found[1].live - found[0].live == counted == units["live"]
+
+
+def _pdfs(archive: Path | bytes, spare: Path) -> list[str]:
+    """Имена PDF в архиве — из файла или из тела ответа."""
+    if isinstance(archive, bytes):
+        spare.write_bytes(archive)
+        archive = spare
+    with ZipFile(archive) as bundle:
+        return sorted(name for name in bundle.namelist() if name.endswith(".pdf"))
+
+
+def _built(client: TestClient, headers: dict[str, str]) -> int:
+    """Путь до кейсов тремя кнопками; номер прогона сборки."""
+    client.post("/api/runs", headers=headers)
+    client.post("/api/runs/stage2", headers=headers)
+    return int(client.post("/api/runs/cases", headers=headers).json()["run_id"])
+
+
+def _journal(client: TestClient, headers: dict[str, str]) -> dict[int, dict[str, object]]:
+    rows = client.get("/api/runs", params={"limit": 100}, headers=headers).json()
+    return {row["id"]: row for row in rows}
+
+
+def test_cases_run_keeps_its_own_pack(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """P1, P3: у каждой сборки своя копия архива, и отдаётся она по номеру прогона.
+
+    Пачка дня одна: вторая сборка того же дня переписывает её под тем же именем
+    (урок L89). Копия первой после этого обязана остаться своей — с PDF первой
+    сборки, а не второй.
+    """
+    from ahrefs_cases import config
+    from ahrefs_cases.export.archive import newest_pack
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path / "out")
+    headers = _headers(client)
+    first = _built(client, headers)
+    fresh = newest_pack(tmp_path / "out")
+    assert fresh is not None, "сборка не дала архива — проверять нечего"
+    first_pdfs = _pdfs(fresh, tmp_path / "spare.zip")
+    second = int(client.post("/api/runs/cases", headers=headers).json()["run_id"])
+    second_pdfs = _pdfs(fresh, tmp_path / "spare.zip")
+
+    rows = _journal(client, headers)
+    assert (rows[first]["pack"], rows[second]["pack"]) == (True, True)
+    assert rows[first]["pack_cases"] == len(first_pdfs)
+    got = client.get(f"/api/runs/{first}/pack", headers=headers)
+    assert got.status_code == 200, got.text
+    assert got.headers["content-type"] == "application/zip"
+    assert f"прогон-{first}" in unquote(got.headers["content-disposition"])
+    assert _pdfs(got.content, tmp_path / "spare.zip") == first_pdfs
+    again = client.get(f"/api/runs/{second}/pack", headers=headers)
+    assert _pdfs(again.content, tmp_path / "spare.zip") == second_pdfs != first_pdfs
+
+
+def test_build_without_archive_leaves_no_pack(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """P2: сборка без архива копии не оставляет — свежий архив каталога ей чужой.
+
+    Без шага 1 у проекта нет вердикта по версии порогов теста, собирать нечего,
+    и прежний архив дня остаётся самым свежим. Приписать его этому прогону
+    значило бы отдать по его кнопке чужую сборку.
+    """
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    with ZipFile(tmp_path / "кейсы-2026-09-01.zip", "w") as bundle:
+        bundle.writestr("old.example — Кейс v1.pdf", b"%PDF-old")
+    headers = _headers(client)
+    run_id = int(client.post("/api/runs/cases", headers=headers).json()["run_id"])
+
+    assert _journal(client, headers)[run_id]["pack"] is False
+    got = client.get(f"/api/runs/{run_id}/pack", headers=headers)
+    assert got.status_code == 404
+    assert "своей пачки" in got.json()["detail"]
+    assert not (tmp_path / "runs").exists()
+
+
+def test_run_pack_with_a_deleted_case_is_not_given(
+    client: TestClient,
+    writer: Callable[[Callable[..., object]], None],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """P4: копия с кейсом удалённого проекта не отдаётся — как и пачка (24.09.2026)."""
+    from sqlalchemy import delete
+
+    from ahrefs_cases import config
+    from ahrefs_cases.export.archive import packed_checksums
+    from ahrefs_cases.storage.models.case import CaseArtifact
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    headers = _headers(client)
+    run_id = _built(client, headers)
+    copy = next((tmp_path / "runs" / str(run_id)).glob("*.zip"))
+    sums = packed_checksums(copy) or frozenset()
+    assert sums, "в копии нет PDF — проверять нечего"
+
+    async def _forget(session: object) -> None:
+        stmt = delete(CaseArtifact).where(CaseArtifact.checksum.in_(sums))
+        await session.execute(stmt)  # type: ignore[attr-defined]
+
+    writer(_forget)
+    got = client.get(f"/api/runs/{run_id}/pack", headers=headers)
+    assert got.status_code == 409
+    assert "удалённого проекта" in got.json()["detail"]
+
+
+def test_only_the_last_case_data_offers_to_build(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """P5: «Собрать кейсы» предлагает только последний «данные под кейс» без сборки после."""
+    from ahrefs_cases import config
+
+    monkeypatch.setattr(config.export, "output_dir", tmp_path)
+    headers = _headers(client)
+    client.post("/api/runs", headers=headers)
+    client.post("/api/runs/stage2", headers=headers)
+    rows = _journal(client, headers)
+    data = [run_id for run_id, row in rows.items() if row["stage"] == "case_data"]
+    assert data, "шаг 2 не дошёл до данных под кейс — проверять нечего"
+
+    assert [run_id for run_id, row in rows.items() if row["build_cases"]] == [max(data)]
+    assert client.get(f"/api/runs/{max(data)}", headers=headers).json()["build_cases"] is True
+    client.post("/api/runs/cases", headers=headers)
+    assert not any(row["build_cases"] for row in _journal(client, headers).values())
+
+
+def test_run_without_pack_says_why(
+    client: TestClient, writer: Callable[[Callable[..., object]], None]
+) -> None:
+    """P6, P7: шаг 1 пачки не собирает; путь в снимке вне `runs/` не отдаётся; без токена — 401."""
+    headers = _headers(client)
+    stage1 = _own_run(writer, "fixture")
+    made: list[int] = []
+
+    async def _escape(session: object) -> None:
+        from sqlalchemy import select as _select
+
+        author = (await session.execute(_select(User).where(User.email == EMAIL))).scalar_one()  # type: ignore[attr-defined]
+        run = Run(
+            started_by=author.id,
+            status=RunStatus.DONE,
+            params_snapshot={"stage": "cases", "pack": "../../etc/passwd"},
+        )
+        session.add(run)  # type: ignore[attr-defined]
+        await session.flush()  # type: ignore[attr-defined]
+        made.append(run.id)
+
+    writer(_escape)
+
+    assert client.get(f"/api/runs/{stage1}/pack", headers=headers).status_code == 404
+    assert client.get(f"/api/runs/{made[0]}/pack", headers=headers).status_code == 404
+    assert client.get(f"/api/runs/{stage1}/pack").status_code == 401

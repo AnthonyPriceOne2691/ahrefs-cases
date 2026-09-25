@@ -18,10 +18,12 @@ from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases.collect.budget import spend_summary, uncounted_spend
+from ahrefs_cases import config
+from ahrefs_cases.collect.budget import key_fingerprint, spend_summary, uncounted_spend
 from ahrefs_cases.collect.run_journal import system_user
 from ahrefs_cases.storage._enums import LedgerKind, RunItemOutcome, RunStatus
 from ahrefs_cases.storage.models.project import Project
@@ -136,9 +138,16 @@ async def test_no_live_spend_has_no_cost_per_hundred(db_session: AsyncSession) -
     assert cached_only.per_hundred() is None
 
 
-async def test_deduction_and_spent_ask_one_rule(db_session: AsyncSession) -> None:
-    """R8: вычет из остатка и «потрачено» видят 900 живых и не видят 400 fixture."""
-    await _run(db_session, LIVE, {"a.example": 900})
+async def test_deduction_and_spent_ask_one_rule(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R8: вычет из остатка и «потрачено» видят 900 живых и не видят 400 fixture.
+
+    Живой прогон оплачен текущим ключом — траты других ключей вычет не видит (Z49).
+    """
+    key = "ключ-одного-правила-0123456789abcd"
+    monkeypatch.setattr(config.ahrefs, "api_key", key)
+    await _run(db_session, {**LIVE, "api_key_fp": key_fingerprint(key)}, {"a.example": 900})
     await _run(db_session, FIXTURE, {"b.example": 400})
 
     deduction = await uncounted_spend(db_session, now=datetime.now(UTC))

@@ -281,15 +281,19 @@ async def test_uncounted_counts_only_live_runs(db_session: AsyncSession) -> None
     assert await uncounted_spend(db_session) == 0
 
 
-async def test_old_spend_falls_out_of_the_window(db_session: AsyncSession) -> None:
+async def test_old_spend_falls_out_of_the_window(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """E2: расход старше окна отставания не вычитается второй раз.
 
     Счётчик Ahrefs к этому времени его уже учёл. Не выпусти мы его из окна,
     один и тот же прогон вычитался бы вечно, и остаток уезжал бы в ноль.
+    Прогон оплачен текущим ключом: чужие траты не вычитаются вовсе (Z49).
     """
+    monkeypatch.setattr(config.ahrefs, "api_key", "ключ-окна-отставания-0123456789")
     user = await system_user(db_session)
     run = await open_run(db_session, started_by=user.id, projects_total=1)
-    run.params_snapshot = {"provider": "live"}
+    run.params_snapshot = {**run.params_snapshot, "provider": "live"}
     db_session.add(
         UnitsLedger(run_id=run.id, kind=LedgerKind.SPENT, units_estimated=900, units_actual=900)
     )
