@@ -33,3 +33,16 @@ export function months(from: string, to: string): string {
   const short = (iso: string) => iso.slice(0, 7).split('-').reverse().join('.');
   return `${short(from)} — ${short(to)}`;
 }
+
+/** «1 кейс», «3 кейса», «11 кейсов»: на кнопке число без согласованного слова
+ *  читается как номер, а не как количество файлов. */
+export function casesCount(count: number): string {
+  const tens = count % 100;
+  const ones = count % 10;
+  let word = 'кейсов';
+  if (tens < 11 || tens > 14) {
+    if (ones === 1) word = 'кейс';
+    else if (ones >= 2 && ones <= 4) word = 'кейса';
+  }
+  return `${num(count)} ${word}`;
+}

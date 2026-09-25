@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** run-keeps-its-pack
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** tests/test_api_runs.py::test_cases_run_keeps_its_own_pack
+- **diagnosis:** n/a reason=не дефект: новая выдача по просьбе владельца — кейсы по прогону кнопкой на прогоне
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («выгрузить кейсы по прогону… кнопочкой на прогоне, чтобы сразу»; из трёх вариантов выбран «Скачать собранное»: у сборки кейсов — архив ровно этой сборки, у «данных под кейс» — «Собрать кейсы»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=архив тот же, что собирает `pack_cases`; поставка кладёт его копию и отдаёт её, не меняя содержимого
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** src/ahrefs_cases/workers/jobs.py reason=копию откладывает задача воркера на томе выгрузки прода; тест видит inline-очередь и временный каталог, а не том контейнера и права на нём
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`; миграции нет — новые файлы в `runs/` каталога выгрузки и ключ `pack` в снимке прогона, откат — возврат кода
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде следующая сборка кейсов оставляет `runs/<номер>/…-прогон-<номер>.zip` в каталоге выгрузки, строка журнала несёт `pack: true`, и `GET /api/runs/<номер>/pack` отдаёт архив с теми же PDF, что «Скачать ZIP» на «Кейсах»
+- **observe_until:** 2026-10-09
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

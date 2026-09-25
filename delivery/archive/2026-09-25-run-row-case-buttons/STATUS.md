@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** run-row-case-buttons
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** web/src/pages/__tests__/run-cases.test.tsx
+- **diagnosis:** n/a reason=не дефект: экран к выдаче `run-keeps-its-pack` — кнопки в строке журнала по просьбе владельца
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («выгрузить кейсы по прогону… кнопочкой на прогоне, чтобы сразу»; выбран вариант «Скачать собранное»: у сборки — «Скачать», у «данных под кейс» — «Собрать кейсы», весь путь на экране «Прогоны»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: экран отдаёт то, что отдаёт API
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/pages/runs/RunCases.tsx reason=экран: скачивание — blob и клик ссылки в настоящем браузере, сборка — новый прогон, который журнал обязан подхватить сам; jsdom не скачивает и не видит раскладки новой колонки
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`; «Собрать кейсы» запускает ту же бесплатную сборку, что «Пересобрать кейсы» на «Кейсах»
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде у первой сборки после выкладки в строке журнала «Скачать 11 кейсов» (или сколько соберётся), и файл открывается архивом с этими PDF; у последнего «данные под кейс» — «Собрать кейсы»
+- **observe_until:** 2026-10-09
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

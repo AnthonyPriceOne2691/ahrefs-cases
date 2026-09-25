@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 
 import { fetchRuns } from '../../api/ops';
 import type { RunRow } from '../../api/types';
+import { casesCount } from '../format';
 import { RUNNING } from '../intake/RunLine';
 import { runWord, stageWord } from '../status';
 
@@ -33,12 +34,12 @@ const AFTER: Record<string, { next: string; toCases: boolean }> = {
     toCases: false,
   },
   stage2: {
-    next: 'Если есть хорошие и средние, следом сам идёт прогон «данные под кейс», а после него кейсы собираются на экране «Кейсы» кнопкой «Пересобрать кейсы».',
-    toCases: true,
+    next: 'Если есть хорошие и средние, следом сам идёт прогон «данные под кейс», и в его строке журнала появится «Собрать кейсы».',
+    toCases: false,
   },
   case_data: {
-    next: 'Осталось собрать кейсы: на экране «Кейсы» кнопка «Пересобрать кейсы», когда сборка закончится — «Скачать ZIP».',
-    toCases: true,
+    next: 'Осталось собрать кейсы: кнопка «Собрать кейсы» в строке этого прогона в журнале ниже.',
+    toCases: false,
   },
   cases: {
     next: 'Кейсы на экране «Кейсы»: «Скачать ZIP» — пачка целиком, «Скачать PDF» — по одному.',
@@ -64,9 +65,14 @@ export function nextStep(run: RunRow | null): NextHint | null {
   if (!FINISHED.has(run.status)) return null;
   const partial = run.status === 'partial' ? ' Что не собралось и почему — в журнале ниже.' : '';
   return {
-    text: `${title} — ${runWord(run.status)}.${partial} ${after.next}`,
+    text: `${title} — ${runWord(run.status)}.${partial} ${run.pack ? packed(run) : after.next}`,
     toCases: after.toCases,
   };
+}
+
+/** Сборка, отложившая свою пачку: забирать её можно прямо из строки журнала. */
+function packed(run: RunRow): string {
+  return `Собрано ${casesCount(run.pack_cases)}: «Скачать» в строке этого прогона — архив ровно этой сборки. Пачка целиком и PDF по одному — на экране «Кейсы».`;
 }
 
 export function NextStep() {
