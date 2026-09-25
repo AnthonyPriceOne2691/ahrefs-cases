@@ -7,7 +7,7 @@
 - **kind:** hotfix
 - **repro_test:** tests/test_uncounted_spend_per_key.py::test_spend_of_another_key_is_not_deducted
 - **diagnosis:** n/a reason=причина названа сметой прода словами: «остаток 10000, потрачено помимо счётчика 10460» — 10 460 это ровно живые траты 24.09 старым ключом, а `live_spend_since` фильтрует журнал только по режиму прогона и окну, не по ключу
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-25 by=human:anthony («это нужно хотфиксом сделать сейчас — правка вычета по старому ключу»)

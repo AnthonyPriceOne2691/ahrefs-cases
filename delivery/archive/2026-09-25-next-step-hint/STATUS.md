@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** next-step-hint
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** web/src/pages/__tests__/next-step.test.tsx
+- **diagnosis:** n/a reason=не дефект кода: путь до кейсов — три кнопки на двух экранах, и экран называл каждую, но не их порядок; на проде 25.09 после двух прогонов шага 1 ни владелец, ни пользователь не нашли, как получить PDF
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («давай быстренько закатим фикс с подсказкой» — на предложение: после каждого шага подсказка со следующей кнопкой, после шага 2 — ссылка на «Кейсы»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит, правка живёт только на экране
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/pages/runs/NextStep.tsx reason=экран: подсказка читает последний прогон живого журнала и опрашивает его, пока он идёт, — jsdom видит правило, а не то, как подсказка сменяется на глазах у человека
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`; правка только фронта, без записи куда-либо
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде под кнопками «Прогонов» стоит «Что дальше» по прогону №8 (шаг 1 готов → «Дособрать кандидатов»); следующий прогон любого шага сменяет подсказку без перезагрузки страницы
+- **observe_until:** 2026-10-09
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
