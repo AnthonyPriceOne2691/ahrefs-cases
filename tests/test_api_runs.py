@@ -801,9 +801,32 @@ def _mine_since(client: TestClient, headers: dict[str, str], first: int) -> list
 def test_cycle_estimate_counts_only_the_file(
     client: TestClient, writer: Callable[[Callable[..., object]], None]
 ) -> None:
-    """C1: смета цикла — по проектам файла, а не по всей базе; шаг 2 — верхней границей."""
+    """C1: смета цикла — по проектам файла, а не по всей базе; шаг 2 — верхней границей.
+
+    Второй проект база получает здесь же — вторая кампания того же сайта: в чистой
+    базе CI проект теста единственный, и «база шире файла» держалась бы только на
+    данных дев-стенда (L8, L58).
+    """
     headers = _headers(client)
     project = _file_project(writer)
+
+    async def _second(session: object) -> None:
+        session.add(  # type: ignore[attr-defined]
+            Project(
+                domain="runs.example",
+                period_start=date(2024, 1, 1),
+                period_end=date(2024, 12, 1),
+                niche="fintech",
+                geo="US",
+                service_type="seo",
+                client="Acme",
+                owner="i.petrov",
+                publishable=True,
+                notes="",
+            )
+        )
+
+    writer(_second)
     whole = client.get("/api/runs/estimate", headers=headers).json()
     cycle = client.get("/api/runs/chain/estimate", params={"projects": [project]}, headers=headers)
 
