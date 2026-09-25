@@ -162,4 +162,5 @@ def _view(report: IntakeReport) -> IntakeReportView:
         by_reason={reason.value: count for reason, count in report.by_reason().items()},
         rejections=_rows(report.rejections),
         notices=_rows(report.notices),
+        project_ids=list(report.project_ids),
     )

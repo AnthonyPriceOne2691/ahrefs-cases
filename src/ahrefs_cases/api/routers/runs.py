@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated
 from uuid import uuid4
@@ -27,9 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
-from ahrefs_cases.api.run_rows import journal_context, run_row
+from ahrefs_cases.api.run_estimates import cycle_estimate, estimate_view
+from ahrefs_cases.api.run_rows import hide_cycle_steps, journal_context, run_row
 from ahrefs_cases.api.schemas import (
     MAX_PAGE,
+    CycleStart,
     RunAuthor,
     RunCard,
     RunEstimate,
@@ -39,11 +42,18 @@ from ahrefs_cases.api.schemas import (
 )
 from ahrefs_cases.classify.candidates import stage2_candidates
 from ahrefs_cases.classify.windows import point_windows
-from ahrefs_cases.collect.budget import live_runs, reserved_units, uncounted_spend
-from ahrefs_cases.collect.factory import build_provider, build_quota
+from ahrefs_cases.collect.budget import live_runs
+from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.plan import build_case_plan, build_stage1_plan, build_stage2_plan
-from ahrefs_cases.collect.quota import preflight
-from ahrefs_cases.collect.run_journal import CASES, CHAIN, STAGE1, STAGE2, open_run
+from ahrefs_cases.collect.run_journal import (
+    CASES,
+    CYCLE,
+    STAGE1,
+    STAGE2,
+    ProjectFate,
+    cycle_children,
+    open_run,
+)
 from ahrefs_cases.collect.run_journal import fates as run_fates
 from ahrefs_cases.export.archive import run_pack_path
 from ahrefs_cases.export.removal import holds_deleted_case
@@ -98,25 +108,37 @@ async def start_cases(
 
 
 @router.post("/chain", response_model=RunStarted, status_code=status.HTTP_202_ACCEPTED)
-async def start_chain(
+async def start_cycle(
+    body: CycleStart,
     session: SessionDep,
     user: UserDep,
     _: Annotated[object, Depends(require_right("run"))] = None,
 ) -> RunStarted:
-    """«Довести до кейсов»: весь цикл одной кнопкой (решение владельца 25.09.2026).
+    """Цикл по проектам файла одной кнопкой (решение владельца 25.09.2026).
 
-    Не хватает units на весь цикл по верхней границе — отказ до открытия
-    прогона: «если юнитов мало и не хватит на полный цикл, то просто не давать
-    запускать». Экран показывает ту же смету, но решает здесь сервер.
+    Одна строка журнала на весь цикл; ступени идут сами. Не хватает units на
+    весь цикл по верхней границе — отказ до открытия прогона: «если юнитов
+    мало и не хватит на полный цикл, то просто не давать запускать».
     """
-    estimate = await _chain_estimate(session)
+    estimate = await cycle_estimate(session, body.project_ids)
+    if not estimate.projects:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="проектов этого списка в базе нет — загрузите список заново",
+        )
     if not estimate.may_start:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"на весь цикл не хватает units: нужно до {estimate.units_estimated}, "
             f"{estimate.reason or 'смета не пускает'}",
         )
-    return await _enqueue(session, user.id, job=chain_job, stage=STAGE1, chain=True)
+    return await _enqueue(
+        session,
+        user.id,
+        job=chain_job,
+        stage=CYCLE,
+        cycle=Cycle(projects=list(dict.fromkeys(body.project_ids)), units=estimate.units_estimated),
+    )
 
 
 DAY = timedelta(days=1)
@@ -146,7 +168,7 @@ async def list_runs(
     тринадцатое число, а не «до полуночи». Иначе человек, выбравший один день,
     получил бы пустой список и решил, что прогонов не было.
     """
-    stmt = select(Run).order_by(Run.id.desc())
+    stmt = select(Run).where(hide_cycle_steps()).order_by(Run.id.desc())
     if started_by is not None:
         stmt = stmt.where(Run.started_by == started_by)
     if since is not None:
@@ -230,7 +252,7 @@ async def estimate_run(
         now=date.today(),  # noqa: DTZ011 — календарная граница закрытого месяца
         windows=await point_windows(session),
     )
-    return await _estimate_view(
+    return await estimate_view(
         session,
         projects=len(projects),
         units=plan.estimated_units(),
@@ -267,7 +289,7 @@ async def estimate_stage2(
             "данные под кейс посчитаны по всем кандидатам — это верхняя граница: "
             "докупаются только тем, кто после шага 2 станет хорошим или средним"
         )
-    return await _estimate_view(
+    return await estimate_view(
         session,
         projects=len(chosen),
         units=second.estimated_units() + case.estimated_units(),
@@ -278,87 +300,13 @@ async def estimate_stage2(
 
 
 @router.get("/chain/estimate", response_model=RunEstimate)
-async def estimate_chain(
+async def estimate_cycle(
     session: SessionDep,
+    projects: Annotated[list[int], Query(min_length=1, max_length=1000)],
     _: Annotated[object, Depends(require_right("read"))] = None,
 ) -> RunEstimate:
-    """Смета кнопки «Довести до кейсов» — весь цикл по верхней границе."""
-    return await _chain_estimate(session)
-
-
-async def _chain_estimate(session: AsyncSession) -> RunEstimate:
-    """Шаг 1 по всем проектам, шаг 2 и данные под кейс — по верхней границе.
-
-    Кандидаты шага 2 выясняются только шагом 1, поэтому границу дают нынешние
-    кандидаты и проекты, за которых шаг 1 заплатит впервые: группа новых до
-    шага 1 неизвестна, и считать их «не кандидатами» значило бы занизить цену
-    цикла, который потом упрётся в квоту посередине. Одна смета на обе
-    ступени, потому что и подтверждение одно.
-    """
-    windows = await point_windows(session)
-    source = build_provider().source
-    today = date.today()  # noqa: DTZ011 — календарная граница закрытого месяца
-    projects = list((await session.execute(select(Project))).scalars().all())
-    first = await build_stage1_plan(session, projects, source=source, now=today, windows=windows)
-    unknown = {task.project_id for task in first.tasks}
-    wanted = set(await stage2_candidates(session, projects, source=source)) | unknown
-    chosen = [project for project in projects if project.id in wanted]
-    second = await build_stage2_plan(session, chosen, source=source, now=today, windows=windows)
-    case = await build_case_plan(session, chosen, source=source, now=today, windows=windows)
-    lines = [
-        *first.scheme_breakdown().as_lines(),
-        *second.scheme_breakdown().as_lines(),
-        *case.scheme_breakdown().as_lines(),
-    ]
-    if chosen:
-        lines.append(
-            "шаг 2 и данные под кейс посчитаны по нынешним кандидатам и новым проектам — "
-            "это верхняя граница: докупаются только тем, кто после шага 1 окажется кандидатом"
-        )
-    return await _estimate_view(
-        session,
-        projects=len(projects),
-        units=first.estimated_units() + second.estimated_units() + case.estimated_units(),
-        planned=len(first.tasks) + len(second.tasks) + len(case.tasks),
-        cached=len(first.cached) + len(second.cached) + len(case.cached),
-        lines=lines,
-    )
-
-
-async def _estimate_view(
-    session: SessionDep,
-    *,
-    projects: int,
-    units: int,
-    planned: int,
-    cached: int,
-    lines: list[str],
-) -> RunEstimate:
-    """Смета против квоты — одна на обе кнопки: вторая копия разошлась бы в деньгах.
-
-    Считать не по кому — строк схемы нет: пустой план печатает «данные по
-    этому списку уже куплены», а это неправда про список, где собирать не по
-    кому. Пустоту объясняет окно своими словами.
-    """
-    reserved = await reserved_units(session)
-    state = await preflight(
-        build_quota(),
-        needed=units,
-        reserved=reserved,
-        uncounted=await uncounted_spend(session),
-    )
-    return RunEstimate(
-        projects=projects,
-        units_estimated=units,
-        requests_planned=planned,
-        requests_cached=cached,
-        scheme_lines=lines if projects else [],
-        quota_left=state.left,
-        quota_reserved=reserved,
-        verdict=state.verdict.value,
-        may_start=state.may_start,
-        reason=state.reason,
-    )
+    """Смета цикла по проектам файла — то, что экран показывает после загрузки."""
+    return await cycle_estimate(session, projects)
 
 
 @router.get("/{run_id}", response_model=RunCard)
@@ -376,7 +324,7 @@ async def run_status(
     run = await session.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"прогона {run_id} нет")
-    fates = await run_fates(session, run_id, limit=MAX_FATES)
+    fates = await _card_fates(session, run)
     return RunCard(
         **run_row(
             run,
@@ -392,10 +340,22 @@ async def run_status(
                 reason=fate.reason,
                 units_actual=fate.units_actual,
                 project_deleted=fate.project_deleted,
+                stage=stage,
             )
-            for fate in fates
+            for stage, fate in fates
         ],
     )
+
+
+async def _card_fates(session: AsyncSession, run: Run) -> list[tuple[str, ProjectFate]]:
+    """Судьбы прогона, а у строки цикла — судьбы всех его ступеней с их ступенью."""
+    if (run.params_snapshot or {}).get("stage") != CYCLE:
+        return [("", fate) for fate in await run_fates(session, run.id, limit=MAX_FATES)]
+    found: list[tuple[str, ProjectFate]] = []
+    for child in await cycle_children(session, run):
+        stage = str((child.params_snapshot or {}).get("stage") or "")
+        found += [(stage, fate) for fate in await run_fates(session, child.id, limit=MAX_FATES)]
+    return found
 
 
 RUN_PACK_OF_DELETED = (
@@ -438,6 +398,14 @@ async def download_run_pack(
     return FileResponse(path, filename=path.name, media_type="application/zip")
 
 
+@dataclass(frozen=True, slots=True)
+class Cycle:
+    """Что строка цикла по файлу знает с рождения: свои проекты и смету."""
+
+    projects: list[int]
+    units: int
+
+
 async def _enqueue(
     session: SessionDep,
     user_id: int,
@@ -445,7 +413,7 @@ async def _enqueue(
     job: Callable[..., object],
     stage: str,
     refresh: bool = False,
-    chain: bool = False,
+    cycle: Cycle | None = None,
 ) -> RunStarted:
     """Создать прогон под замком постановки и поставить задачу.
 
@@ -464,13 +432,19 @@ async def _enqueue(
             detail=f"прогон {active.id} ещё идёт ({active.status.value}); второй не запускается",
         )
 
-    total = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
+    total = (
+        len(cycle.projects)
+        if cycle is not None
+        else int(await session.scalar(select(func.count()).select_from(Project)) or 0)
+    )
     key = f"run-{uuid4().hex}"
     run = await open_run(
         session, started_by=user_id, projects_total=total, stage=stage, job_key=key
     )
-    if chain:
-        run.params_snapshot = {**(run.params_snapshot or {}), CHAIN: True}
+    if cycle is not None:
+        # Смета — для показа «смета → факт»; резерв units держат ступени, не цикл.
+        run.units_estimated = cycle.units
+        run.params_snapshot = {**(run.params_snapshot or {}), "projects": cycle.projects}
     await session.commit()
 
     queue = build_queue()

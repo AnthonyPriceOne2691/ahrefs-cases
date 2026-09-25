@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from math import isclose
@@ -327,6 +327,7 @@ async def build_cases(
     domain: str | None = None,
     version: str | None = None,
     source: MetricSource,
+    only: Collection[int] | None = None,
 ) -> CaseReport:
     """Собрать кейсы по вердиктам версии порогов — по умолчанию действующей.
 
@@ -341,7 +342,7 @@ async def build_cases(
     # Окна нужны сверке чисел: точки пересчитываются по окнам **той версии
     # порогов, которой вынесен вердикт**, а не действующей сейчас.
     windows = thresholds_of(ruleset).windows
-    projects = await _projects(session, domain)
+    projects = await _projects(session, domain, only)
     verdicts = await _verdicts(session, ruleset.id)
     attempts = [
         await _attempt(
@@ -431,7 +432,9 @@ def _mismatch(project: Project, reason: str, *, rows: MetricSource | None) -> Ca
     )
 
 
-async def _projects(session: AsyncSession, domain: str | None) -> list[Project]:
+async def _projects(
+    session: AsyncSession, domain: str | None, only: Collection[int] | None = None
+) -> list[Project]:
     """Проекты в порядке, который не зависит от того, как лежат строки.
 
     Одного домена мало: у двух кампаний одного сайта он один, и их взаимный
@@ -443,6 +446,9 @@ async def _projects(session: AsyncSession, domain: str | None) -> list[Project]:
     stmt = select(Project).order_by(Project.domain, Project.period_start, Project.id)
     if domain is not None:
         stmt = stmt.where(Project.domain == domain)
+    # `only` — проекты цикла по файлу: пачка прогона — их кейсы, а не всей базы.
+    if only is not None:
+        stmt = stmt.where(Project.id.in_(list(only)))
     return list((await session.execute(stmt)).scalars().all())
 
 

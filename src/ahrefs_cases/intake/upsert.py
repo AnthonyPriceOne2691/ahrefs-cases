@@ -25,6 +25,10 @@ from ahrefs_cases.storage.models.project import Project
 class UpsertResult:
     created: int
     updated: int
+    project_ids: tuple[int, ...] = ()
+    """Проекты этого источника — созданные и обновлённые, в порядке строк.
+    По ним идёт цикл «по файлу» (решение владельца 25.09.2026): прогон и пачка
+    — проекты загруженного списка, а не вся база."""
 
 
 async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> UpsertResult:
@@ -35,17 +39,23 @@ async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> 
     existing = await _load_existing(session, drafts)
     created = 0
     updated = 0
+    touched: list[Project] = []
     for draft in drafts:
         project = existing.get(draft.key)
         if project is None:
-            session.add(_to_project(draft))
+            project = _to_project(draft)
+            session.add(project)
             created += 1
         else:
             _apply(project, draft)
             updated += 1
+        touched.append(project)
 
     await session.flush()
-    return UpsertResult(created=created, updated=updated)
+    # Номера — после `flush`: у новых проектов их выдаёт база. Дважды один проект
+    # (две одинаковые строки файла) — один номер.
+    ids = tuple(dict.fromkeys(project.id for project in touched))
+    return UpsertResult(created=created, updated=updated, project_ids=ids)
 
 
 async def _load_existing(

@@ -17,8 +17,9 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases import config
@@ -29,9 +30,11 @@ from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.run_journal import (
     CASES,
-    CHAIN,
+    STAGE1,
     STAGE2,
     add_item,
+    cycle_children,
+    cycle_projects,
     failure_reason,
     finish_run,
     open_run,
@@ -45,6 +48,9 @@ from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.verdict import Verdict
 from ahrefs_cases.storage.session import dispose_engine, get_sessionmaker
+
+if TYPE_CHECKING:
+    from ahrefs_cases.cli.case_commands import CasePack
 
 logger = logging.getLogger(__name__)
 
@@ -79,59 +85,126 @@ def cases_job(run_id: int) -> None:
 
 
 def chain_job(run_id: int) -> None:
-    """Весь цикл одной кнопкой: шаг 1 → шаг 2 с данными под кейс → сборка.
+    """Цикл по проектам файла одной кнопкой: шаг 1 → шаг 2 с данными под кейс → сборка.
 
-    Решение владельца 25.09.2026 — «почему бы не сделать сразу прогон по
-    ахрефсу и формирование кейсов». Отдельные кнопки (B6) остаются: цепочка —
-    ещё один путь, и деньги в нём сторожит смета всего цикла до запуска
-    (`POST /api/runs/chain`) плюс preflight каждой платной ступени внутри,
-    как у отдельных кнопок. Ступени — те же функции, что у кнопок (урок L63).
+    Решение владельца 25.09.2026: «прикрепил файл — смета — прогон — скачать
+    кейсы». Отдельные кнопки (B6) остаются; деньги цикла сторожит смета всего
+    цикла до запуска (`POST /api/runs/chain`) и preflight каждой платной
+    ступени внутри, как у отдельных кнопок. Ступени — те же функции, что у
+    кнопок (урок L63), только по проектам файла.
     """
-    asyncio.run(_chain(run_id))
+    asyncio.run(_cycle(run_id))
 
 
-async def _chain(run_id: int) -> None:
-    """Ступени по очереди; ступень кончилась не `done`/`partial` — цепочка стоит.
+async def _cycle(parent_id: int) -> None:
+    """Ступени — дочерние прогоны родителя; неудавшаяся ступень останавливает цикл.
 
-    Упавшая ступень бросает исключение из `_run_guarded` — оно и останавливает
-    цепочку, и роняет задачу в очереди, как у отдельной кнопки. Отклонённая
-    квотой ступень не бросает, её останавливает `_open_next`.
+    Родитель закрывается всегда — и после сборки, и после упавшей ступени
+    (исключение из `_run_guarded` роняет и задачу в очереди, как у кнопки).
     """
-    await _run_guarded(run_id, _collect(run_id, refresh=False))
-    second = await _open_next(run_id, STAGE2)
-    if second is None:
+    only = await _cycle_open(parent_id)
+    if only is None:
         return
-    await _run_guarded(second, _stage2(second))
-    build = await _open_next(second, CASES)
-    if build is not None:
-        await _run_guarded(build, _pack(build))
+    try:
+        first = await _child(parent_id, STAGE1)
+        await _run_guarded(first, _collect(first, refresh=False, only=only))
+        if not await _succeeded(first):
+            return
+        second = await _child(parent_id, STAGE2)
+        await _run_guarded(second, _stage2(second, only=only))
+        if not await _succeeded(second):
+            return
+        build = await _child(parent_id, CASES)
+        await _run_guarded(build, _pack_file(build, parent_id, only))
+    finally:
+        await _cycle_close(parent_id)
 
 
-async def _open_next(run_id: int, stage: str) -> int | None:
-    """Открыть следующую ступень цепочки — тем же автором и ключом задачи.
-
-    `None` — предыдущая ступень не удалась (упала, отклонена квотой): платить
-    дальше за то, что держится на её данных, нельзя. Ключ задачи общий: реапер
-    спрашивает очередь по нему, а журнал по нему же узнаёт цепочку.
-    """
+async def _cycle_open(parent_id: int) -> list[int] | None:
+    """Отметить цикл начатым и вернуть его проекты; `None` — строки цикла нет."""
     async with get_sessionmaker()() as session:
-        previous = await session.get(Run, run_id)
-        if previous is None or previous.status not in (RunStatus.DONE, RunStatus.PARTIAL):
+        parent = await session.get(Run, parent_id)
+        if parent is None:
+            logger.warning("cycle_without_run", extra={"run_id": parent_id})
             return None
-        total = int(await session.scalar(select(func.count()).select_from(Project)) or 0)
+        await start_run(session, parent)
+        await session.commit()
+        return cycle_projects(parent.params_snapshot)
+
+
+async def _child(parent_id: int, stage: str) -> int:
+    """Открыть ступень цикла — тем же автором и ключом задачи, что у родителя."""
+    async with get_sessionmaker()() as session:
+        parent = await session.get(Run, parent_id)
+        if parent is None:
+            message = f"строки цикла {parent_id} нет — ступень {stage} не открыть"
+            raise LookupError(message)
+        snapshot = parent.params_snapshot or {}
         run = await open_run(
             session,
-            started_by=previous.started_by,
-            projects_total=total,
+            started_by=parent.started_by,
+            projects_total=len(cycle_projects(snapshot)),
             stage=stage,
-            job_key=str((previous.params_snapshot or {}).get("job", "")),
+            job_key=str(snapshot.get("job", "")),
         )
-        run.params_snapshot = {**(run.params_snapshot or {}), CHAIN: True}
         await session.commit()
         return run.id
 
 
-async def _collect(run_id: int, *, refresh: bool) -> str:
+async def _succeeded(run_id: int) -> bool:
+    """Ступень удалась — `done` или `partial`; иначе платить дальше не за что."""
+    async with get_sessionmaker()() as session:
+        run = await session.get(Run, run_id)
+        return run is not None and run.status in (RunStatus.DONE, RunStatus.PARTIAL)
+
+
+async def _cycle_close(parent_id: int) -> None:
+    """Закрыть цикл по его ступеням: исход, причина, units и счёт проектов шага 1."""
+    async with get_sessionmaker()() as session:
+        parent = await session.get(Run, parent_id)
+        if parent is None:
+            return
+        children = await cycle_children(session, parent)
+        parent.status, parent.error = _cycle_outcome(children)
+        first = next(
+            (c for c in children if (c.params_snapshot or {}).get("stage") == STAGE1), None
+        )
+        if first is not None:
+            parent.projects_ok, parent.projects_failed = first.projects_ok, first.projects_failed
+        parent.units_actual = sum(child.units_actual for child in children)
+        parent.finished_at = datetime.now(UTC)
+        await session.commit()
+
+
+def _cycle_outcome(children: list[Run]) -> tuple[RunStatus, str]:
+    """Исход цикла — худший исход ступени, с её причиной.
+
+    Цикл без сборки в конце не «готов»: его остановила ступень, которая не
+    удалась, и причина — её. Ступень, так и оставшаяся открытой, значит, что
+    задача оборвалась посередине.
+    """
+    worst = {
+        RunStatus.FAILED: 0,
+        RunStatus.CANCELLED: 1,
+        RunStatus.QUEUED: 2,
+        RunStatus.RUNNING: 2,
+        RunStatus.PARTIAL: 3,
+        RunStatus.DONE: 4,
+    }
+    if not children:
+        return RunStatus.FAILED, "цикл не начал ни одной ступени"
+    bad = min(children, key=lambda child: worst[child.status])
+    if bad.status in (RunStatus.QUEUED, RunStatus.RUNNING):
+        return RunStatus.FAILED, "цикл оборвался посреди ступени — задача не дошла до конца"
+    if bad.status in (RunStatus.DONE, RunStatus.PARTIAL):
+        built = (children[-1].params_snapshot or {}).get("stage") == CASES
+        if not built:
+            return RunStatus.FAILED, "цикл остановился до сборки кейсов"
+        return bad.status, ""
+    return bad.status, bad.error
+
+
+async def _collect(run_id: int, *, refresh: bool, only: list[int] | None = None) -> str:
     """Прогон по уже открытому прогону: его создал обработчик запроса.
 
     Строку создаёт API, потому что только он знает, кто нажал кнопку; задача
@@ -139,7 +212,7 @@ async def _collect(run_id: int, *, refresh: bool) -> str:
     """
     async with get_sessionmaker()() as session:
         run = await session.get(Run, run_id)
-        projects = list((await session.execute(select(Project))).scalars().all())
+        projects = await _projects(session, only)
         # Окна точек передаёт вызывающий: `collect` не знает про пороги по
         # контракту слоёв. Без них задача покупала бы бесплатный максимум под
         # минимальную цену запроса — то есть прогон, запущенный кнопкой, стоил
@@ -169,7 +242,7 @@ async def _classify(session: AsyncSession) -> ClassifyReport:
     return report
 
 
-async def _stage2(run_id: int) -> str:
+async def _stage2(run_id: int, *, only: list[int] | None = None) -> str:
     """Кандидаты → шаг 2 → группы заново → данные под кейс тем, у кого он будет.
 
     Шаг 2 продолжает прогон, открытый API. Ступень кейса — своя строка журнала
@@ -180,7 +253,7 @@ async def _stage2(run_id: int) -> str:
         run = await session.get(Run, run_id)
         source = build_provider().source
         windows = await point_windows(session)
-        projects = list((await session.execute(select(Project))).scalars().all())
+        projects = await _projects(session, only)
         candidates = await stage2_candidates(session, projects, source=source)
         if run is not None:
             run.projects_total = len(candidates)
@@ -191,7 +264,7 @@ async def _stage2(run_id: int) -> str:
         second = await collect_stage2(session, candidates, run=run, windows=windows)
         await session.commit()
         groups = await _classify(session)
-        chosen = await _with_case(session)
+        chosen = await _with_case(session, only)
         lines = [
             f"шаг 2: собрано {second.projects_ok} из {len(candidates)}, units {second.units_spent}",
             *groups.as_lines(),
@@ -218,12 +291,22 @@ async def _stage2(run_id: int) -> str:
     )
 
 
-async def _with_case(session: AsyncSession) -> list[int]:
+async def _with_case(session: AsyncSession, only: list[int] | None = None) -> list[int]:
     """Проекты, которым кейс положен: `good` и `medium` по действующей версии."""
     ruleset = await active_ruleset(session)
     stmt = select(Verdict.project_id).where(
         Verdict.ruleset_id == ruleset.id, Verdict.group.in_([Group.GOOD, Group.MEDIUM])
     )
+    if only is not None:
+        stmt = stmt.where(Verdict.project_id.in_(only))
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _projects(session: AsyncSession, only: list[int] | None) -> list[Project]:
+    """Проекты прогона: вся база или проекты цикла по файлу."""
+    stmt = select(Project)
+    if only is not None:
+        stmt = stmt.where(Project.id.in_(only))
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -238,7 +321,7 @@ async def _pack(run_id: int) -> str:
     """
     # Импорт внутри: `export` живёт слоем выше `workers` по контракту слоёв,
     # и тянуть его на уровень модуля значило бы связать воркер с рендером.
-    from ahrefs_cases.cli.case_commands import case_fates, pack_built
+    from ahrefs_cases.cli.case_commands import pack_built
     from ahrefs_cases.export.archive import pack_stamp
 
     async with get_sessionmaker()() as session:
@@ -258,24 +341,72 @@ async def _pack(run_id: int) -> str:
         # `_classify`: кнопка и консоль собирают по одним данным (урок L63).
         result = await pack_built(session, build_provider().source)
         kept = await _keep_pack(run, run_id, before)
-        if run is not None:
-            for fate in case_fates(result):
-                await add_item(
-                    session,
-                    run,
-                    project_id=fate.project_id,
-                    raw_domain=fate.domain,
-                    outcome=fate.outcome,
-                    reason=fate.reason,
-                )
-            run.projects_total = len(result.report.attempts)
-            await finish_run(session, run)
+        await _close_build(session, run, result)
         await session.commit()
     summary = "; ".join(result.lines())
     if kept:
         summary = f"{summary}; копия прогона: {kept}"
     logger.info("cases_packed", extra={"run_id": run_id, "summary": summary})
     return summary
+
+
+async def _pack_file(run_id: int, parent_id: int, only: list[int]) -> str:
+    """Сборка цикла по файлу: кейсы только его проектов, архив — в каталог цикла.
+
+    Пачка дня на «Кейсах» — вся база — не трогается: архив пишется сразу в
+    `runs/<номер цикла>/`, и копия не нужна. Путь и число кейсов уходят в
+    снимок строки цикла той же транзакцией, что судьбы сборки: цикл закроется
+    следом, и кнопка «Скачать» у него будет с первого же ответа (урок L228).
+    """
+    from ahrefs_cases.cli.case_commands import pack_built
+    from ahrefs_cases.export.archive import RUN_PACKS
+
+    output = config.export.output_dir
+    name = f"кейсы-{datetime.now(UTC).date().isoformat()}-прогон-{parent_id}.zip"
+    async with get_sessionmaker()() as session:
+        run = await session.get(Run, run_id)
+        if run is not None:
+            await start_run(session, run)
+            await session.commit()
+        await seed_thresholds(session)
+        result = await pack_built(
+            session,
+            build_provider().source,
+            only=only,
+            output_dir=output / RUN_PACKS / str(parent_id),
+            name=name,
+        )
+        parent = await session.get(Run, parent_id)
+        if parent is not None and result.bundle is not None:
+            parent.params_snapshot = {
+                **(parent.params_snapshot or {}),
+                "pack": result.bundle.path.relative_to(output).as_posix(),
+                "pack_cases": len(result.bundle.packed),
+            }
+        await _close_build(session, run, result)
+        await session.commit()
+    summary = "; ".join(result.lines())
+    logger.info("cycle_packed", extra={"run_id": run_id, "cycle": parent_id, "summary": summary})
+    return summary
+
+
+async def _close_build(session: AsyncSession, run: Run | None, result: CasePack) -> None:
+    """Судьба каждого рассмотренного проекта — строкой журнала, и сборка закрыта (Z46)."""
+    from ahrefs_cases.cli.case_commands import case_fates
+
+    if run is None:
+        return
+    for fate in case_fates(result):
+        await add_item(
+            session,
+            run,
+            project_id=fate.project_id,
+            raw_domain=fate.domain,
+            outcome=fate.outcome,
+            reason=fate.reason,
+        )
+    run.projects_total = len(result.report.attempts)
+    await finish_run(session, run)
 
 
 async def _keep_pack(run: Run | None, run_id: int, before: tuple[Path, int] | None) -> str | None:

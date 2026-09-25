@@ -231,12 +231,15 @@ def test_text_volume_is_a_notice_not_a_refusal(client: TestClient) -> None:
 def test_second_upload_updates_instead_of_doubling(client: TestClient) -> None:
     """E3: повторная загрузка того же файла законна и видна как «обновлено»."""
     book = _xlsx([_row(i) for i in range(GOOD_ROWS)])
-    _upload(client, book)
 
+    first = _upload(client, book).json()
     again = _upload(client, book).json()
 
     assert again["created"] == 0
     assert again["updated"] == GOOD_ROWS
+    # F1: те же проекты — те же номера; по ним экран считает смету цикла по файлу.
+    assert len(first["project_ids"]) == GOOD_ROWS
+    assert again["project_ids"] == first["project_ids"]
 
 
 def test_unknown_format_is_a_refusal_not_a_crash(client: TestClient) -> None:
@@ -671,11 +674,11 @@ def test_estimate_refuses_when_quota_is_short(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """E9: не хватает квоты — запуск закрыт, причина с числами."""
-    from ahrefs_cases.api.routers import runs
+    from ahrefs_cases.api import run_estimates
     from ahrefs_cases.collect.quota import FixtureQuota
 
     _upload(client, _xlsx([_row(i) for i in range(GOOD_ROWS)]))
-    monkeypatch.setattr(runs, "build_quota", lambda: FixtureQuota(left=1))
+    monkeypatch.setattr(run_estimates, "build_quota", lambda: FixtureQuota(left=1))
 
     body = _estimate(client)
 
@@ -693,7 +696,7 @@ def test_unknown_quota_is_not_the_same_as_empty(
     «Квоты мало» лечится ожиданием, «остаток неизвестен» — починкой доступа к
     Ahrefs. Слить их значит показать человеку не ту причину.
     """
-    from ahrefs_cases.api.routers import runs
+    from ahrefs_cases.api import run_estimates
     from ahrefs_cases.collect.ahrefs_transport import AhrefsUnavailableError
 
     class _Silent:
@@ -701,7 +704,7 @@ def test_unknown_quota_is_not_the_same_as_empty(
             raise AhrefsUnavailableError("Ahrefs не отвечает")
 
     _upload(client, _xlsx([_row(0)]))
-    monkeypatch.setattr(runs, "build_quota", _Silent)
+    monkeypatch.setattr(run_estimates, "build_quota", _Silent)
 
     body = _estimate(client)
 

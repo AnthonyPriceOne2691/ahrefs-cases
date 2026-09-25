@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** chain-to-cases
+- **slug:** cycle-by-file
 - **stack:** delivery@1.92, cqg@2.33, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** feature
-- **repro_test:** tests/test_api_runs.py::test_chain_runs_every_stage_to_a_pack
-- **diagnosis:** n/a reason=не дефект: новая выдача по просьбе владельца — весь цикл одной кнопкой
+- **repro_test:** tests/test_api_runs.py::test_cycle_runs_the_file_to_its_own_pack
+- **diagnosis:** n/a reason=не дефект: новый путь по просьбе владельца — цикл по загруженному файлу одной кнопкой
 - **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («почему бы не сделать сразу прогон по ахрефсу и формирование кейсов и как раз чтобы кнопкой скачать»; «у нас же есть оценка сметы, если юнитов мало и не хватит на полный цикл, то просто не давать запускать прогон»)
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («прикрепил ссылку или файл, логика проанализировала файл… + предварительная смета, потом стартует прогон и появляется строка в журнале с неактивной кнопкой скачать кейсы… по окончании собираются нужные кейсы и становится активной кнопка скачать»; на вопрос об охвате — «Только проекты файла»; «если юнитов мало и не хватит на полный цикл, то просто не давать запускать прогон»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=архив тот же, что у сборки кейсов; цепочка только запускает ступени по очереди
+- **artifact_oracle:** n/a reason=архив собирается тем же `pack`, что пачка дня, только по проектам файла и в каталог цикла; содержимое PDF не меняется
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки, класс S
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no
-- **runtime_paths:** src/ahrefs_cases/workers/jobs.py reason=цепочка — одна задача воркера на живом ключе прода: платит за шаг 1 и шаг 2 без второго подтверждения, и тест видит fixture и inline-очередь, а не квоту живого ключа
-- **irreversible_surfaces:** units reason=цепочка тратит units ключа заказчика на шаг 2 и данные под кейс без второго нажатия — по решению владельца 25.09.2026; предохранитель — смета всего цикла по верхней границе до запуска (сервер отказывает, если не хватает) и preflight каждой платной ступени внутри цепочки, как у отдельных кнопок
+- **runtime_paths:** src/ahrefs_cases/workers/jobs.py reason=цикл — одна задача воркера на живом ключе прода: платит за шаг 1 и шаг 2 проектов файла без второго подтверждения, и тест видит fixture и inline-очередь, а не квоту живого ключа
+- **irreversible_surfaces:** units reason=цикл тратит units ключа заказчика на шаг 2 и данные под кейс проектов файла без второго нажатия — по решению владельца 25.09.2026; предохранитель — смета всего цикла по верхней границе до запуска (сервер отказывает, если не хватает) и preflight каждой платной ступени внутри, как у отдельных кнопок
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде первая цепочка оставляет в журнале шаг 1, шаг 2, данные под кейс и сборку одного автора с одним ключом задачи, у сборки «Скачать N кейсов»; расход цепочки не больше её сметы
+- **observe_signal:** на проде первый цикл по файлу — одна строка «цикл по файлу» в журнале, шаг внутри неё меняется без перезагрузки, «Скачать» неактивна до конца и активна после; в архиве только кейсы проектов файла, пачка дня на «Кейсах» не переписана; расход цикла не больше его сметы
 - **observe_until:** 2026-10-09
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
