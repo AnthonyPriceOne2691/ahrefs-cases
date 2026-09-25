@@ -58,6 +58,9 @@ function RunNumber({ run }: { run: RunRow }) {
       {run.stage && (
         <Text size="xs" c="dimmed" data-stage={run.stage}>
           {stageWord(run.stage)}
+          {/* Цикл по файлу — одна строка на все ступени: какая идёт (или на
+              какой он встал), видно здесь же. */}
+          {run.current_stage && run.status !== 'done' && ` · ${stageWord(run.current_stage)}`}
         </Text>
       )}
     </Table.Td>

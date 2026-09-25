@@ -23,6 +23,7 @@ from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
 
 FINISHED = frozenset({RunStatus.DONE, RunStatus.PARTIAL})
+OPEN = frozenset({RunStatus.QUEUED, RunStatus.RUNNING})
 
 
 async def offers_build(session: AsyncSession) -> int:
@@ -131,7 +132,13 @@ def run_row(
         projects_total=run.projects_total,
         projects_ok=run.projects_ok,
         projects_failed=run.projects_failed,
-        projects_skipped=max(0, run.projects_total - run.projects_ok - run.projects_failed),
+        # Пропущенных узнают в конце: у идущего прогона «пропущено» — это ещё
+        # не дошедшие, и строка цикла в очереди писала «пропущено 1» (стенд, 25.09).
+        projects_skipped=(
+            0
+            if run.status in OPEN
+            else max(0, run.projects_total - run.projects_ok - run.projects_failed)
+        ),
         units_estimated=run.units_estimated,
         # У цикла units — сумма его ступеней: пока он идёт, своих у него нет.
         units_actual=max(run.units_actual, cycle.units),

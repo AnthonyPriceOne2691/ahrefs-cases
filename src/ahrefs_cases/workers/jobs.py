@@ -102,22 +102,34 @@ async def _cycle(parent_id: int) -> None:
     Родитель закрывается всегда — и после сборки, и после упавшей ступени
     (исключение из `_run_guarded` роняет и задачу в очереди, как у кнопки).
     """
-    only = await _cycle_open(parent_id)
-    if only is None:
-        return
     try:
-        first = await _child(parent_id, STAGE1)
-        await _run_guarded(first, _collect(first, refresh=False, only=only))
-        if not await _succeeded(first):
+        only = await _cycle_open(parent_id)
+        if only is None:
             return
-        second = await _child(parent_id, STAGE2)
-        await _run_guarded(second, _stage2(second, only=only))
-        if not await _succeeded(second):
-            return
-        build = await _child(parent_id, CASES)
-        await _run_guarded(build, _pack_file(build, parent_id, only))
+        try:
+            await _cycle_steps(parent_id, only)
+        finally:
+            await _cycle_close(parent_id)
     finally:
-        await _cycle_close(parent_id)
+        # Движок кэширован на процесс и привязан к циклу событий этой задачи:
+        # закрыть его здесь, как `_run_guarded` у каждой ступени. Иначе закрытие
+        # цикла оставляло свежий движок, и следующая задача того же процесса
+        # получала соединения мёртвого цикла (воркер без fork, стенд 25.09.2026).
+        await dispose_engine()
+
+
+async def _cycle_steps(parent_id: int, only: list[int]) -> None:
+    """Шаг 1 → шаг 2 с данными под кейс → сборка; неудавшаяся ступень — стоп."""
+    first = await _child(parent_id, STAGE1)
+    await _run_guarded(first, _collect(first, refresh=False, only=only))
+    if not await _succeeded(first):
+        return
+    second = await _child(parent_id, STAGE2)
+    await _run_guarded(second, _stage2(second, only=only))
+    if not await _succeeded(second):
+        return
+    build = await _child(parent_id, CASES)
+    await _run_guarded(build, _pack_file(build, parent_id, only))
 
 
 async def _cycle_open(parent_id: int) -> list[int] | None:

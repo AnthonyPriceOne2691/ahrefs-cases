@@ -45,6 +45,9 @@ const AFTER: Record<string, { next: string; toCases: boolean }> = {
     next: 'Кейсы на экране «Кейсы»: «Скачать ZIP» — пачка целиком, «Скачать PDF» — по одному.',
     toCases: true,
   },
+  // Цикл по файлу отвечает за себя сам (`cycleHint`); запись нужна, чтобы
+  // ступень была знакомой.
+  cycle: { next: '', toCases: false },
 };
 
 export interface NextHint {
@@ -52,10 +55,30 @@ export interface NextHint {
   toCases: boolean;
 }
 
+/** Цикл по файлу: пока идёт — какой шаг сейчас; кончился — скачать или почему нечего. */
+function cycleHint(run: RunRow, title: string): NextHint | null {
+  if (run.stage !== 'cycle') return null;
+  if (RUNNING.has(run.status)) {
+    const now = run.current_stage ? `: сейчас ${stageWord(run.current_stage)}` : '';
+    return {
+      text: `${title} — ${runWord(run.status)}${now}. «Скачать» в его строке станет активной, когда соберутся кейсы.`,
+      toCases: false,
+    };
+  }
+  if (!FINISHED.has(run.status)) return null;
+  if (run.pack) return { text: `${title} — ${runWord(run.status)}. ${packed(run)}`, toCases: true };
+  return {
+    text: `${title} — ${runWord(run.status)}. Кейсов в архиве нет — почему, сказано по каждому проекту в раскрытии строки: группа, контент-запрет или нехватка данных.`,
+    toCases: false,
+  };
+}
+
 export function nextStep(run: RunRow | null): NextHint | null {
   const after = run ? AFTER[run.stage] : undefined;
   if (!run || !after) return null;
   const title = `Прогон №${run.id} — ${stageWord(run.stage)}`;
+  const cycled = cycleHint(run, title);
+  if (cycled) return cycled;
   if (RUNNING.has(run.status)) {
     return {
       text: `${title} — ${runWord(run.status)}. Когда он закончится, здесь появится следующий шаг.`,

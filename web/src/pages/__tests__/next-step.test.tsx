@@ -37,6 +37,7 @@ function run(stage: string, status: string, extra: Partial<RunRow> = {}): RunRow
     pack: false,
     pack_cases: 0,
     build_cases: false,
+    current_stage: '',
     ...extra,
   };
 }
@@ -88,6 +89,21 @@ describe('правило «что дальше»', () => {
     expect(hint?.text).toContain('частично');
     expect(hint?.text).toContain('журнал');
     expect(hint?.text).toContain('«Дособрать кандидатов»');
+  });
+});
+
+describe('цикл по файлу', () => {
+  it('K3: идёт — какой шаг сейчас и что «Скачать» станет активной; кончился — скачать или почему нечего', () => {
+    const going = nextStep(run('cycle', 'running', { current_stage: 'stage2' }));
+    expect(going?.text).toContain('сейчас шаг 2');
+    expect(going?.text).toContain('«Скачать» в его строке станет активной');
+    const built = nextStep(run('cycle', 'done', { pack: true, pack_cases: 1 }));
+    expect(built?.text).toContain('Собрано 1 кейс');
+    expect(built?.toCases).toBe(true);
+    const empty = nextStep(run('cycle', 'done'));
+    expect(empty?.text).toContain('Кейсов в архиве нет');
+    expect(empty?.text).toContain('в раскрытии строки');
+    expect(nextStep(run('cycle', 'failed', { current_stage: 'stage2' }))).toBeNull();
   });
 });
 

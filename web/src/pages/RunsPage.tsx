@@ -23,6 +23,7 @@ import { usePagedScreen } from '../app/screenState';
 import { useStickyFlag } from '../app/stickyFlag';
 import { Pager } from '../components/Pager';
 
+import { CycleStart } from './intake/CycleStart';
 import { IntakeOutcome } from './intake/IntakeOutcome';
 import { RUNNING } from './intake/RunLine';
 import { SourceForm } from './intake/SourceForm';
@@ -229,7 +230,10 @@ export function RunsPage() {
 
         {report && (
           <Paper className="glass" p="lg">
-            <IntakeOutcome report={report} />
+            <Stack gap="md">
+              <IntakeOutcome report={report} />
+              <CycleStart projectIds={report.project_ids} onStarted={setRunId} />
+            </Stack>
           </Paper>
         )}
 

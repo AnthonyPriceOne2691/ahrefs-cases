@@ -38,6 +38,7 @@ function run(id: number, stage: string, extra: Partial<RunRow> = {}): RunRow {
     pack: false,
     pack_cases: 0,
     build_cases: false,
+    current_stage: '',
     ...extra,
   };
 }
