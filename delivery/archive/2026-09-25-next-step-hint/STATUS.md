@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** web/src/pages/__tests__/next-step.test.tsx
 - **diagnosis:** n/a reason=не дефект кода: путь до кейсов — три кнопки на двух экранах, и экран называл каждую, но не их порядок; на проде 25.09 после двух прогонов шага 1 ни владелец, ни пользователь не нашли, как получить PDF
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-25 by=human:anthony («давай быстренько закатим фикс с подсказкой» — на предложение: после каждого шага подсказка со следующей кнопкой, после шага 2 — ссылка на «Кейсы»)
