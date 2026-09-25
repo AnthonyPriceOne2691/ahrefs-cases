@@ -34,6 +34,9 @@ function run(stage: string, status: string, extra: Partial<RunRow> = {}): RunRow
     error: '',
     live: true,
     mode: 'live',
+    pack: false,
+    pack_cases: 0,
+    build_cases: false,
     ...extra,
   };
 }
@@ -46,25 +49,28 @@ describe('правило «что дальше»', () => {
     expect(hint?.toCases).toBe(false);
   });
 
-  it('N2: после шага 2 — данные под кейс идут сами, дальше «Кейсы»', () => {
+  it('N2: после шага 2 — данные под кейс идут сами, в их строке будет «Собрать кейсы»', () => {
     const hint = nextStep(run('stage2', 'done'));
     expect(hint?.text).toContain('данные под кейс');
-    expect(hint?.text).toContain('«Пересобрать кейсы»');
-    expect(hint?.toCases).toBe(true);
+    expect(hint?.text).toContain('«Собрать кейсы»');
+    expect(hint?.toCases).toBe(false);
   });
 
-  it('N3: после данных под кейс — пересобрать и скачать', () => {
+  it('N3: после данных под кейс — «Собрать кейсы» в строке прогона', () => {
     const hint = nextStep(run('case_data', 'done'));
-    expect(hint?.text).toContain('«Пересобрать кейсы»');
-    expect(hint?.text).toContain('«Скачать ZIP»');
-    expect(hint?.toCases).toBe(true);
+    expect(hint?.text).toContain('«Собрать кейсы» в строке этого прогона');
+    expect(hint?.toCases).toBe(false);
   });
 
-  it('N4: после сборки кейсов — скачать пачкой или по одному', () => {
-    const hint = nextStep(run('cases', 'done'));
-    expect(hint?.text).toContain('«Скачать ZIP»');
-    expect(hint?.text).toContain('«Скачать PDF»');
-    expect(hint?.toCases).toBe(true);
+  it('N4: после сборки кейсов — «Скачать» в строке и число кейсов; без копии — экран «Кейсы»', () => {
+    const own = nextStep(run('cases', 'done', { pack: true, pack_cases: 11 }));
+    expect(own?.text).toContain('Собрано 11 кейсов');
+    expect(own?.text).toContain('«Скачать» в строке этого прогона');
+    expect(own?.toCases).toBe(true);
+    const older = nextStep(run('cases', 'done'));
+    expect(older?.text).toContain('«Скачать ZIP»');
+    expect(older?.text).toContain('«Скачать PDF»');
+    expect(older?.toCases).toBe(true);
   });
 
   it('N5: идущий — «когда он закончится»; упавший, отменённый, отклонённый и без ступени — молчат', () => {
@@ -94,19 +100,20 @@ describe('подсказка на экране', () => {
     window.history.pushState({}, '', '/');
   });
 
-  it('N7: после данных под кейс «Прогоны» ведут на «Кейсы»', async () => {
+  it('N7: после сборки «Прогоны» называют число кейсов и ведут на «Кейсы»', async () => {
+    const built = run('cases', 'done', { id: 10, pack: true, pack_cases: 11 });
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const path = (typeof input === 'string' ? input : input.toString()).split('?')[0] ?? '';
-        const body = path.endsWith('/api/runs') ? [run('case_data', 'done', { id: 10 })] : [];
+        const body = path.endsWith('/api/runs') ? [built] : [];
         return new Response(JSON.stringify(body), { status: 200 });
       }),
     );
 
     renderScreen(<RunsPage />);
 
-    const hint = await screen.findByText(/№10 — данные под кейс — готов/);
+    const hint = await screen.findByText(/№10 — сборка кейсов — готов\. Собрано 11 кейсов/);
     expect(hint).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Перейти к кейсам' })).toHaveAttribute(
       'href',

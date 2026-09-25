@@ -13,6 +13,7 @@ import type { RunRow } from '../../api/types';
 import { num } from '../format';
 import { runWord, stageWord, unitsNote } from '../status';
 
+import { RunCases } from './RunCases';
 import { FatesRow, WhySkipped } from './RunFates';
 
 /** Цвет статуса. Исходов пять, и «частично» — не то же, что «готово». */
@@ -36,9 +37,12 @@ function moment(iso: string | null): string {
  *  длинная почта — раздвигает свою колонку за счёт всех остальных. */
 const CELL_WIDTH = 220;
 
+/** Ширина колонки статуса, в которую «частично» влезает целиком. */
+const STATUS_WIDTH = 116;
+
 /** Столько колонок в таблице. Раскрытие судеб занимает строку во всю ширину,
  *  и это число — единственное место, где ширина названа. */
-const COLUMNS = 7;
+const COLUMNS = 8;
 
 /** Фон полосы по номеру ПРОГОНА в списке. */
 function stripe(index: number): string | undefined {
@@ -56,6 +60,18 @@ function RunNumber({ run }: { run: RunRow }) {
           {stageWord(run.stage)}
         </Text>
       )}
+    </Table.Td>
+  );
+}
+
+/** Статус значком. Нижняя граница ширины: колонка «Кейсы» забирает место у
+ *  соседей, и «частично» обрезалось до «ЧАСТИ…» (браузер, 25.09.2026). */
+function RunStatus({ run }: { run: RunRow }) {
+  return (
+    <Table.Td ta="center" miw={STATUS_WIDTH}>
+      <Badge variant="light" color={STATUS_COLOR[run.status] ?? 'gray'} data-status={run.status}>
+        {runWord(run.status)}
+      </Badge>
     </Table.Td>
   );
 }
@@ -97,21 +113,14 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
             <Table.Th ta="center">Завершён</Table.Th>
             <Table.Th ta="center">Проекты</Table.Th>
             <Table.Th ta="center">Units: смета → факт</Table.Th>
+            <Table.Th ta="center">Кейсы</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {rows.flatMap((run, index) => [
             <Table.Tr key={run.id} data-run={run.id} bg={stripe(index)}>
               <RunNumber run={run} />
-              <Table.Td ta="center">
-                <Badge
-                  variant="light"
-                  color={STATUS_COLOR[run.status] ?? 'gray'}
-                  data-status={run.status}
-                >
-                  {runWord(run.status)}
-                </Badge>
-              </Table.Td>
+              <RunStatus run={run} />
               {/* Журнал существует ради вопроса «кто это запускал», и ответ
                   обязан переживать увольнение: учётку удалили — человек
                   остаётся здесь с пометкой. */}
@@ -143,6 +152,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                 />
               </Table.Td>
               <RunUnits run={run} />
+              <RunCases run={run} />
             </Table.Tr>,
             <FatesRow
               key={`${run.id}-fates`}
