@@ -17,7 +17,7 @@ import { FOLD_MS } from '../../app/foldedChoice';
 import { ApiError } from '../../api/client';
 import { fetchRun } from '../../api/ops';
 import type { RunCard } from '../../api/types';
-import { fateWord } from '../status';
+import { stageWord, fateWord } from '../status';
 
 /** Исход «собран» (`RunItemOutcome.OK` на сервере). В раскрытие он не
  *  попадает: знак «?» спрашивает, кого прогон не собрал и почему, а собранные —
@@ -80,7 +80,12 @@ function TroubleTable({ fates }: { fates: Fate[] }) {
               </Text>
             </Table.Td>
             <Table.Td>
-              <Text size="xs">{fateWord(fate.outcome)}</Text>
+              <Text size="xs">
+                {/* У цикла по файлу судьбы всех ступеней: без ступени «пропущен»
+                    шага 1 и сборки читались бы одинаково. */}
+                {fate.stage ? `${stageWord(fate.stage)} · ` : ''}
+                {fateWord(fate.outcome)}
+              </Text>
             </Table.Td>
             <Table.Td>
               <Text size="xs" c="dimmed">

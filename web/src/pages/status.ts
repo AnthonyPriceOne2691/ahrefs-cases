@@ -60,6 +60,7 @@ export const RUN_STAGE_LABELS: Record<string, string> = {
   stage2: 'шаг 2',
   case_data: 'данные под кейс',
   cases: 'сборка кейсов',
+  cycle: 'цикл по файлу',
 };
 
 export function stageWord(stage: string): string {

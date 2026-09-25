@@ -37,6 +37,20 @@ export function startStage2(): Promise<RunStarted> {
   return request<RunStarted>('/api/runs/stage2', { method: 'POST' });
 }
 
+/** Смета цикла по проектам загруженного списка — весь цикл по верхней границе. */
+export function fetchCycleEstimate(projectIds: number[]): Promise<RunEstimate> {
+  const query = new URLSearchParams(projectIds.map((id) => ['projects', String(id)]));
+  return request<RunEstimate>(`/api/runs/chain/estimate?${query.toString()}`);
+}
+
+/** Цикл по файлу одной кнопкой. Не хватает units на цикл — сервер отвечает 409. */
+export function startCycle(projectIds: number[]): Promise<RunStarted> {
+  return request<RunStarted>('/api/runs/chain', {
+    method: 'POST',
+    body: { project_ids: projectIds },
+  });
+}
+
 export function fetchRun(runId: number): Promise<RunRow> {
   return request<RunRow>(`/api/runs/${runId}`);
 }

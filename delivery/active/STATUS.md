@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** cycle-by-file-screen
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** web/src/pages/__tests__/cycle.test.tsx
+- **diagnosis:** n/a reason=не дефект: экран к циклу по файлу (`cycle-by-file`) по картине владельца
+- **phase:** implement
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-25 by=human:anthony («прикрепил ссылку или файл… предварительная смета, потом стартует прогон и появляется строка в журнале прогонов на фронте с неактивной кнопкой скачать кейсы… по окончании прогона… становится активной кнопка скачать»; охват — «только проекты файла»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: экран показывает смету и строку цикла, которые отдаёт API
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** web/src/pages/intake/CycleStart.tsx reason=экран: смета после настоящей загрузки файла, запуск цикла и строка, меняющая шаг и включающая «Скачать» без перезагрузки, — jsdom видит правила, а не очередь и воркер
+- **irreversible_surfaces:** none reason=экран не тратит сам: «Запустить» зовёт `POST /api/runs/chain`, где сервер сверяет смету цикла с квотой; автомерж выключен, выкатка ручная по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде после загрузки списка — «Весь цикл по этому списку» со сметой и «Запустить»; строка «цикл по файлу · шаг N» с неактивной «Скачать кейсы», по окончании — «Скачать N кейсов»
+- **observe_until:** 2026-10-09
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

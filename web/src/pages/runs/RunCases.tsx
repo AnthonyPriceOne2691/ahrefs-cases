@@ -21,9 +21,23 @@ import type { RunRow } from '../../api/types';
 import { failureText } from '../cases/failure';
 import { saveFile } from '../cases/save';
 import { casesCount } from '../format';
+import { RUNNING } from '../intake/RunLine';
 
 /** Ширина подписи отказа — как у прочих длинных текстов журнала. */
 const NOTE_WIDTH = 220;
+
+const FINISHED = new Set(['done', 'partial']);
+
+/**
+ * Цикл по файлу показывает кнопку с самого начала — неактивной, пока идёт (так
+ * её описал владелец), и честное «кейсов нет», если собирать было нечего.
+ * `null` — не цикл или пачка уже есть (тогда кнопка обычная).
+ */
+function cycleCell(run: RunRow): 'waiting' | 'empty' | null {
+  if (run.stage !== 'cycle') return null;
+  if (RUNNING.has(run.status)) return 'waiting';
+  return FINISHED.has(run.status) && !run.pack ? 'empty' : null;
+}
 
 export function RunCases({ run }: { run: RunRow }) {
   const queryClient = useQueryClient();
@@ -44,7 +58,8 @@ export function RunCases({ run }: { run: RunRow }) {
     onError: (failure: unknown) => setError(failureText(failure, 'сборка не начата')),
   });
 
-  if (!run.pack && !run.build_cases) return <Table.Td />;
+  const cycle = cycleCell(run);
+  if (!run.pack && !run.build_cases && !cycle) return <Table.Td />;
 
   return (
     <Table.Td ta="center" data-run-cases={run.id}>
@@ -53,6 +68,16 @@ export function RunCases({ run }: { run: RunRow }) {
           <Button size="xs" variant="light" loading={take.isPending} onClick={() => take.mutate()}>
             Скачать {casesCount(run.pack_cases)}
           </Button>
+        )}
+        {cycle === 'waiting' && (
+          <Button size="xs" variant="light" disabled data-cycle-waiting={run.id}>
+            Скачать кейсы
+          </Button>
+        )}
+        {cycle === 'empty' && (
+          <Text size="xs" c="dimmed">
+            кейсов нет
+          </Text>
         )}
         {run.build_cases && (
           <Button size="xs" loading={build.isPending} onClick={() => build.mutate()}>
