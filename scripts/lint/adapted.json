@@ -5,8 +5,8 @@
     "kind": "adaptation"
   },
   ".github/workflows/quality.yml": {
-    "reason": "шаг «Canon payload selftest» искал объявление варианта D только в delivery/active/STATUS.md, а этот файл по правилу §2.3a не существует между поставками: CI краснел каждый раз, когда поставка уходила в архив — без ошибки исполнителя и без способа это исправить, не открыв новую поставку",
-    "changed": "условие варианта B дополнено вторым источником: `grep 'stack-selftest:' delivery/STACK-ACCEPTANCE.md`. Канонная ветвь с delivery/active/STATUS.md сохранена и проверяется первой; объявление добавлено в STACK-ACCEPTANCE.md, где и так описано, где лежат каноны",
+    "reason": "шаг «Canon payload selftest» искал объявление варианта D только в delivery/active/STATUS.md, а этот файл по правилу §2.3a не существует между поставками: CI краснел каждый раз, когда поставка уходила в архив — без ошибки исполнителя и без способа это исправить, не открыв новую поставку; 28.09.2026 (Z48): версии зависимостей зафиксированы в uv.lock, а шаг установки канона знает только requirements-dev.txt и «манифеста нет» — обе ветки ставят плавающие версии",
+    "changed": "условие варианта B дополнено вторым источником: `grep 'stack-selftest:' delivery/STACK-ACCEPTANCE.md`. Канонная ветвь с delivery/active/STATUS.md сохранена и проверяется первой; объявление добавлено в STACK-ACCEPTANCE.md, где и так описано, где лежат каноны; ветка `if [ -f uv.lock ]` поставлена ПЕРВОЙ в «Install backend deps»: `uv export --locked` → `pip install --require-hashes`, проект — `pip install --no-deps -e .`, после — `pip check`; `setup-uv` с версией из `[tool.uv] required-version`; pre-commit — из .venv вместо `pip install pre-commit`; джоба tests ставит тот же lock. Канонные ветки сохранены и работают, когда lock нет",
     "kind": "adaptation"
   },
   "okf_sync_gate.py": {

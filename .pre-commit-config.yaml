@@ -35,6 +35,10 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=512]
+        # uv.lock — сгенерированный файл (Z48), его сверяет `uv export --locked`,
+        # а хук стоит против случайных двоичных. Lock — 474 КиБ, и первый же
+        # пакет с колёсами под все Python перевёл бы его через порог.
+        exclude: ^uv\.lock$
 
   # -------------------------------------------------------------------------
   # Python: ruff (lint + format) — под backend.

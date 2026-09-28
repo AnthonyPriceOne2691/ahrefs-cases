@@ -1,0 +1,34 @@
+# Active delivery status
+
+- **slug:** python-lock-file
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** chore
+- **repro_test:** tests/test_dependency_lock.py::test_every_declared_dependency_is_pinned_in_the_lock
+- **diagnosis:** n/a reason=не дефект кода: находка Z48 и ревью 28.09.2026 — зависимости заданы только нижней границей, lock-файла нет, 24.09 это уже уронило CI (2b25a99)
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Lock-файл Python… Сборка образа и CI должны ставить зависимости из lock-файла, CI зелёный»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** образ `prod` собирается из lock-файла, и его `pip freeze` совпадает с контейнером api прода пакет в пакет; внутри образа рендерится PDF и импортируется приложение
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** detect-secrets reason=ставился шагом CI мимо манифеста, а значит и мимо lock-файла; его зовёт хук секретов из venv by=agent:claude
+- **new_dependency:** types-pyyaml reason=ставился шагом CI мимо манифеста; стабы PyYAML читает mypy гейтов, без них типы yaml — Any by=agent:claude
+- **runtime_paths:** Dockerfile reason=образ проверяется только сборкой и исполнением, прочитанный Dockerfile ничего не доказывает (L69, L84)
+- **irreversible_surfaces:** none reason=автомерж выключен, каждый PR сливает человек; выкатка в прод — ручная по `docs/PROD.md`, откат — прежний коммит и `docker compose build`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** следующая выкладка на прод собирает образ из lock-файла: `pip freeze` контейнера api тот же, что до выкладки (53 пакета, SQLAlchemy 2.0.54), `/api/health` ok
+- **observe_until:** 2026-10-12
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
