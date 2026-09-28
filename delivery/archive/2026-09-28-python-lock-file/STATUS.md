@@ -7,7 +7,7 @@
 - **kind:** chore
 - **repro_test:** tests/test_dependency_lock.py::test_every_declared_dependency_is_pinned_in_the_lock
 - **diagnosis:** n/a reason=не дефект кода: находка Z48 и ревью 28.09.2026 — зависимости заданы только нижней границей, lock-файла нет, 24.09 это уже уронило CI (2b25a99)
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Lock-файл Python… Сборка образа и CI должны ставить зависимости из lock-файла, CI зелёный»)

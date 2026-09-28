@@ -65,5 +65,5 @@ PyYAML` в джобе `delivery` — инструмент selftest канона,
 - [x] `uv.lock` на 25.09 16:34 UTC и сверка K5 — рантайм 53 из 53 как на проде, dev — как в зелёном CI.
 - [x] Dockerfile, CI, `scripts/lock_deps.sh`, `adapted.json`.
 - [x] K6: сборка `prod` (amd64) и `dev`, freeze против прода, PDF в контейнере.
-- [ ] pytest целиком, mypy, ruff; Z48 в реестре, карта репозитория.
-- [ ] K7: CI на PR.
+- [x] pytest целиком (CI: 743 passed), mypy, ruff; Z48 в реестре, карта репозитория.
+- [x] K7: CI на PR #35 зелёный (второй прогон; первый — `setup-uv@v10`, L232).
