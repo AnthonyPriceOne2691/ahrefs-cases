@@ -28,6 +28,7 @@ implementation:
 | Канон знаний | `python scripts/okf_validate.py`, `python scripts/okf_sync_gate.py --staged` |
 | API | `src/ahrefs_cases/api/main.py` — health, вход, люди, приём списка, проекты, кейсы, расход, прогоны и смета, пороги, алерты |
 | Прод | `ssh prod-hetzner`, каталог `/srv/ahrefs-cases` на общем сервере: обновление, откат, логи, люди, бэкап — `docs/PROD.md` |
+| Бэкап | `scripts/backup.sh` (крон): локальная копия → внешняя, шифрованная gpg, в S3-совместимый бакет (`scripts/offsite_push.sh`) → при любом сбое алерт в Telegram (`scripts/notify.sh`); обратно — `scripts/offsite_fetch.sh` и `scripts/restore.sh`. Настройки — `OFFSITE_*`, `TELEGRAM_*` в `.env` |
 
 # Где что лежит
 

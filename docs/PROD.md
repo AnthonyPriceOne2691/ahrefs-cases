@@ -22,6 +22,9 @@
 | Сайт nginx хоста | `/etc/nginx/sites-available/ahrefs-cases` (из `deploy/proxy/ahrefs-cases.conf`) |
 | Пароль прокси | `/etc/nginx/ahrefs-cases.htpasswd` |
 | Бэкапы | `/srv/backups/ahrefs-cases`, крон `/etc/cron.d/ahrefs-cases` |
+| Внешняя копия | бакет R2 или B2 из `OFFSITE_*` в `.env`; последняя отправленная — `/srv/backups/ahrefs-cases/.offsite-last` |
+| Алерты | Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` в `.env`; со стороны хоста шлёт `scripts/notify.sh` |
+| Доступ к репозиторию | `origin` — по SSH ключом развёртывания только на чтение: `/root/.ssh/ahrefs_cases_deploy`, `core.sshCommand` в `.git/config` клона (с 28.09.2026) |
 | Пароли, выданные при установке | у владельца в менеджере паролей; файл `/root/ahrefs-cases.credentials` уничтожен 24.09.2026 (`shred`) — на машине паролей не держим |
 
 **Агент ходит на прод только с разрешения человека.** Авто-режим Claude Code
@@ -95,6 +98,10 @@ curl -s http://127.0.0.1:8091/api/health   # status ok; migration — голов
 | `LOG_FORMAT` | `json` | поля `run_id` и прочие из `extra` видны в логах |
 | `AHREFS_PROVIDER` | `live` | с 24.09.2026 **решением владельца** (после живого прогона двух наборов: в `fixture` карточки проектов с живыми вердиктами показывали пустую «Динамику» и несовпадение источника, кейсы не пересобирались). Units тратятся только кнопками со сметой. Вернуть `fixture` — тоже решение владельца; таблицу сценариев образ не везёт, она положена в том руками: `/app/data/fixtures/scenarios.yml` |
 | `AHREFS_API_KEY` | ключ Ahrefs | кладёт владелец или по его слову; в чат и логи не выводить |
+| `OFFSITE_S3_ENDPOINT`, `OFFSITE_S3_REGION`, `OFFSITE_S3_BUCKET` | куда класть внешнюю копию | R2: `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, регион `auto`; B2: `https://s3.<регион>.backblazeb2.com`, регион из адреса |
+| `OFFSITE_S3_ACCESS_KEY_ID`, `OFFSITE_S3_SECRET_ACCESS_KEY` | ключ бакета | **только на запись** (ниже, «Внешняя копия») |
+| `OFFSITE_PASSPHRASE` | пароль шифрования внешней копии | `openssl rand -hex 32`; **копия — у владельца в менеджере паролей**: без неё внешняя копия не расшифруется |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | куда слать алерты | пара; не задана — алерт печатается в журнал с пометкой «НЕ отправлен» |
 
 Всё из `.env` доезжает до `migrate`, `api` и `worker` целиком (`env_file`), так
 что любая ручка из `.env.example` работает и на сервере. Проверять поведением,
@@ -198,8 +205,36 @@ htpasswd /etc/nginx/ahrefs-cases.htpasswd имя       # завести ещё �
 `/var/log/ahrefs-cases-backup.log`. В копии — дамп базы и артефакты кейсов
 (PDF и ZIP); очередь не бэкапится намеренно.
 
-⚠ **Копии лежат на том же диске, что и сервис.** Внешнего хранилища пока нет:
-от ошибки человека и от порчи базы бэкап спасает, от потери машины — нет.
+Локальные копии лежат на том же диске, что и сервис: от ошибки человека и
+порчи базы спасают, от потери машины — нет. От потери машины — **внешняя
+копия** (ниже). Любой сбой бэкапа — алерт в Telegram с шагом, на котором
+сломалось: «бэкап НЕ снят» (восстанавливаться не из чего) и «локальная снята,
+внешняя НЕ отправлена» (машина цела, но копии вне её нет) — разные беды.
+
+### Внешняя копия
+
+После локальной копии `backup.sh` зовёт `scripts/offsite_push.sh`: каталог
+бэкапа одним tar, **зашифрованным gpg** (AES-256, `OFFSITE_PASSPHRASE`), уходит
+в бакет R2 или B2 (`curl --aws-sigv4`; хранилище само сверяет SHA-256 тела).
+Имя объекта — `ahrefs-cases/<дата>.tar.gpg`, отметка последнего —
+`/srv/backups/ahrefs-cases/.offsite-last`. Не настроена — в журнале строка
+«внешняя копия не настроена», бэкап при этом успешный.
+
+**Ключ бакета у сервера — только на запись.** Старые копии удаляет правило
+жизненного цикла бакета (60 дней), а не скрипт: ключ, которым сервер может
+удалять, отдаёт внешние копии взломщику вместе с машиной. Для чтения ключ
+выпускают в день восстановления.
+
+Проверить после настройки или правки `.env`:
+
+```bash
+cd /srv/ahrefs-cases
+scripts/notify.sh "Ahrefs Cases: проверка канала алертов"     # сообщение пришло в чат
+BACKUP_DIR=/srv/backups/ahrefs-cases scripts/backup.sh        # «внешняя копия: ahrefs-cases/…»
+cat /srv/backups/ahrefs-cases/.offsite-last                   # время и имя объекта
+```
+
+Отправить уже снятую копию — `scripts/offsite_push.sh /srv/backups/ahrefs-cases/<дата>`.
 
 ```bash
 scripts/restore.sh /srv/backups/ahrefs-cases/<дата>         # покажет, что сделает
@@ -209,6 +244,29 @@ scripts/restore.sh /srv/backups/ahrefs-cases/<дата> --yes   # затрёт �
 Восстановление останавливает `api` и `worker`, очищает базу, раскладывает
 артефакты и запускает обратно. После — войти и посмотреть экраны прогонов и
 кейсов.
+
+### Восстановление из внешней копии (машины нет)
+
+1. Новая машина — по «Как ставили с нуля» ниже, шаги 1–3 (клон, `.env`, стек).
+   Секреты `.env` генерируются заново (база пустая, дамп ляжет в неё), кроме
+   двух, которые берут у владельца: `AHREFS_API_KEY` и `OFFSITE_PASSPHRASE`.
+2. Ключ бакета **на чтение**: выпустить в R2/B2, в `.env` не писать —
+   окружением на одну команду:
+   ```bash
+   cd /srv/ahrefs-cases
+   read -rs OFFSITE_S3_ACCESS_KEY_ID; read -rs OFFSITE_S3_SECRET_ACCESS_KEY
+   export OFFSITE_S3_ACCESS_KEY_ID OFFSITE_S3_SECRET_ACCESS_KEY
+   scripts/offsite_fetch.sh list                        # какие копии есть
+   scripts/offsite_fetch.sh get latest /srv/restore     # скачать и расшифровать
+   ```
+   Пароль копии (`OFFSITE_PASSPHRASE`) берётся из `.env`. Неверный пароль или
+   испорченная копия — отказ словами, распакованного каталога не остаётся.
+3. `scripts/restore.sh /srv/restore/<дата> --yes` — команду печатает `get`.
+4. Проверить экраны прогонов и кейсов, затем — ключ на чтение отозвать.
+
+Без скрипта (например, с Mac владельца): скачать объект в веб-интерфейсе
+бакета, `gpg --decrypt <дата>.tar.gpg | tar -x` — получится тот же каталог
+бэкапа.
 
 ## Сайт, сертификат, имя
 
@@ -258,6 +316,12 @@ systemctl reload nginx` → `certbot --nginx -d <новое имя> --redirect`.
 файл паролей, а certbot — на работающий сайт.
 
 1. `git clone https://github.com/AnthonyPriceOne2691/ahrefs-cases.git /srv/ahrefs-cases`
+   — пока репозиторий публичный. Для приватного — ключ развёртывания только на
+   чтение: `ssh-keygen -t ed25519 -N "" -f /root/.ssh/ahrefs_cases_deploy`,
+   открытую часть — в Settings → Deploy keys репозитория (без права записи),
+   затем `git -c core.sshCommand="ssh -i /root/.ssh/ahrefs_cases_deploy -o
+   IdentitiesOnly=yes" clone git@github.com:AnthonyPriceOne2691/ahrefs-cases.git
+   /srv/ahrefs-cases` и та же строка `core.sshCommand` в `git config` клона.
 2. `.env` из таблицы выше: секреты генерировать **на сервере**, `chmod 600`.
 3. `docker compose build && docker compose up -d`; `curl
    http://127.0.0.1:8091/api/health`.
@@ -271,4 +335,35 @@ systemctl reload nginx` → `certbot --nginx -d <новое имя> --redirect`.
    `nginx -t && systemctl reload nginx`, затем `certbot --nginx -d <имя>
    --non-interactive --agree-tos --register-unsafely-without-email --redirect`.
 7. Крон бэкапа; первую копию снять руками и **проверить восстановлением**.
+   Внешняя копия и алерты — `OFFSITE_*` и `TELEGRAM_*` в `.env` (что завести —
+   «Внешняя копия и алерты: что заводит владелец» ниже).
 8. Проверка снаружи — таблица выше.
+
+## Внешняя копия и алерты: что заводит владелец
+
+Учётки — у владельца; значения — в `.env` сервера (или агенту, и тот кладёт их
+через stdin ssh, не показывая в выводе).
+
+**Хранилище — одно из двух** (бесплатного уровня хватает с запасом: копия
+весит ~4 МБ, за 60 дней — ~250 МБ):
+
+- **Backblaze B2** — удобнее для этой схемы: ключ бывает «только запись».
+  Bucket → Create (Private) → Lifecycle Settings: удалять через 60 дней →
+  Application Keys → Add: только этот бакет, **Write Only** → `keyID` и
+  `applicationKey`. Endpoint — в карточке бакета (`s3.<регион>.backblazeb2.com`),
+  регион — из него.
+- **Cloudflare R2** — R2 → Create bucket → Settings: Object lifecycle rules
+  (удалять через 60 дней) и Bucket lock (хранить 30 дней — ключ R2 «только
+  запись» не бывает, блокировка не даёт удалить копии и им) → Manage API
+  tokens: Object Read & Write, только этот бакет. Endpoint —
+  `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, регион `auto`.
+
+**Пароль копии:** `openssl rand -hex 32` → в менеджер паролей и в
+`OFFSITE_PASSPHRASE`. Потерян пароль — потеряны внешние копии.
+
+**Telegram:** @BotFather → `/newbot` → токен; бота добавить в чат для алертов и
+написать в чат любое сообщение; номер чата — поле `chat.id` в
+`https://api.telegram.org/bot<токен>/getUpdates` (у группы он отрицательный).
+
+После — проверка из раздела «Внешняя копия» выше.
+
