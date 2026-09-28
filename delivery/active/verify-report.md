@@ -10,7 +10,7 @@
 | На Mac разработчика | тот же файл без gpg | 8 skipped с причиной; в CI пропуск невозможен (`CI=true`) |
 | Инструменты на сервере | `ssh prod-hetzner` — `command -v`, версии | curl 8.5.0 (`--aws-sigv4` с 7.75), gpg 2.4.4, tar, flock — ставить ничего не нужно |
 | Гейты | `delivery_check --diff-base origin/main`, pre-commit, `okf_validate` | 0 ошибок; предохранитель — 8 файлов, net 737 из 800 (первый вариант тестов дал 815 — ужат, а не waiver) |
-| CI | GitHub Actions, PR — ссылка при слиянии | — |
+| CI | GitHub Actions, PR #36 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием (иначе слияния нет); в джобе tests Q1–Q8 идут, а не пропускаются: на раннере есть gpg |
 
 ## Ревью рисковых мест
 

@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_offsite_backup.py::test_backup_cries_when_the_copy_does_not_leave
 - **diagnosis:** n/a reason=не дефект кода: ревью 28.09.2026 — бэкапы лежат на том же хосте (`docs/PROD.md`), о сбое бэкапа никто не узнаёт
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Копию бэкапа отправлять в S3-совместимое хранилище с бесплатным уровнем: Cloudflare R2 или Backblaze B2… Алерт в Telegram-бота при падении бэкапа… Нужны код, настройка через env и документация восстановления»)

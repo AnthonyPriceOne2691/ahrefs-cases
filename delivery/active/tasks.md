@@ -53,4 +53,4 @@ SigV4 (`curl --aws-sigv4`); SHA-256 тела — в подписанном за�
 - [x] `host_env.sh`, `notify.sh`, `offsite_push.sh`, `offsite_fetch.sh`, алерт в `backup.sh`.
 - [x] Q9 — живой прогон на S3-совместимом сервере (RustFS, подпись проверяется).
 - [x] `docs/PROD.md` (внешняя копия, восстановление с чистой машины, шаги владельца), `.env.example`.
-- [ ] pytest, CI.
+- [x] pytest, CI (PR #36).
