@@ -108,6 +108,7 @@ def seen() -> Iterator[_Seen]:
     record.url = f"http://127.0.0.1:{server.server_port}"
     yield record
     server.shutdown()
+    server.server_close()  # иначе сокет закроет сборщик мусора — ResourceWarning
 
 
 @pytest.fixture

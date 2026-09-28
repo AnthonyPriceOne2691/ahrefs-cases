@@ -8,6 +8,7 @@
 | Тесты ловят поломку | три мутации на копии скриптов | копия без шифрования → Q1 «в хранилище ушла открытая копия», Q2, Q8; секрет аргументом curl → Q2 «в аргументах видно»; алерт убран из ловушки выхода → Q5, Q6 |
 | Q9: живой прогон на S3-совместимом сервере | RustFS в Docker (проверяет подпись SigV4), финальные скрипты | push → объект `ahrefs-cases/<дата>.tar.gpg`, отметка `.offsite-last`; list — обе копии; get latest и get по имени — каталог байт в байт; чужой секрет — `SignatureDoesNotMatch`, rc 1 и ответ хранилища в выводе; подменённый `x-amz-content-sha256` — хранилище отказывает (`BadDigest`, 400); неверный пароль — «не расшифровано…», rc 1, каталога нет; тело начинается пакетом OpenPGP, имени `cases.dump` в нём нет |
 | На Mac разработчика | тот же файл без gpg | 8 skipped с причиной; в CI пропуск невозможен (`CI=true`) |
+| Под конфигом проекта | dev-образ (закреплённые версии, `filterwarnings = error`, conftest) + gpg и curl | 8 passed — после `server_close()` у сервера-подмены (первый CI дал 8 ошибок на незакрытом сокете) |
 | Инструменты на сервере | `ssh prod-hetzner` — `command -v`, версии | curl 8.5.0 (`--aws-sigv4` с 7.75), gpg 2.4.4, tar, flock — ставить ничего не нужно |
 | Гейты | `delivery_check --diff-base origin/main`, pre-commit, `okf_validate` | 0 ошибок; предохранитель — 8 файлов, net 737 из 800 (первый вариант тестов дал 815 — ужат, а не waiver) |
 | CI | GitHub Actions, PR #36 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием (иначе слияния нет); в джобе tests Q1–Q8 идут, а не пропускаются: на раннере есть gpg |
@@ -54,7 +55,7 @@
 | rework_after_done | 0 — счётчик видит handoff поставки python-lock-file: её перенос в архив едет в этой ветке первым коммитом |
 | harness_hardened | yes — tests/test_offsite_backup.py (новый оракул) |
 | implement_retries | 2 — `ruff-format` переформатировал тест; предохранитель 815 > 800 — тесты ужаты (Q4–Q6 одним параметром), не waiver |
-| verify_fails_before_green | 1 — CI delivery: на фазе handoff не было блока метрик (фазу сменил, гейт не перезапустил) |
+| verify_fails_before_green | 2 — CI delivery: на фазе handoff не было блока метрик (фазу сменил, гейт не перезапустил); CI tests: 8 ошибок `ResourceWarning: unclosed socket` — сервер-подмена не закрывал сокет (`server_close`), а локально тесты гонялись с `-c /dev/null`, мимо `filterwarnings = error` проекта; теперь — в dev-образе под конфигом проекта |
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
