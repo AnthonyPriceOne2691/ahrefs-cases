@@ -44,11 +44,27 @@ dev = [
     "pip-audit>=2.7",
     "mutmut>=3.2",
     "import-linter>=2.1",
+    # Жили только в шаге установки CI, мимо манифеста, — а значит и мимо
+    # lock-файла (Z48): хук секретов зовёт detect-secrets из venv, mypy гейтов
+    # читает стабы PyYAML.
+    "detect-secrets>=1.5",
+    "types-PyYAML>=6.0",
 ]
 
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
+
+# Версии всех зависимостей зафиксированы в `uv.lock` (Z48): образ и CI ставят
+# ровно их, с хешами, а не то, что вышло в день сборки. Пересобрать lock —
+# `scripts/lock_deps.sh`. Версия uv прибита: lock, записанный другой версией,
+# закреплённая в образе и CI может счесть устаревшим, и сборка упадёт на
+# `--locked` без правки зависимостей.
+[tool.uv]
+required-version = "==0.12.19"
+# Где код идёт: прод и CI — Linux, разработка — macOS. Колёса Windows раздували
+# lock на пятую часть впустую.
+environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

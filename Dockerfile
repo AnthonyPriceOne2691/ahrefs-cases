@@ -1,3 +1,9 @@
+# uv — только переводчик lock-файла: `uv export --locked` превращает uv.lock в
+# список для pip с хешами и падает, если pyproject.toml правили без пересборки
+# lock. В образы он монтируется на одну команду и в них не остаётся. Версия —
+# та же, что в `[tool.uv] required-version` и в CI (Z48).
+FROM ghcr.io/astral-sh/uv:0.12.19 AS uv
+
 # Системные библиотеки WeasyPrint кладутся уже здесь, хотя PDF появится в Ф4:
 # иначе Ф4 начнётся с отладки образа, а не со сборки кейса.
 FROM python:3.12-slim AS base
@@ -23,9 +29,18 @@ WORKDIR /app
 # редакторе обязана подхватываться без пересборки. В образ кладётся то, без чего
 # контейнер не стартует вовсе.
 FROM base AS dev
-COPY pyproject.toml README.md ./
+# Зависимости — из lock-файла, с хешами: ровно те версии, что прошли CI, а не
+# вышедшие в день сборки (Z48, урок L223). Слой стоит раньше исходников, и
+# правка кода его не пересобирает. Сам проект — `--no-deps`: всё, что ему
+# нужно, уже поставлено из lock, и мимо него не доедет ничего.
+COPY pyproject.toml uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    uv export --locked --extra dev --no-emit-project --quiet -o /tmp/requirements.txt \
+    && pip install --require-hashes -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+COPY README.md ./
 COPY src ./src
-RUN pip install -e ".[dev]"
+RUN pip install --no-deps -e .
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
@@ -36,12 +51,19 @@ COPY templates ./templates
 
 # --- Питон, боевой режим -----------------------------------------------------
 FROM base AS prod
-COPY pyproject.toml README.md ./
+# Тот же lock, что у дев-стадии и CI, без extras dev (Z48).
+COPY pyproject.toml uv.lock ./
+RUN --mount=from=uv,source=/uv,target=/bin/uv \
+    uv export --locked --no-emit-project --quiet -o /tmp/requirements.txt \
+    && pip install --require-hashes -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+COPY README.md ./
 COPY src ./src
 # `build/` — след setuptools: копия исходников, оставшаяся после установки.
 # Удаляется тем же слоем, иначе так и лежит в образе лишними 864 КБ — мелочь,
 # но ровно того же рода, что `.venv` в контексте сборки (урок L69).
-RUN pip install "." && rm -rf build
+# `pip check` — сверка: всё, чего проект требует, поставлено из lock.
+RUN pip install --no-deps "." && rm -rf build && pip check
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY config ./config
