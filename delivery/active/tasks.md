@@ -47,7 +47,8 @@ push — отдельное решение); внешний сторож «ма�
 
 ## Шаги
 
-- [ ] X1–X9 тестами, красные до правки.
-- [ ] `config/alerts.py`, `workers/telegram.py`, `workers/failed_runs.py`, проход реапера.
-- [ ] `scripts/healthcheck.sh`, крон и раздел алертов в `docs/PROD.md`.
-- [ ] pytest, mypy, ruff; CI.
+- [x] X1–X9 тестами, красные до правки; три мутации пойманы.
+- [x] `config/alerts.py`, `workers/telegram.py`, `workers/failed_runs.py`, проход реапера.
+- [x] `scripts/healthcheck.sh`, крон и раздел алертов в `docs/PROD.md`.
+- [x] `migrations/env.py`: `fileConfig` больше не глушит логгеры — без этого X6 был бы зелёным по построению (L235).
+- [x] pytest (752 passed), mypy, ruff; CI — PR #37.

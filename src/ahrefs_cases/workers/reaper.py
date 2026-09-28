@@ -22,6 +22,9 @@
 Мёртвую закрываем `failed` с причиной, охраняемым UPDATE по прежнему статусу.
 Продолжения за человека нет: повторный запуск и так дешёвый — закрытые месяцы
 второй раз не покупаются, а собранное до последнего чекпойнта сохранено.
+
+3. упавшие прогоны — любые, не только закрытые здесь, — уходят в Telegram
+   (`workers.failed_runs`), если канал алертов настроен.
 """
 
 from __future__ import annotations
@@ -52,6 +55,8 @@ from ahrefs_cases.logs import setup_logging
 from ahrefs_cases.storage import RunStatus
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.session import get_sessionmaker
+from ahrefs_cases.workers import telegram
+from ahrefs_cases.workers.failed_runs import RedisMark, announce_failed_runs
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +185,23 @@ async def sweep(connection: Redis) -> list[int]:
         await session.commit()
     if orphans:
         logger.warning("runs_closed_by_reaper", extra={"run_ids": orphans})
+    await _announce(connection, now)
     return [*stale, *orphans]
+
+
+async def _announce(connection: Redis, now: datetime) -> None:
+    """Упавшие — в Telegram. Redis без ответа — повтор в следующий тик.
+
+    Проход при этом удачный: о слепом реапере говорит отметка о жизни, а
+    недоставленный алерт — не повод считать реапер мёртвым.
+    """
+    if not config.alerts.enabled:
+        return
+    try:
+        async with get_sessionmaker()() as session:
+            await announce_failed_runs(session, RedisMark(connection), telegram.send, now)
+    except RedisError as exc:
+        logger.warning("failed_runs_mark_unreachable", extra={"error": str(exc)})
 
 
 async def _forever() -> None:
@@ -220,7 +241,11 @@ def main(argv: list[str]) -> int:
     if "--check" in argv:
         return check()
     setup_logging()
-    logger.info("reaper_started", extra={"tick_sec": TICK_SEC})
+    logger.info("reaper_started", extra={"tick_sec": TICK_SEC, "alerts": config.alerts.enabled})
+    if config.alerts.missing_half:
+        # Канал наполовину — выключен, но громко: опечатка в необязательном
+        # канале не стоит остановленного сервиса, и молчать о ней тоже нельзя.
+        logger.error("alerts_half_configured", extra={"missing": config.alerts.missing_half})
     asyncio.run(_forever())
     return 0
 

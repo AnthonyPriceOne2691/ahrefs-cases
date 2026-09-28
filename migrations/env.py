@@ -18,7 +18,11 @@ from ahrefs_cases.storage.models import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # `disable_existing_loggers=False`: по умолчанию fileConfig глушит все уже
+    # созданные логгеры. Миграция в том же процессе (фикстура `migrated_db`)
+    # отключала логгеры модулей ahrefs_cases до конца сьюта — журнал в тестах
+    # был нем, и проверить, что в него пишется, было нельзя.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", app_config.storage.database_url)
 target_metadata = Base.metadata

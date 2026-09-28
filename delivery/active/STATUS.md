@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** tests/test_run_failure_alerts.py::test_each_failure_is_announced_once_with_its_reason
 - **diagnosis:** n/a reason=не дефект кода: ревью 28.09.2026 — push-алертов нет (`api/routers/alerts.py` отвечает состоянием экрану), об упавшем прогоне и лежащем сервисе никто не узнаёт сам
-- **phase:** implement
+- **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Алерт в Telegram-бота при падении бэкапа, прогона или healthcheck… Нужны код, настройка через env»)

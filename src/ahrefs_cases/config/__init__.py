@@ -12,6 +12,7 @@ mypy, поэтому тоже запрещён.
 from __future__ import annotations
 
 from ahrefs_cases.config.ahrefs import AhrefsSettings, HistoryGrouping, Provider
+from ahrefs_cases.config.alerts import AlertSettings
 from ahrefs_cases.config.auth import AuthSettings
 from ahrefs_cases.config.classify import ClassifySettings
 from ahrefs_cases.config.export import ExportSettings
@@ -19,6 +20,7 @@ from ahrefs_cases.config.logs import LogSettings
 from ahrefs_cases.config.storage import StorageSettings
 
 ahrefs = AhrefsSettings()
+alerts = AlertSettings()
 storage = StorageSettings()
 auth = AuthSettings()
 classify = ClassifySettings()
@@ -27,6 +29,7 @@ logs = LogSettings()
 
 __all__ = [
     "AhrefsSettings",
+    "AlertSettings",
     "AuthSettings",
     "ClassifySettings",
     "ExportSettings",
@@ -35,6 +38,7 @@ __all__ = [
     "Provider",
     "StorageSettings",
     "ahrefs",
+    "alerts",
     "auth",
     "classify",
     "export",
