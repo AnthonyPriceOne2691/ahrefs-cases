@@ -23,7 +23,7 @@
 | Пароль прокси | `/etc/nginx/ahrefs-cases.htpasswd` |
 | Бэкапы | `/srv/backups/ahrefs-cases`, крон `/etc/cron.d/ahrefs-cases` |
 | Внешняя копия | бакет R2 или B2 из `OFFSITE_*` в `.env`; последняя отправленная — `/srv/backups/ahrefs-cases/.offsite-last` |
-| Алерты | Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` в `.env`; со стороны хоста шлёт `scripts/notify.sh` |
+| Алерты | Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` в `.env`; упавшие прогоны — реапер, бэкап и здоровье — `scripts/notify.sh` (ниже, «Алерты») |
 | Доступ к репозиторию | `origin` — по SSH ключом развёртывания только на чтение: `/root/.ssh/ahrefs_cases_deploy`, `core.sshCommand` в `.git/config` клона (с 28.09.2026) |
 | Пароли, выданные при установке | у владельца в менеджере паролей; файл `/root/ahrefs-cases.credentials` уничтожен 24.09.2026 (`shred`) — на машине паролей не держим |
 
@@ -162,6 +162,31 @@ docker inspect --format '{{json .State.Health}}' ahrefs-cases-worker-1
 
 **Время в логах — UTC**, а часы машины — CEST: сверяя отметки, смотри
 `date -u`, иначе ошибёшься на два часа.
+
+## Алерты
+
+Один чат Telegram, три источника:
+
+| Что | Кто шлёт | Когда |
+|---|---|---|
+| Прогон упал | реапер (`workers/failed_runs.py`) | раз в минуту — каждый упавший прогон один раз: номер, ступень, причина. Первый запуск историю не объявляет; Telegram не принял — повтор в следующий тик |
+| Бэкап не снят / внешняя копия не ушла | `scripts/backup.sh` | ночью, при любом сбое, с шагом |
+| Беда со здоровьем и её конец | `scripts/healthcheck.sh` (крон, раз в 5 минут) | при смене состояния: контейнер не running или unhealthy, API через web не `ok`, бэкап или внешняя копия старше 26 ч |
+
+Крон сторожа — строка в `/etc/cron.d/ahrefs-cases` рядом с бэкапом:
+
+```cron
+*/5 * * * * root cd /srv/ahrefs-cases && BACKUP_DIR=/srv/backups/ahrefs-cases scripts/healthcheck.sh >> /var/log/ahrefs-cases-health.log 2>&1
+```
+
+Последнее состояние — `/var/lib/ahrefs-cases/health.state` (`ok` или список бед); журнал —
+`/var/log/ahrefs-cases-health.log`, строка на тик. Канал не настроен — алерты
+пишутся в журналы с пометкой «НЕ отправлен»; пара `TELEGRAM_*` задана наполовину —
+реапер пишет ошибку `alerts_half_configured` на старте, сервис работает.
+
+Машину целиком изнутри не видно: лежит сервер — молчат все три источника. Для
+этого — внешний пинг (например, бесплатный UptimeRobot на имя сайта) — решение
+владельца.
 
 ## Логи
 
