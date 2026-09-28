@@ -10,6 +10,7 @@
 | K6: образ `dev` из lock | `docker build --target dev`, `pip check`, версии инструментов | собирается; `pip check` чист; mypy 2.3.1, pytest 9.1.1, ruff 0.16.9, detect-secrets 1.5.0, types-PyYAML — как в lock; проект стоит editable из `/app/src` |
 | K7: CI | GitHub Actions, PR #35: https://github.com/AnthonyPriceOne2691/ahrefs-cases/actions/runs/36427727602 | delivery, gates, tests — pass. tests: 743 passed, 2 skipped (было 739 + четыре новых). В обеих джобах `deps: uv.lock`, `sqlalchemy-2.0.54` из lock, `No broken requirements found`; гейт новых зависимостей — «объявлено в STATUS — detect-secrets, types-pyyaml»; `deps-audit: OK`, `py_total=0` |
 | Первый прогон CI | run 36423178809 | красный до первого шага: `Unable to resolve action astral-sh/setup-uv@v10` — плавающих тегов у действия нет; прибито коммитом тега v10.2.0 (L232) |
+| Прогон на передаче | run 36428670772 | gates красный: «новая зависимость не объявлена: detect-secrets, types-pyyaml» — поставку перенесли в архив в том же PR, а гейт читает объявления только из `delivery/active/STATUS.md`; поставка оставлена в active до слияния, архив — следующим PR (L233) |
 | Прод соберёт образ | `docker manifest inspect ghcr.io/astral-sh/uv:0.12.19` и `docker buildx version` на сервере | ghcr.io доступен, тег есть; buildx 0.37.1 — `RUN --mount=from=` работает |
 | Гейты | `delivery_check --diff-base origin/main`, pre-commit на каждом коммите | 0 ошибок; предохранитель — 6 файлов, net 265 строк (`uv.lock` — сгенерированный, не считается); предупреждение «класс S при 6 файлах» — поставка — установка зависимостей без кода продукта, S оставлен сознательно |
 
@@ -29,6 +30,22 @@
 
 **Сборщик проекта (setuptools) в lock не входит**: его ставит pip по `[build-system] requires` на время
 сборки колеса проекта. В рантайм он не попадает; граница названа, а не закрыта.
+
+**Безопасность** — сильнее, чем было: `pip install --require-hashes` отказывает на пакете, чей хеш не
+совпал с записанным в `uv.lock` (подмена на индексе или по дороге); стороннее действие `setup-uv` прибито
+коммитом, а не тегом; uv монтируется на время одной команды и в образе не остаётся. Секретов дифф не
+трогает: правка `.secrets.baseline` — только номера строк учётки `cases:cases` одноразовой базы CI.
+
+**Транзакция БД — риска нет**, потому что дифф не трогает кода, работающего с базой: SQLAlchemy и asyncpg
+в lock — 2.0.54 и 0.31.0, те же версии, что в контейнере api прода (K5).
+
+**Производительность** — рантайм тот же (те же версии пакетов). Сборка образа быстрее при правке кода:
+слой зависимостей стоит раньше `COPY src` и пересобирается только при правке `pyproject.toml`/`uv.lock`.
+CI: `uv export` — доли секунды, установка — тот же pip из того же кэша.
+
+**Интеграция** — две новые внешние точки: образ `ghcr.io/astral-sh/uv` при сборке (с прода доступен,
+проверено) и действие `astral-sh/setup-uv` в CI (прибито коммитом тега v10.2.0). Недоступность любой из
+них роняет сборку или CI до установки, а не посреди: работающий прод не задет.
 
 **Версия uv у разработчика другая** — uv откажет сразу и назовёт нужную (`required-version`); скрипт
 пересборки берёт нужную сам через `uvx`.
@@ -56,5 +73,5 @@
 | rework_after_done | 0 |
 | harness_hardened | yes — `tests/test_dependency_lock.py` (новый оракул: lock, образ, CI, версия uv), `pip check` в CI и образе, `--locked` |
 | implement_retries | 2 — `ruff-format` переформатировал тест; K3 ловил строку-комментарий канона со словами `pip install` |
-| verify_fails_before_green | 1 — первый CI: `setup-uv@v10` не резолвится (L232) |
+| verify_fails_before_green | 2 — `setup-uv@v10` не резолвится (L232); гейт новых зависимостей после переноса в архив (L233) |
 | est_token_or_cost | n/a |
