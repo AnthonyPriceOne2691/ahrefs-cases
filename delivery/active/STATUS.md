@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** coverage-waiver-extended
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** chore
+- **repro_test:** tests/test_ci_gates_judge.py::test_the_coverage_waiver_expires_out_loud
+- **diagnosis:** n/a reason=не дефект: срок отсрочки гейта покрытия CLI (Z22) истекает 29.09.2026, с 30.09 оракул роняет сьют у всех; владелец выбрал продление
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-29 by=human:anthony («продлевай» — в ответ на напоминание о сроке Z22)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: правка — дата в workflow и строка реестра
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no
+- **runtime_paths:** none reason=меняется только CI-шаг покрытия, прод не задет
+- **irreversible_surfaces:** none reason=дата в комментарии workflow, откат — одна строка
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** coverage-gate continue-on-error до 13.10.2026 reason=долг Z22 закрывается тестами отдельной поставкой (задание принято 28.09, старт — по слову владельца) by=human:anthony
+- **observability:** 1
+- **observe_signal:** 30.09 и позже CI зелёный; до 13.10 долг закрыт тестами и `continue-on-error` снят — иначе в этот день сьют снова красный
+- **observe_until:** 2026-10-13
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
