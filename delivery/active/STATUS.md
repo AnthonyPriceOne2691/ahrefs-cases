@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** alerts-runs-and-health
+- **slug:** coverage-waiver-extended
 - **stack:** delivery@1.92, cqg@2.33, okf@0.2
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
-- **kind:** feature
-- **repro_test:** tests/test_run_failure_alerts.py::test_each_failure_is_announced_once_with_its_reason
-- **diagnosis:** n/a reason=не дефект кода: ревью 28.09.2026 — push-алертов нет (`api/routers/alerts.py` отвечает состоянием экрану), об упавшем прогоне и лежащем сервисе никто не узнаёт сам
+- **kind:** chore
+- **repro_test:** tests/test_ci_gates_judge.py::test_the_coverage_waiver_expires_out_loud
+- **diagnosis:** n/a reason=не дефект: срок отсрочки гейта покрытия CLI (Z22) истекает 29.09.2026, с 30.09 оракул роняет сьют у всех; владелец выбрал продление
 - **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Алерт в Telegram-бота при падении бэкапа, прогона или healthcheck… Нужны код, настройка через env»)
+- **human_ok_spec:** yes at=2026-09-29 by=human:anthony («продлевай» — в ответ на напоминание о сроке Z22)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефактов не производит: правка живёт в сообщении Telegram, которое тесты ловят подменой канала
+- **artifact_oracle:** n/a reason=артефактов не производит: правка — дата в workflow и строка реестра
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки, класс S
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
-- **new_dependency:** no reason=новых пакетов нет: отправка — httpx (уже зависимость), отметка — Redis реапера
-- **runtime_paths:** src/ahrefs_cases/workers/reaper.py reason=реапер идёт на проде тикером раз в минуту и закрывает прогоны; объявление встаёт в тот же проход, и его сбой не должен ослепить реапер — тест видит подменённые Redis и Telegram
-- **irreversible_surfaces:** none reason=объявление только читает прогоны и пишет отметку в Redis; сообщение в чат — единственный выход наружу
+- **new_dependency:** no
+- **runtime_paths:** none reason=меняется только CI-шаг покрытия, прод не задет
+- **irreversible_surfaces:** none reason=дата в комментарии workflow, откат — одна строка
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
-- **waivers:** none
+- **waivers:** coverage-gate continue-on-error до 13.10.2026 reason=долг Z22 закрывается тестами отдельной поставкой (задание принято 28.09, старт — по слову владельца) by=human:anthony
 - **observability:** 1
-- **observe_signal:** после того как владелец заведёт бота: первый упавший прогон на проде приходит в чат одним сообщением с номером и причиной; остановленный контейнер копии стенда — «беда», запущенный обратно — «снова в порядке»
-- **observe_until:** 2026-10-12
+- **observe_signal:** 30.09 и позже CI зелёный; до 13.10 долг закрыт тестами и `continue-on-error` снят — иначе в этот день сьют снова красный
+- **observe_until:** 2026-10-13
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

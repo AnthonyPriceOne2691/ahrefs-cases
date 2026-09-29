@@ -1,39 +1,21 @@
-# Verify report: alerts-runs-and-health
+# Verify report: coverage-waiver-extended
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| X1–X7 | `pytest tests/test_run_failure_alerts.py` (дев-база, подменённые Redis-отметка и Telegram, `httpx.MockTransport`) | 7 passed; **красные до правки** — `ImportError: cannot import name 'telegram'` |
-| X8–X9 | `pytest tests/test_healthcheck.py` (заглушка компоуза, локальный сервер вместо API и Telegram) | 2 passed; **красные до правки** — скрипта нет |
-| Тесты ловят поломку | три мутации | отметка не двигается → X2, X4 (повтор и потеря второго); причина исключения в журнал → X6 (токен в журнале); алерт на каждом тике → X8 |
-| Журнал в тестах вообще пишется | проба: логгер `ahrefs_cases.workers.telegram` после теста с `db_session` | `disabled: True` до правки — `fileConfig` в `migrations/env.py` глушил все уже созданные логгеры, и X6 был бы зелёным по построению (L235); после `disable_existing_loggers=False` — пишется |
-| Сьют целиком | `pytest` на дев-базе | 752 passed, 10 skipped (8 — тесты внешней копии без gpg на Mac, 2 — прежние slow): включённые логгеры ничего не сломали |
-| Типы и стиль | `mypy` (127 модулей), `ruff` | чисто |
-| CI | GitHub Actions, PR #37 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием (иначе слияния нет) |
+| V1 | `pytest tests/test_ci_gates_judge.py -k expires` + разбор того же регулярного выражения | 1 passed; оракул читает из workflow 13.10.2026; с прежней датой 29.09.2026 сравнение на 30.09 дало бы False — сьют красный у всех |
+| V2 | `docs/FINDINGS.md`, строка Z22 | новый срок, кто (владелец) и когда (29.09.2026) продлил, что закрывает долг |
+| CI | GitHub Actions, PR #38 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием |
 
 ## Ревью рисковых мест
 
-**Безопасность.** Токен бота — часть адреса запроса, а текст исключений httpx содержит адрес: в журнал
-идут только тип ошибки и код ответа (X6, мутация ловится). Токен — `SecretStr`, в `repr` конфига не виден.
-
-**Транзакция БД — риска нет**, потому что объявление только читает `runs` (`select … where status =
-failed`) в своей сессии после коммита прохода; пишет оно в Redis, а не в базу.
-
-**Производительность.** Один `SELECT … LIMIT 10` по `runs` раз в минуту — таблица в сотни строк; запрос
-к Telegram — только когда есть что объявить, таймаут 20 с. Проход реапера при недоступном Telegram
-удлиняется на время таймаута, но не падает: отметка о жизни пишется, как прежде.
-
-**Интеграция.** `api.telegram.org` — новая внешняя точка у реапера. Недоступна — алерт повторится в
-следующий тик (отметка стоит, X3); Redis недоступен — `failed_runs_mark_unreachable` в журнале, проход
-удачный. Сторож на хосте зовёт `docker compose ps` и `curl` к API через web — тот же путь, что у человека.
+**Отсрочка не стала вечной**: срок записан датой, оракул прежний — 14.10 сьют снова красный, если долг не
+закрыт. Гейт покрытия продолжает печатать числа по изменённым файлам каждый прогон.
 
 ## Чего проверка НЕ доказывает
 
-Что сообщение дойдёт в настоящий чат: бота ещё нет (`observe_signal`). Что формат `docker compose ps
---format '{{.Service}} {{.State}} {{.Health}}'` на проде тот же, что в заглушке, — проверяется первым
-тиком крона после выкладки (строка в `/var/log/ahrefs-cases-health.log`). Лежащую машину целиком изнутри
-не видно — нужен внешний пинг (рекомендация владельцу).
+Что долг будет закрыт к 13.10: это отдельная поставка (`cli-commands-are-tested`), её старт — по слову владельца.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -46,12 +28,12 @@ failed`) в своей сессии после коммита прохода; п
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 11 code (+11 process docs) / +668/-6 (net +662) |
-| commits | 3 |
+| files_touched / loc_diff | 2 code (+9 process docs) / +4/-3 (net +1) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 — счётчик видит handoff поставки offsite-backup-copy: её перенос в архив едет в этой ветке первым коммитом |
-| harness_hardened | yes — tests/test_healthcheck.py (новый оракул), tests/test_run_failure_alerts.py (новый оракул) |
-| implement_retries | 2 — mypy: `tuple_` принимает выражения, а не значения (отметка — `literal` с типом колонки); X6 красный на исправном коде — журнал в сьюте был заглушён `fileConfig` (L235) |
+| rework_after_done | 0 — счётчик видит handoff поставки alerts-runs-and-health: её архив едет первым коммитом |
+| harness_hardened | yes — .github/workflows/quality.yml |
+| implement_retries | 0 |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 

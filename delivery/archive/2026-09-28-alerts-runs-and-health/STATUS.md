@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** alerts-runs-and-health
+- **stack:** delivery@1.92, cqg@2.33, okf@0.2
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** tests/test_run_failure_alerts.py::test_each_failure_is_announced_once_with_its_reason
+- **diagnosis:** n/a reason=не дефект кода: ревью 28.09.2026 — push-алертов нет (`api/routers/alerts.py` отвечает состоянием экрану), об упавшем прогоне и лежащем сервисе никто не узнаёт сам
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-09-28 by=human:anthony (задание владельца по итогам ревью, передано сессией portfolio-site: «Алерт в Telegram-бота при падении бэкапа, прогона или healthcheck… Нужны код, настройка через env»)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: правка живёт в сообщении Telegram, которое тесты ловят подменой канала
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no reason=новых пакетов нет: отправка — httpx (уже зависимость), отметка — Redis реапера
+- **runtime_paths:** src/ahrefs_cases/workers/reaper.py reason=реапер идёт на проде тикером раз в минуту и закрывает прогоны; объявление встаёт в тот же проход, и его сбой не должен ослепить реапер — тест видит подменённые Redis и Telegram
+- **irreversible_surfaces:** none reason=объявление только читает прогоны и пишет отметку в Redis; сообщение в чат — единственный выход наружу
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после того как владелец заведёт бота: первый упавший прогон на проде приходит в чат одним сообщением с номером и причиной; остановленный контейнер копии стенда — «беда», запущенный обратно — «снова в порядке»
+- **observe_until:** 2026-10-12
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
