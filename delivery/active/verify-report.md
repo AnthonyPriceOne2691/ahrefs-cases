@@ -1,33 +1,29 @@
-# Verify report: coverage-waiver-extended
+# Verify report: npm-audit-brace-expansion
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| V1 | `pytest tests/test_ci_gates_judge.py -k expires` + разбор того же регулярного выражения | 1 passed; оракул читает из workflow 13.10.2026; с прежней датой 29.09.2026 сравнение на 30.09 дало бы False — сьют красный у всех |
-| V2 | `docs/FINDINGS.md`, строка Z22 | новый срок, кто (владелец) и когда (29.09.2026) продлил, что закрывает долг |
-| CI | GitHub Actions, PR #38 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием |
+| Падение до правки | CI на main, run 36721095756 (gates → «Vulnerable dependencies») | `npm audit`: brace-expansion high ×2 пути, fast-uri moderate; `critical=0 high=1 — снимком не легализуются`; pip-audit по lock — «No known vulnerabilities found» |
+| S1 | `npm audit fix`, затем `npm audit` во `web/` | `found 0 vulnerabilities`; в `web/package-lock.json` изменились ровно три записи: brace-expansion 1.1.18 → 1.1.21, 5.0.9 → 5.0.12 (под `@typescript-eslint/typescript-estree`), fast-uri 3.1.7 → 3.1.8 |
+| S2 | `npx vitest run`, `npm run build`, `npx eslint src` | 218 passed (20 файлов); сборка прошла; eslint чист |
+| S3 | GitHub Actions, PR #39 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием; `deps-audit: OK` со снимком из нулей |
 
 ## Ревью рисковых мест
 
-**Отсрочка не стала вечной**: срок записан датой, оракул прежний — 14.10 сьют снова красный, если долг не
-закрыт. Гейт покрытия продолжает печатать числа по изменённым файлам каждый прогон.
+**Безопасность** — лучше, чем было: закрыты три advisory brace-expansion (DoS разбором фигурных скобок) и
+одно fast-uri. В диффе `web/package-lock.json` — записи `node_modules/brace-expansion` (`"version": "1.1.21"`),
+`node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion` (`"version": "5.0.12"`) и
+`node_modules/fast-uri` (`"version": "3.1.8"`); в `scripts/lint/deps_audit_baseline.txt` —
+`py_total=0 js_critical=0 js_high=0 js_total=0`. Оба пакета — транзитивные зависимости инструментов (typescript-eslint, ajv): в собранный
+бандл и в образ web не попадают, то есть уязвимость жила в CI и у разработчика, а не на проде.
 
-**Обновление контура до `cqg@2.35` (30.09).** Класс риска подняла ровно одна
-строка диффа — `.secrets.baseline`; остальное лежит под `BREAKER_EXCLUDE`.
-Две записи с `hashed_secret` и типом `Basic Auth Credentials` поменяли только
-поле `line_number` (437 → 501, 448 → 512), `is_verified` и `filename` не
-тронуты, `generated_at` обновлён пересборкой. Сдвиг строк вызван вставкой шага
-`Diff base` — новых секретов не добавлено, старые из-под надзора не выведены.
-Из остального диффа смотрел `refuse()` и `soften()` в `scripts/okf_sync_gate.py`
-(waiver больше не может вернуть 0 на отказе прибора судить) и `exclude_contour()`
-в `scripts/lint/check_file_length.sh` (область сужена на `docs/canon/`, обратный
-прогон подтвердил: длинный ПРОДУКТОВЫЙ файл остаётся красным). Правок прав
-доступа и обращений к секретам в диффе нет.
+**Интеграция — риска нет**, потому что меняются только патч-версии в пределах диапазонов, которые уже
+объявили родительские пакеты; vitest, сборка и eslint прошли на новом lock.
 
 ## Чего проверка НЕ доказывает
 
-Что долг будет закрыт к 13.10: это отдельная поставка (`cli-commands-are-tested`), её старт — по слову владельца.
+Что завтра не выйдет следующее advisory: гейт судит каждый PR, и снимок из нулей не даст росту пройти молча.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -40,11 +36,11 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 2 code (+9 process docs) / +4/-3 (net +1) |
+| files_touched / loc_diff | 3 code (+9 process docs) / +11/-10 (net +1) |
 | commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 — счётчик видит handoff поставки alerts-runs-and-health: её архив едет первым коммитом |
-| harness_hardened | yes — .github/workflows/quality.yml |
+| rework_after_done | 0 — счётчик видит handoff поставки coverage-waiver-extended: её архив едет первым коммитом |
+| harness_hardened | yes — scripts/lint/deps_audit_baseline.txt |
 | implement_retries | 0 |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
