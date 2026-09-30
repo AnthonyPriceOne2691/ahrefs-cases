@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Ratified:** 2026-09-10
-**Canon stack:** delivery@1.88 · cqg@absent · okf@absent
+**Canon stack:** delivery@1.93 · cqg@2.35 · okf@1.18 · stack-map@1.52
 <!-- cqg/okf придут волнами В1 и В2, см. docs/CONTOUR_ROLLOUT.md -->
 **CI:** not-deployed   <!-- §10.4; развернётся волной В1 вместе с CQG -->
 

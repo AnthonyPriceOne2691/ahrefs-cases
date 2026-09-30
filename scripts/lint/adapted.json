@@ -23,5 +23,15 @@
     "reason": "раскладка проекта: фронт живёт в `web/`, а не в `frontend/`. Канонный список одалживаемых каталогов `web/node_modules` не называл, и во временном дереве гейта мержа хуки фронта оставались без своих инструментов: eslint брался из кэша npx (10.11.0 вместо проектного 9.39.5) и падал на загрузке конфига, prettier отказывал «npx canceled». Мерж блокировал дефект гейта, а не код (24.09.2026). Переменная MERGE_GUARD_BORROW лечит один вызов, а не проект: её пришлось бы набирать на каждом мерже",
     "changed": "в умолчание BORROW_DIRS дописан `web/node_modules`; канонные `backend/.venv frontend/node_modules .venv node_modules` и переопределение через MERGE_GUARD_BORROW сохранены. Раскладку сторожит tests/test_merge_guard_environment.py: каталоги фронта он берёт из отслеживаемых package.json и гоняет настоящий скрипт на полигоне",
     "kind": "adaptation"
+  },
+  ".pre-commit-config.yaml": {
+    "reason": "раскладка проекта: пакет src/ahrefs_cases и фронт web/ вместо канонных backend/features и frontend/. Канонные дефолты дали бы гейтам пустую область, то есть зелёное без предмета. Плюс uv.lock (474 КиБ) выведен из-под check-added-large-files: он сгенерированный, его сверяет `uv export --locked`, а хук стоит против случайных двоичных",
+    "changed": "env-префиксы LINT_PY_SRC/LINT_TS_SRC/LINT_FE_DIR/LINT_BE_DIR/LINT_COV_PKG/LINT_VENV/LINT_TSCONFIG в entry-хуках; exclude ^uv\\.lock$ у check-added-large-files",
+    "kind": "adaptation"
+  },
+  "check_diff_coverage.sh": {
+    "reason": "ПОЧИНКА КАНОННОГО ДЕФЕКТА, а не подгонка под проект: гейт брал $VENV/bin/python вслепую, и в окружении без venv (джоба CI ставит проект в системный питон) падал сырой ошибкой шелла вместо вердикта. Тот же резолвер и по той же причине уже стоит в scripts/merge_guard.sh — сюда он перенесён не был",
+    "changed": "PYBIN резолвится лестницей: $BE_DIR/$VENV/bin/python → $VENV/bin/python → python3/python из PATH; питона нет вовсе — жёлтый ворнинг «покрытие НЕ измерено» и exit 0 вместо падения",
+    "kind": "upstream-candidate"
   }
 }
