@@ -34,6 +34,8 @@ build/
 dist/
 web/node_modules/
 .vite/
+# След `tsc -b` от `npm run build`: кэш компилятора, не исходник.
+*.tsbuildinfo
 
 # alembic: локальные версии не игнорируем — миграции часть кода
 
