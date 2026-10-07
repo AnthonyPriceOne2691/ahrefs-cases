@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -79,7 +80,8 @@ def test_the_suite_runs_once_per_workflow() -> None:
     """Сьют гоняется один раз за прогон, а покрытие берётся из его отчёта.
 
     Причина не в бюджете как таковом: второй прогон отвечает на тот же вопрос
-    четырьмя лишними минутами. Шов для этого у гейта свой — `SKIP_TESTS=1`.
+    четырьмя лишними минутами. Шов для этого у гейта свой: `LINT_COV_FILE`
+    (cqg@2.47, отчёт привязан к коммиту) или прежний `SKIP_TESTS=1`.
     """
     for name, job in _jobs().items():
         for step in job.get("steps", []):
@@ -87,9 +89,10 @@ def test_the_suite_runs_once_per_workflow() -> None:
             if not isinstance(command, str) or "check_diff_coverage.sh" not in command:
                 continue
             env = step.get("env") or {}
-            assert str(env.get("SKIP_TESTS")) == "1", (
+            reads_report = env.get("LINT_COV_FILE") or str(env.get("SKIP_TESTS")) == "1"
+            assert reads_report, (
                 f"шаг покрытия в джобе '{name}' гоняет сьют сам — это второй прогон "
-                "за тот же ответ. Отчёт делает шаг с pytest, гейт читает его при SKIP_TESTS=1"
+                "за тот же ответ. Отчёт делает шаг с pytest, гейт читает его через LINT_COV_FILE"
             )
 
 
@@ -107,7 +110,8 @@ def test_coverage_gate_shows_why_the_suite_stopped() -> None:
     assert not any(">/dev/null 2>&1" in line for line in suite_call), (
         "вывод сьюта уходит в /dev/null: причина обрыва пропадёт ровно там, где она нужна (Z19)"
     )
-    missing = text.split("if [[ ! -f coverage.json ]]", 1)
+    # С cqg@2.47 отчёт — переменная (`$COV_JSON`): гейт читает и чужой отчёт.
+    missing = re.split(r'if \[\[ ! -f (?:coverage\.json|"\$COV_JSON") \]\]', text, maxsplit=1)
     assert len(missing) == 2, "ветка «отчёта нет» в гейте покрытия не найдена"
     assert "tail -" in missing[1].split("fi", 1)[0], (
         "ветка «отчёта нет» не печатает хвост вывода сьюта — гейт снова будет "

@@ -6,7 +6,7 @@
   },
   ".github/workflows/quality.yml": {
     "reason": "шаг «Canon payload selftest» искал объявление варианта D только в delivery/active/STATUS.md, а этот файл по правилу §2.3a не существует между поставками: CI краснел каждый раз, когда поставка уходила в архив — без ошибки исполнителя и без способа это исправить, не открыв новую поставку; 28.09.2026 (Z48): версии зависимостей зафиксированы в uv.lock, а шаг установки канона знает только requirements-dev.txt и «манифеста нет» — обе ветки ставят плавающие версии",
-    "changed": "условие варианта B дополнено вторым источником: `grep 'stack-selftest:' delivery/STACK-ACCEPTANCE.md`. Канонная ветвь с delivery/active/STATUS.md сохранена и проверяется первой; объявление добавлено в STACK-ACCEPTANCE.md, где и так описано, где лежат каноны; ветка `if [ -f uv.lock ]` поставлена ПЕРВОЙ в «Install backend deps»: `uv export --locked` → `pip install --require-hashes`, проект — `pip install --no-deps -e .`, после — `pip check`; `setup-uv` с версией из `[tool.uv] required-version`; pre-commit — из .venv вместо `pip install pre-commit`; джоба tests ставит тот же lock. Канонные ветки сохранены и работают, когда lock нет",
+    "changed": "условие варианта B дополнено вторым источником: `grep 'stack-selftest:' delivery/STACK-ACCEPTANCE.md`. Канонная ветвь с delivery/active/STATUS.md сохранена и проверяется первой; объявление добавлено в STACK-ACCEPTANCE.md, где и так описано, где лежат каноны; ветка `if [ -f uv.lock ]` поставлена ПЕРВОЙ в «Install backend deps»: `uv export --locked` → `pip install --require-hashes`, проект — `pip install --no-deps -e .`, после — `pip check`; `setup-uv` с версией из `[tool.uv] required-version`; pre-commit — из .venv вместо `pip install pre-commit`; джоба tests ставит тот же lock. Канонные ветки сохранены и работают, когда lock нет; 07.10 (cqg@2.47): шаг Tests пишет coverage.json.head, «Diff coverage» читает отчёт через LINT_COV_FILE вместо SKIP_TESTS=1",
     "kind": "adaptation"
   },
   "okf_sync_gate.py": {
@@ -26,12 +26,13 @@
   },
   ".pre-commit-config.yaml": {
     "reason": "раскладка проекта: пакет src/ahrefs_cases и фронт web/ вместо канонных backend/features и frontend/. Канонные дефолты дали бы гейтам пустую область, то есть зелёное без предмета. Плюс uv.lock (474 КиБ) выведен из-под check-added-large-files: он сгенерированный, его сверяет `uv export --locked`, а хук стоит против случайных двоичных",
-    "changed": "env-префиксы LINT_PY_SRC/LINT_TS_SRC/LINT_FE_DIR/LINT_BE_DIR/LINT_COV_PKG/LINT_VENV/LINT_TSCONFIG в entry-хуках; exclude ^uv\\.lock$ у check-added-large-files",
+    "changed": "env-префиксы LINT_PY_SRC/LINT_TS_SRC/LINT_FE_DIR/LINT_BE_DIR/LINT_COV_PKG/LINT_VENV/LINT_TSCONFIG в entry-хуках; exclude ^uv\\.lock$ у check-added-large-files; default_stages: [pre-commit] — строка шаблона канона с cqg@2.47",
     "kind": "adaptation"
   },
   "check_diff_coverage.sh": {
     "reason": "ПОЧИНКА КАНОННОГО ДЕФЕКТА, а не подгонка под проект: гейт брал $VENV/bin/python вслепую, и в окружении без venv (джоба CI ставит проект в системный питон) падал сырой ошибкой шелла вместо вердикта. Тот же резолвер и по той же причине уже стоит в scripts/merge_guard.sh — сюда он перенесён не был",
     "changed": "PYBIN резолвится лестницей: $BE_DIR/$VENV/bin/python → $VENV/bin/python → python3/python из PATH; питона нет вовсе — жёлтый ворнинг «покрытие НЕ измерено» и exit 0 вместо падения",
-    "kind": "upstream-candidate"
+    "kind": "absorbed",
+    "absorbed": "cqg@2.48 (agent-canon-stack 5dc5262): три починки — лестница интерпретатора, --diff-filter=ACMR, хвост вывода сьюта — вошли в канон; тело теперь канонное"
   }
 }
