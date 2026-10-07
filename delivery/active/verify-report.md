@@ -39,12 +39,12 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 0 code (+0 process docs) / +0/-0 (net +0) |
-| commits | 0 |
+| files_touched / loc_diff | 7 code (+12 process docs) / +42/-4 (net +38) |
+| commits | 1 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | no |
-| implement_retries | 1 — ESLint: блок тестов вырос до 82 строк, тест M13 вынесен в свой `describe` |
+| implement_retries | 2 — ESLint: блок тестов вырос до 82 строк (M13 вынесен в свой `describe`); Prettier перенёс строку шапки карточки |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 
