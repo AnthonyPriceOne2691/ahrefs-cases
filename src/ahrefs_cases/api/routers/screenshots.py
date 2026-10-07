@@ -27,7 +27,7 @@ from ahrefs_cases.api.body import read_body
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.storage import screenshots as files
 from ahrefs_cases.storage.models.project import Project
-from ahrefs_cases.storage.models.screenshot import ProjectScreenshot
+from ahrefs_cases.storage.models.screenshot import KIND_LABELS, SCREENSHOT_KINDS, ProjectScreenshot
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["screenshots"])
@@ -50,6 +50,32 @@ class ScreenshotView(BaseModel):
     height: int
     size_bytes: int
     created_at: datetime
+
+
+class ScreenshotKindView(BaseModel):
+    key: str
+    label: str
+
+
+class ScreenshotRules(BaseModel):
+    """Что экрану карточки знать до загрузки: виды словами и пределы."""
+
+    kinds: list[ScreenshotKindView]
+    max_bytes: int
+    max_count: int
+    max_side: int
+    """Длинная сторона, до которой ужимает сервер: экран ужимает большой снимок до неё же."""
+
+
+@router.get("/screenshot-rules", response_model=ScreenshotRules, dependencies=[ReadDep])
+async def screenshot_rules() -> ScreenshotRules:
+    """Экран ужимает и отказывает по пределам сервера, а не по своей копии чисел."""
+    return ScreenshotRules(
+        kinds=[ScreenshotKindView(key=key, label=KIND_LABELS[key]) for key in SCREENSHOT_KINDS],
+        max_bytes=MAX_SCREEN_BYTES,
+        max_count=MAX_PER_PROJECT,
+        max_side=files.MAX_SIDE,
+    )
 
 
 def _view(row: ProjectScreenshot) -> ScreenshotView:

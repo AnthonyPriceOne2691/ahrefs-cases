@@ -4,7 +4,8 @@
 карточка его видит, картинка отдаётся с честными заголовками), M49 (не картинка,
 слишком большой и пустой — отказ словами), M50 (тот же скрин дважды и предел на
 проект), M51 (право `edit_briefs`: без него смотреть можно, загружать и убирать —
-нет), M52 (удаление уносит строку и файл), M53 (удаление проекта уносит его скрины).
+нет), M52 (удаление уносит строку и файл), M53 (удаление проекта уносит его скрины); поставки `screenshots-screen`: M60 (правила скринов для экрана —
+виды словами и пределы сервера).
 
 Строки свои — проект `shots.screens.example` и люди `*@screens.test.local`; каталог
 скриншотов подменён временным: настоящие файлы стенда тест не видит.
@@ -231,3 +232,20 @@ def test_project_deletion_takes_its_screenshots(
     assert preview.json()["screenshots"] == 1
     assert deleted.status_code == 200
     assert not (root / str(project_id)).exists()
+
+
+def test_rules_for_the_screen_come_from_the_server(client: TestClient) -> None:
+    """M60: виды словами и пределы — те, по которым отказывает загрузка; без входа — 401."""
+    rules = client.get("/api/screenshot-rules", headers=_headers(client))
+
+    assert rules.status_code == 200
+    assert rules.json() == {
+        "kinds": [
+            {"key": "ahrefs", "label": "Отчёт Ahrefs"},
+            {"key": "ai", "label": "Видимость в ИИ"},
+        ],
+        "max_bytes": 2_621_440,
+        "max_count": 30,
+        "max_side": 2000,
+    }
+    assert client.get("/api/screenshot-rules").status_code == 401

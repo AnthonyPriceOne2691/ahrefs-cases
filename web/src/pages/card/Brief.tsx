@@ -7,6 +7,7 @@
  *
  * NDA — флажок проекта: домен и клиента в тексте кейса раскрывать нельзя.
  * Каталог пунктов — с сервера (`/api/brief-fields`), экран его не повторяет.
+ * Скрины — часть брифа (в PDF это его раздел), их блок стоит сразу за пунктами.
  */
 import { Alert, Anchor, Button, Group, Paper, Stack, Table, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +20,7 @@ import { failureText } from '../cases/failure';
 
 import { BriefForm } from './BriefForm';
 import { EMPTY, bySection, shown } from './briefValues';
+import { Screens } from './Screens';
 
 interface Props {
   projectId: number;
@@ -36,37 +38,40 @@ export function Brief({ projectId, brief, nda }: Props) {
   });
 
   return (
-    <Paper className="glass" p="lg">
-      <Stack gap="sm">
-        <Group justify="space-between">
-          <Title order={3}>Бриф для копирайтера</Title>
-          {can('edit_briefs') && catalog.data && !editing && (
-            <Button variant="light" onClick={() => setEditing(true)}>
-              Заполнить бриф
-            </Button>
+    <>
+      <Paper className="glass" p="lg">
+        <Stack gap="sm">
+          <Group justify="space-between">
+            <Title order={3}>Бриф для копирайтера</Title>
+            {can('edit_briefs') && catalog.data && !editing && (
+              <Button variant="light" onClick={() => setEditing(true)}>
+                Заполнить бриф
+              </Button>
+            )}
+          </Group>
+          <NdaLine nda={nda} />
+          {catalog.isPending && <Text size="sm">Загружаем пункты брифа…</Text>}
+          {catalog.isError && (
+            <Text size="sm" c="dimmed">
+              Пункты брифа не загрузились: {failureText(catalog.error, catalog.error.message)}
+            </Text>
           )}
-        </Group>
-        <NdaLine nda={nda} />
-        {catalog.isPending && <Text size="sm">Загружаем пункты брифа…</Text>}
-        {catalog.isError && (
-          <Text size="sm" c="dimmed">
-            Пункты брифа не загрузились: {failureText(catalog.error, catalog.error.message)}
-          </Text>
-        )}
-        {catalog.data &&
-          (editing ? (
-            <BriefForm
-              projectId={projectId}
-              catalog={catalog.data}
-              brief={brief}
-              nda={nda}
-              onDone={() => setEditing(false)}
-            />
-          ) : (
-            <BriefRead catalog={catalog.data} brief={brief} />
-          ))}
-      </Stack>
-    </Paper>
+          {catalog.data &&
+            (editing ? (
+              <BriefForm
+                projectId={projectId}
+                catalog={catalog.data}
+                brief={brief}
+                nda={nda}
+                onDone={() => setEditing(false)}
+              />
+            ) : (
+              <BriefRead catalog={catalog.data} brief={brief} />
+            ))}
+        </Stack>
+      </Paper>
+      <Screens projectId={projectId} />
+    </>
   );
 }
 
