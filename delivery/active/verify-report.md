@@ -51,7 +51,7 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
 Новых/изменённых утверждений: **38**, из них без ссылки на пример спеки:
-**1**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
@@ -92,15 +92,15 @@ M36	assert sheet_pages(render_html(_case())) == 1
 M34	assert NDA_WARNING in closed
 M34	assert "example.com" in closed
 M34	assert NDA_WARNING not in open_
--	assert sheet_pages(six) == 1
+M7	assert sheet_pages(six) == 1
 ```
 
-Привязаны к примерам: **E9 M33 M34 M35 M36 M37**. Остальные 1 — нет.
+✅ **Каждое утверждение ведёт к примеру спеки** (E9 M33 M34 M35 M36 M37 M7), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
 
-Читать нужно **только строки с `-` в первой колонке**: их ожидание
-ничем не подписано. Подпись: `asserts_reviewed_by: human:… at=…`.
-
-asserts_without_example: 1
+asserts_without_example: 0
 
 ## Harness metrics (this shipment)
 
@@ -108,8 +108,8 @@ asserts_without_example: 1
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 13 code (+17 process docs) / +583/-56 (net +527) |
-| commits | 1 |
+| files_touched / loc_diff | 13 code (+17 process docs) / +585/-58 (net +527) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — tests/sheet_pages.py (новый оракул), tests/test_brief_sheet.py (новый оракул) |
