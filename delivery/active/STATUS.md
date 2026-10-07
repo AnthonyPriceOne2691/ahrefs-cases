@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** countries-on-screen
+- **slug:** niche-digits-in-text
 - **stack:** delivery@2.00, cqg@2.51, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
-- **kind:** feature
-- **repro_test:** n/a reason=не дефект: экранная половина требования команды агентства (страны словами), сервер — #45
-- **diagnosis:** n/a reason=не дефект кода
+- **kind:** bugfix
+- **repro_test:** tests/test_cases_narrative.py::test_niche_with_digits_does_not_break_the_text
+- **diagnosis:** n/a reason=причина видна по трассе: verify_numbers читает цифры ниши из файла («3D-печать», «B2B») как числа кейса — тот же класс, что урок L47 у названий метрик, но ниша в исключение не попала; ни сборка кейсов, ни задача пачки NumbersMismatchError не ловят, поэтому падает вся пачка
 - **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony («после зелёного CI прокликай экран стран» — экранная половина поставки countries-multi-geo, примеры M11–M13 продолжают её подписанные примеры)
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony («потом исправляй нишу» — после экрана стран; дефект показан владельцу с примерами «3D-печать», «B2B»)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефактов не производит: подпись страны приходит с сервера готовой, экран её только показывает
+- **artifact_oracle:** лист PDF с нишей «B2B» собран рендером и просмотрен: ниша в тексте и шапке, лист одна страница
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки, класс S
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no reason=пакетов не прибавилось
-- **runtime_paths:** none reason=меняются только подписи в трёх местах экрана; раскладка проверена снимками стенда
-- **irreversible_surfaces:** none reason=экранная правка без данных и миграций; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=правка в чистой функции сверки текста; путь сборки кейса прежний и покрыт тестами пачки
+- **irreversible_surfaces:** none reason=правка кода без данных и миграций; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** после выкатки: в «Проектах» колонка «Гео» словами («Германия (DE)», у проекта на несколько стран — все через запятую), шапка карточки — так же; строка с выдуманным кодом в отчёте приёма — «гео — не код страны (…)» и сам код
+- **observe_signal:** после выкатки: проект с нишей, где есть цифра («B2B», «3D-печать»), собирается в кейс, и пачка с ним не падает; в журнале прогона сборки — «кейс собран», а не «упал»
 - **observe_until:** 2026-10-21
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

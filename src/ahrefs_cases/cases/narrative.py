@@ -137,7 +137,7 @@ def verify_numbers(text: str, case: CaseData) -> None:
     чисел (в подсветку попадают не все), но назвать чужое — не может.
     """
     allowed = allowed_numbers(case)
-    found = {_normalize(token) for token in _NUMBER_RE.findall(_without_labels(text))}
+    found = {_normalize(token) for token in _NUMBER_RE.findall(_without_names(text, case))}
     unknown = sorted(found - allowed)
     if unknown:
         message = (
@@ -165,14 +165,22 @@ def allowed_numbers(case: CaseData) -> set[str]:
     return {_normalize(token) for piece in pieces for token in _NUMBER_RE.findall(piece)}
 
 
-def _without_labels(text: str) -> str:
-    """Убрать из текста названия метрик перед сверкой.
+def _without_names(text: str, case: CaseData) -> str:
+    """Убрать из текста имена перед сверкой: названия метрик и нишу из файла.
 
     В названиях есть цифры: «ключи в топ-10», «ключи в топ-3». Это часть имени,
     а не величина, и без этого шага сверка требовала бы числа 10 и 3 в данных
     кейса — то есть ослабла бы ровно там, где должна быть строгой. Поймано
     первым же прогоном, а не рассуждением.
+
+    Ниша — тот же класс, только приходит из файла: «3D-печать», «B2B», «Web3».
+    До 07.10.2026 её цифра читалась числом кейса, сборка текста бросала
+    `NumbersMismatchError`, и один такой проект ронял пачку целиком. Ниша
+    вырезается **вместе с кавычками**, в которых её ставит `_intro`: совпавшее
+    с ней число в остальном тексте сверяется по-прежнему.
     """
+    if case.niche:
+        text = text.replace(f"«{case.niche}»", "«»")
     for label in SUBJECT_LABELS.values():
         text = text.replace(label, " ")
     return text

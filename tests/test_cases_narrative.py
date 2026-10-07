@@ -146,6 +146,24 @@ def test_stoplist_checks_every_listed_country() -> None:
     assert ("гео", "DE") not in hits
 
 
+@pytest.mark.parametrize("niche", ["3D-печать", "B2B", "Web3 · агрегатор 24/7"])
+def test_niche_with_digits_does_not_break_the_text(niche: str) -> None:
+    """I1: цифры в нише — часть имени, а не число кейса: текст собирается и называет нишу.
+
+    До 07.10.2026 сборка бросала `NumbersMismatchError`, и один такой проект ронял
+    пачку целиком: ни сборка кейсов, ни задача прогона её не ловят.
+    """
+    assert f"«{niche}»" in _case(niche=niche).narrative
+
+
+def test_niche_does_not_hide_a_foreign_number_elsewhere() -> None:
+    """I2: вырезается ниша в кавычках, а не её цифры по всему тексту — «3» вне кавычек чужое."""
+    case = _case(niche="3D-печать")
+
+    with pytest.raises(narrative_module.NumbersMismatchError):
+        narrative_module.verify_numbers(case.narrative + " Рост за 3 квартала.", case)
+
+
 async def _project_with_verdict(session: AsyncSession) -> tuple[Project, int]:
     """Проект с вердиктом: кейс без вердикта в базе не живёт по построению."""
     project = Project(
