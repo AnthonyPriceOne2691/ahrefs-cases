@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Enum, Float, ForeignKey, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, Enum, Float, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ahrefs_cases.storage._enums import Metric, MetricSource
@@ -36,6 +36,13 @@ class MetricPoint(Base):
     source: Mapped[MetricSource] = mapped_column(
         Enum(MetricSource, name="metric_source"), nullable=False
     )
+    country: Mapped[str] = mapped_column(String(2), nullable=False, default="", server_default="")
+    """Страна, по которой точка куплена (`storage.geo.ahrefs_country`); «весь мир» — пусто.
+
+    В ключ уникальности не входит нарочно: смена страны у проекта не докупает ряды
+    (решение владельца 07.10.2026, Z53) — она помечается, и карточка с листом брифа
+    говорят, по какой стране цифры."""
+
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

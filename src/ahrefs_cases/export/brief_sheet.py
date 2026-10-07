@@ -56,6 +56,11 @@ def _service(case: CaseData) -> str:
     return case.service
 
 
+def _geo(case: CaseData) -> str:
+    """Страны словами и, если ряды куплены не по первой из них, оговорка (Z53)."""
+    return case.geo_label if case.geo_note is None else f"{case.geo_label}; {case.geo_note}"
+
+
 def _period(case: CaseData) -> str:
     start, end = case.period.start, case.period.end
     return f"{start:%m.%Y} — {end:%m.%Y} ({case.period.months} мес.)"
@@ -87,7 +92,7 @@ _AUTO: Mapping[str, tuple[str, Callable[[CaseData], str]]] = MappingProxyType(
         "@owner": ("Кто из сотрудников вёл проект", lambda case: case.owner),
         "@service": ("Услуга (по которой пишем кейс)", _service),
         "@period": ("Период сотрудничества", _period),
-        "@geo": ("ГЕО", lambda case: case.geo_label),
+        "@geo": ("ГЕО", _geo),
         "@growth": ("Процент роста показателей", _growth),
         "@dynamics": (
             "Динамика показателей (подробно)",

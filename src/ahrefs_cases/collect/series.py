@@ -20,8 +20,14 @@ from ahrefs_cases.collect.provider import HistoryResult, points_to_rows
 from ahrefs_cases.storage.models.metric_point import MetricPoint
 
 
-async def store_history(session: AsyncSession, project_id: int, result: HistoryResult) -> int:
-    """Записать точки ответа. Возвращает число записанных строк метрик."""
+async def store_history(
+    session: AsyncSession, project_id: int, result: HistoryResult, *, country: str
+) -> int:
+    """Записать точки ответа. Возвращает число записанных строк метрик.
+
+    `country` — страна запроса: перепокупка пишет её заново, и точка, купленная по
+    новой стране, перестаёт числиться за прежней (Z53).
+    """
     rows = points_to_rows(result)
     if not rows:
         return 0
@@ -34,6 +40,7 @@ async def store_history(session: AsyncSession, project_id: int, result: HistoryR
             "point_date": at,
             "value": value,
             "source": result.source,
+            "country": country,
             "fetched_at": now,
         }
         for at, metric, value in rows
@@ -41,7 +48,11 @@ async def store_history(session: AsyncSession, project_id: int, result: HistoryR
     stmt = insert(MetricPoint).values(values)
     stmt = stmt.on_conflict_do_update(
         constraint="uq_metric_point_identity",
-        set_={"value": stmt.excluded.value, "fetched_at": stmt.excluded.fetched_at},
+        set_={
+            "value": stmt.excluded.value,
+            "country": stmt.excluded.country,
+            "fetched_at": stmt.excluded.fetched_at,
+        },
     )
     await session.execute(stmt)
     return len(values)

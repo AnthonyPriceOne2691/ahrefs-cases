@@ -36,7 +36,7 @@ from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
 from ahrefs_cases.classify.rules import SUPPORTING_METRICS
 from ahrefs_cases.classify.rulesets import active_ruleset
-from ahrefs_cases.classify.series import load_series
+from ahrefs_cases.classify.series import bought_countries, load_series
 from ahrefs_cases.classify.verdicts import source_mismatch
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
@@ -47,6 +47,7 @@ from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.export.html_renderer import POINTS_NOTE
 from ahrefs_cases.storage import Group, Metric, MetricSource, RunStatus
 from ahrefs_cases.storage.geo import label as geo_label
+from ahrefs_cases.storage.geo import rows_note
 from ahrefs_cases.storage.locks import hold_start, work_is_idle
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -154,6 +155,7 @@ async def project_card(
         # вердикта, а не пишется здесь второй раз.
         source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
         brief=dict(project.brief or {}),
+        geo_note=rows_note(project.geo, await bought_countries(session, project.id, shown)),
     )
 
 

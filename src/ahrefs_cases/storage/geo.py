@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from ahrefs_cases.storage.countries import COUNTRY_NAMES
@@ -96,6 +97,37 @@ def label(geo: str) -> str:
     if geo == WORLDWIDE:
         return WORLDWIDE_LABEL
     return ", ".join(_name(code) for code in countries(geo))
+
+
+def rows_note(geo: str, bought: Collection[str]) -> str | None:
+    """Оговорка, когда купленные ряды — не по первой стране проекта; `None` — всё по ней.
+
+    Сбор считает окна купленными и после смены первой страны цифры не перекупает: ряд
+    остаётся по прежней стране или смешивается с новыми месяцами (Z53). Решение
+    владельца 07.10.2026 — не докупать, а предупреждать. Текст один на карточку и
+    лист брифа: два экземпляра разошлись бы при первой правке.
+
+    `bought` — страны купленных точек проекта (`metric_points.country`, пусто — весь мир).
+    """
+    wanted = ahrefs_country(geo)
+    others = sorted(set(bought) - {wanted})
+    if not others:
+        return None
+    lead = "часть цифр Ahrefs куплена" if wanted in bought else "цифры Ahrefs куплены"
+    now = (
+        f"первой страной проекта стала {_name(wanted)}" if wanted else "проект перевели на весь мир"
+    )
+    return f"{lead} {_bought_where(others)} — до того, как {now}"
+
+
+def _bought_where(codes: Sequence[str]) -> str:
+    named = [_name(code) for code in codes if code]
+    places = (
+        [("по стране " if len(named) == 1 else "по странам ") + ", ".join(named)] if named else []
+    )
+    if "" in codes:
+        places.append("по всему миру")
+    return " и ".join(places)
 
 
 def _code(token: str) -> str:

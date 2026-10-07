@@ -18,6 +18,9 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.intake.drafts import ProjectDraft
+from ahrefs_cases.intake.rejections import Notice, RejectReason
+from ahrefs_cases.storage.geo import WORLDWIDE_LABEL, ahrefs_country, label
+from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
 
 
@@ -30,6 +33,9 @@ class UpsertResult:
     По ним идёт цикл «по файлу» (решение владельца 25.09.2026): прогон и пачка
     — проекты загруженного списка, а не вся база."""
 
+    notices: tuple[Notice, ...] = ()
+    """Замечания обновления: первая страна сменилась, а ряды куплены по другой."""
+
 
 async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> UpsertResult:
     """Черновики → проекты. Возвращает, сколько создано и сколько обновлено."""
@@ -37,9 +43,11 @@ async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> 
         return UpsertResult(created=0, updated=0)
 
     existing = await _load_existing(session, drafts)
+    bought = await _bought_countries(session, [project.id for project in existing.values()])
     created = 0
     updated = 0
     touched: list[Project] = []
+    notices: list[Notice] = []
     for draft in drafts:
         project = existing.get(draft.key)
         if project is None:
@@ -47,6 +55,9 @@ async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> 
             session.add(project)
             created += 1
         else:
+            notice = _geo_changed(draft, project.geo, bought.get(project.id, set()))
+            if notice is not None:
+                notices.append(notice)
             _apply(project, draft)
             updated += 1
         touched.append(project)
@@ -55,7 +66,42 @@ async def upsert_projects(session: AsyncSession, drafts: list[ProjectDraft]) -> 
     # Номера — после `flush`: у новых проектов их выдаёт база. Дважды один проект
     # (две одинаковые строки файла) — один номер.
     ids = tuple(dict.fromkeys(project.id for project in touched))
-    return UpsertResult(created=created, updated=updated, project_ids=ids)
+    return UpsertResult(created=created, updated=updated, project_ids=ids, notices=tuple(notices))
+
+
+async def _bought_countries(session: AsyncSession, project_ids: list[int]) -> dict[int, set[str]]:
+    """Страны купленных рядов по проектам — одним запросом на весь список."""
+    if not project_ids:
+        return {}
+    stmt = (
+        select(MetricPoint.project_id, MetricPoint.country)
+        .where(MetricPoint.project_id.in_(project_ids))
+        .distinct()
+    )
+    found: dict[int, set[str]] = {}
+    for project_id, country in (await session.execute(stmt)).all():
+        found.setdefault(project_id, set()).add(country)
+    return found
+
+
+def _geo_changed(draft: ProjectDraft, was: str, bought: set[str]) -> Notice | None:
+    """Замечание, когда первая страна сменилась, а ряды куплены не по новой (Z53).
+
+    Сбор их не перекупает (решение владельца 07.10.2026 — предупреждать): цифры остаются
+    по стране рядов, пока их не купят заново. Сравнивается **страна рядов** с новой
+    первой страной, а не старая страна с новой: вернуть проекту страну, по которой ряды
+    куплены, — это не смена цифр, и замечание тогда врало бы.
+    """
+    now = ahrefs_country(draft.geo)
+    others = sorted(bought - {now})
+    if ahrefs_country(was) == now or not others:
+        return None
+    detail = f"{', '.join(_first(code) for code in others)} → {_first(now)}"
+    return Notice(draft.row_no, "geo", RejectReason.GEO_CHANGED, detail)
+
+
+def _first(code: str) -> str:
+    return label(code) if code else WORLDWIDE_LABEL
 
 
 async def _load_existing(

@@ -102,6 +102,56 @@ def test_geo_downgrade_keeps_the_country_ahrefs_counted_by(
     assert rows == [("several.migration.example", "DE"), ("world.migration.example", "")]
 
 
+_POINT_PROJECTS = (
+    "INSERT INTO projects (domain, target_mode, period_start, period_end, niche, geo, "
+    "service_type, client, owner, publishable, notes, status) VALUES "
+    "('us.rows.migration.example', 'SUBDOMAINS', '2025-01-01', '2025-12-01', 'x', 'US,CA', "
+    "'seo', 'c', 'o', true, '', 'NEW'), "
+    "('world.rows.migration.example', 'SUBDOMAINS', '2025-01-01', '2025-12-01', 'x', 'WW', "
+    "'seo', 'c', 'o', true, '', 'NEW')"
+)
+_POINT_ROWS = (
+    "INSERT INTO metric_points (project_id, metric, point_date, value, source) "
+    "SELECT id, 'ORG_TRAFFIC', DATE '2025-01-01', 100, 'FIXTURE' FROM projects "
+    "WHERE domain LIKE '%.rows.migration.example'"
+)
+_POINT_READ = (
+    "SELECT project.domain, point.country FROM metric_points AS point "
+    "JOIN projects AS project ON project.id = point.project_id "
+    "WHERE project.domain LIKE '%.rows.migration.example' ORDER BY 1"
+)
+_POINT_COLUMN = (
+    "SELECT column_name FROM information_schema.columns "
+    "WHERE table_name = 'metric_points' AND column_name = 'country'"
+)
+_POINT_DROP = "DELETE FROM projects WHERE domain LIKE '%.rows.migration.example'"
+_BEFORE_COUNTRY = "d1e2f3a4b5c6"  # pragma: allowlist secret
+
+
+def test_bought_points_learn_the_country_of_their_project(
+    alembic_config: Config, needs_db: None
+) -> None:
+    """M80: купленным точкам проставлена первая страна проекта, у «всего мира» — пусто;
+    откат убирает колонку."""
+    from ahrefs_cases import config
+
+    url = config.storage.database_url
+    command.upgrade(alembic_config, "head")
+    _run_sql(url, _POINT_DROP)
+    command.downgrade(alembic_config, _BEFORE_COUNTRY)
+    _run_sql(url, _POINT_PROJECTS, _POINT_ROWS)
+
+    command.upgrade(alembic_config, "head")
+    rows = _run_sql(url, _POINT_READ)
+    command.downgrade(alembic_config, _BEFORE_COUNTRY)
+    column = _run_sql(url, _POINT_COLUMN)
+    command.upgrade(alembic_config, "head")
+    _run_sql(url, _POINT_DROP)
+
+    assert rows == [("us.rows.migration.example", "US"), ("world.rows.migration.example", "")]
+    assert column == []
+
+
 def test_upgrade_downgrade_upgrade_cycle(alembic_config: Config, needs_db: None) -> None:
     """A1: три шага подряд без ошибок, и после downgrade не остаётся ENUM-типов.
 

@@ -49,10 +49,11 @@ from ahrefs_cases.classify.deltas import between
 from ahrefs_cases.classify.points import KW_TOP10, Point, window_from
 from ahrefs_cases.classify.recalc import ruleset_by_version
 from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
-from ahrefs_cases.classify.series import MetricSeries, load_series
+from ahrefs_cases.classify.series import MetricSeries, bought_countries, load_series
 from ahrefs_cases.classify.thresholds import Windows
 from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource, TargetMode
+from ahrefs_cases.storage.geo import rows_note
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.verdict import Verdict
 
@@ -104,11 +105,18 @@ class VerdictView:
         )
 
 
-def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> CaseData:
+def build_case(
+    project: Project,
+    verdict: VerdictView,
+    series: MetricSeries,
+    *,
+    geo_note: str | None = None,
+) -> CaseData:
     """Структура кейса по одному проекту. Чистая функция: база уже прочитана.
 
     Серия здесь нужна только кривым: числа А → Б по-прежнему приходят из
-    вердикта, и `_changes` серии не видит.
+    вердикта, и `_changes` серии не видит. `geo_note` — оговорка о стране рядов
+    (`storage.geo.rows_note`): она нужна тексту кейса, поэтому приходит до него.
     """
     changes = _changes(verdict)
     anonymized = not project.publishable
@@ -134,6 +142,7 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
         # (тесты, предпросмотр), режима ещё нет — тогда тот, что поставила бы база.
         target_mode=(project.target_mode or TargetMode.SUBDOMAINS).value,
         brief=dict(project.brief or {}),
+        geo_note=geo_note,
     )
     # Текст собирается по готовой структуре и сверяется с её числами: собрать
     # его раньше значило бы считать те же величины второй раз.
@@ -398,8 +407,10 @@ async def _attempt(
     if diverged is not None:
         return _mismatch(project, diverged, rows=verdict.source)
 
+    note = rows_note(project.geo, await bought_countries(session, project.id, source))
     case = replace(
-        build_case(project, view, series), screenshots=await load_screens(session, project.id)
+        build_case(project, view, series, geo_note=note),
+        screenshots=await load_screens(session, project.id),
     )
     return CaseAttempt(
         domain=project.domain,

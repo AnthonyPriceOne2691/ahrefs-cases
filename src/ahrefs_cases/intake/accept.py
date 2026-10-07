@@ -96,6 +96,6 @@ async def accept(session: AsyncSession, table: RawTable) -> IntakeReport:
         created=result.created,
         updated=result.updated,
         rejections=tuple(rejections),
-        notices=tuple(notices),
+        notices=(*notices, *result.notices),
         project_ids=result.project_ids,
     )

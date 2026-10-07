@@ -29,6 +29,7 @@ const REASONS: Record<string, string> = {
   bad_link: 'ссылка не на папку Google Drive',
   too_long: 'текст длиннее предела',
   duplicate_in_source: 'домен встречается в файле дважды',
+  geo_changed: 'первая страна сменилась — цифры остаются по прежней, пока ряды не купят заново',
 };
 
 /** Код без перевода показывается как есть: новый код на сервере обязан быть
@@ -37,7 +38,13 @@ function reasonText(code: string): string {
   return REASONS[code] ?? code;
 }
 
+/** Замечание о смене страны — не «ячейку не разобрали»: гео записано, а цифры остаются
+ *  по прежней стране, пока ряды не купят заново. Пояснение над таблицей у него своё. */
+const GEO_CHANGED = 'geo_changed';
+
 export function IntakeOutcome({ report }: { report: IntakeReport }) {
+  const unparsed = report.notices.filter((item) => item.reason !== GEO_CHANGED).length;
+  const moved = report.notices.length - unparsed;
   return (
     <Stack gap="sm">
       <Title order={4}>Принято из «{report.origin}»</Title>
@@ -69,14 +76,23 @@ export function IntakeOutcome({ report }: { report: IntakeReport }) {
 
       {report.notices.length > 0 && (
         <>
-          <Text size="sm" data-testid="notices-note">
-            Эти проекты{' '}
-            <Text span fw={600}>
-              приняты
+          {unparsed > 0 && (
+            <Text size="sm" data-testid="notices-note">
+              Эти проекты{' '}
+              <Text span fw={600}>
+                приняты
+              </Text>
+              , но ячейку разобрать не удалось — она не записана. Объём работ остаётся неизвестным,
+              поле брифа — прежним: ни число, ни значение не выдумываются.
             </Text>
-            , но ячейку разобрать не удалось — она не записана. Объём работ остаётся неизвестным,
-            поле брифа — прежним: ни число, ни значение не выдумываются.
-          </Text>
+          )}
+          {moved > 0 && (
+            <Text size="sm" data-testid="geo-note">
+              У проекта с купленными рядами сменилась первая страна: он принят с новой, а цифры
+              Ahrefs остаются по прежней. Чтобы они шли по новой стране, ряды покупают заново —
+              проект удаляют и загружают снова.
+            </Text>
+          )}
           <Rows title="Принято с замечаниями" rows={report.notices} />
         </>
       )}

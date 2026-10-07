@@ -25,6 +25,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from ahrefs_cases import config
 from ahrefs_cases.collect.scheme import PointWindows, history_span
 from ahrefs_cases.storage._enums import CASE_OUTCOMES, Metric, MetricSource, RunItemOutcome
+from ahrefs_cases.storage.geo import ahrefs_country
 from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run, RunItem
@@ -99,6 +100,9 @@ async def share_twin_points(
         )
         # `DISTINCT ON` берёт свежую копию месяца, если кампаний больше двух:
         # без него один и тот же месяц пришёл бы в INSERT дважды.
+        # Только месяцы, купленные **по той же стране**: трафик сайта в США — не его
+        # трафик в Германии, и кампания по DE с месяцами кампании по US показала бы
+        # цифры чужой страны (Z53). Другая страна — свои покупки.
         source_rows = (
             select(
                 literal(project.id).label("project_id"),
@@ -106,11 +110,13 @@ async def share_twin_points(
                 MetricPoint.point_date,
                 MetricPoint.value,
                 MetricPoint.source,
+                MetricPoint.country,
                 MetricPoint.fetched_at,
             )
             .where(
                 MetricPoint.project_id.in_(twins),
                 MetricPoint.source == source,
+                MetricPoint.country == ahrefs_country(project.geo),
                 MetricPoint.point_date >= span.date_from,
                 MetricPoint.point_date <= span.date_to,
             )
@@ -122,7 +128,7 @@ async def share_twin_points(
             )
         )
         stmt = pg_insert(MetricPoint).from_select(
-            ["project_id", "metric", "point_date", "value", "source", "fetched_at"],
+            ["project_id", "metric", "point_date", "value", "source", "country", "fetched_at"],
             source_rows,
         )
         # Уже лежащая точка не трогается: она наша, и `fetched_at` у неё честный.

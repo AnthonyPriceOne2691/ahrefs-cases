@@ -199,6 +199,41 @@ describe('экран загрузки', () => {
   });
 });
 
+describe('экран загрузки: смена страны', () => {
+  it('M87: смена первой страны у купленных рядов названа словами', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': {
+        status: 200,
+        body: {
+          ...REPORT,
+          notices: [
+            {
+              row_no: 3,
+              field: 'geo',
+              reason: 'geo_changed',
+              detail: 'США (US) → Германия (DE)',
+            },
+          ],
+        },
+      },
+    });
+
+    showRuns();
+    await upload();
+
+    expect(
+      await screen.findByText(
+        'первая страна сменилась — цифры остаются по прежней, пока ряды не купят заново',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('США (US) → Германия (DE)')).toBeInTheDocument();
+    expect(screen.getByTestId('geo-note')).toHaveTextContent('цифры Ahrefs остаются по прежней');
+    expect(screen.queryByTestId('notices-note')).not.toBeInTheDocument();
+  });
+});
+
 describe('экран загрузки: отказы источника', () => {
   it('E5: отказ по формату показывается текстом сервера', async () => {
     rememberToken('токен');
