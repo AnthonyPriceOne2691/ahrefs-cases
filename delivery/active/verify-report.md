@@ -41,6 +41,15 @@
 **Новые модули.** `storage/countries.py` — данные без логики; `storage/geo.py` — четыре функции без
 состояния, их читают приём, сбор, кейс и API.
 
+## Исполнение рисковых путей
+
+- `src/ahrefs_cases/collect/plan.py` — прогнал `pytest tests/test_collect_scheme.py -k first_country` (план шага 1 по
+  проектам из файла на дев-базе) и `pytest tests/test_collect_transport.py -k country` (запрос живого провайдера
+  через `httpx.MockTransport`), увидел: у «de, at, ch» `request.country == "DE"`, у Worldwide — пусто, и параметр
+  `country` в запрос не уходит вовсе; у `DE` — `country=de`, как раньше. at=2026-10-07. Живой Ahrefs не
+  исполнялся: переключение в `live` решает владелец — ответ живого API на запрос без страны проверяется после
+  выкатки по `observe_signal`.
+
 ## Чего проверка НЕ доказывает
 
 - Как живой Ahrefs отвечает на запрос без `country` у мультигео-проекта со словом Worldwide —
