@@ -4,7 +4,11 @@
     { "name": "period_start", "what": "начало работ", "example": "2024-12-01" },
     { "name": "period_end", "what": "конец работ", "example": "2025-12-01" },
     { "name": "niche", "what": "ниша", "example": "медицина" },
-    { "name": "geo", "what": "страна, две буквы", "example": "RU" },
+    {
+      "name": "geo",
+      "what": "страна кодом из двух букв; несколько — через запятую, цифры по первой; весь мир — Worldwide",
+      "example": "DE, AT"
+    },
     { "name": "service_type", "what": "услуга", "example": "seo" },
     { "name": "work_volume", "what": "объём работ", "example": "120", "mayBeEmpty": true },
     { "name": "client", "what": "клиент", "example": "ООО «Ромашка»" },

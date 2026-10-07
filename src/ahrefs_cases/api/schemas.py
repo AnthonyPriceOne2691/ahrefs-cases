@@ -24,6 +24,10 @@ class ProjectRow(BaseModel):
     domain: str
     niche: str
     geo: str
+    geo_label: str
+    """Гео словами — «Германия (DE)», «Весь мир». Справочник один, на сервере
+    (`storage.geo`): экран и лист обязаны называть страну одинаково."""
+
     service_type: str
     period_start: date
     period_end: date

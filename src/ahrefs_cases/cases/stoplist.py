@@ -24,6 +24,7 @@ import re
 from dataclasses import dataclass
 
 from ahrefs_cases.cases.model import CaseData
+from ahrefs_cases.storage.geo import countries
 
 FORBIDDEN_GEO = frozenset({"RU", "BY"})
 """Коды стран из запрета. Сравнение регистронезависимое: во входном файле
@@ -85,9 +86,16 @@ def check(case: CaseData) -> tuple[Hit, ...]:
         "услуга": case.service,
         "текст": case.narrative,
     }
-    hits = [hit for where, value in fields.items() for hit in _scan(where, value)]
-    if case.geo.upper() in FORBIDDEN_GEO:
-        hits.append(Hit(where="гео", matched=case.geo.upper()))
+    # Код страны — первым: текст кейса называет страны словами, и у проекта с
+    # гео BY в отказе стоит и «беларус» из текста. Причина — гео, следствие —
+    # слово в тексте, и читать отказ человек начинает с причины. Каждая страна
+    # списка, а не первая: цифры считаются по первой, но кейс называет все.
+    hits = [
+        Hit(where="гео", matched=code.upper())
+        for code in countries(case.geo)
+        if code.upper() in FORBIDDEN_GEO
+    ]
+    hits.extend(hit for where, value in fields.items() for hit in _scan(where, value))
     return tuple(hits)
 
 

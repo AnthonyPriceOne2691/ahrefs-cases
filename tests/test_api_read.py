@@ -240,6 +240,8 @@ def test_projects_list_shows_groups(client: TestClient) -> None:
     by_domain = {row["domain"]: row for row in rows}
     assert by_domain["alpha.example"]["group"] == "good"
     assert by_domain["beta.example"]["group"] is None
+    # M8: гео словами — из справочника сервера, экран его не переводит сам.
+    assert by_domain["alpha.example"]["geo_label"] == "США (US)"
 
 
 def test_filters_narrow_the_list(client: TestClient, seeded: dict[str, int]) -> None:

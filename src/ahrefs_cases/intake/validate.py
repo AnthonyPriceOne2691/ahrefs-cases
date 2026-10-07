@@ -24,6 +24,7 @@ from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
 from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason, UnfitSourceError
 from ahrefs_cases.intake.rows import RawRow, RawTable
 from ahrefs_cases.storage._enums import TargetMode
+from ahrefs_cases.storage.geo import GeoRejected, parse_geo
 
 REQUIRED_COLUMNS = (
     "domain",
@@ -56,7 +57,6 @@ _SEEN_CELLS = 6
 _SEEN_WIDTH = 60
 
 _DATE_FORMATS = ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y", "%Y/%m/%d")
-_GEO_RE = re.compile(r"^[A-Za-z]{2}$")
 _TRUE = frozenset({"yes", "y", "true", "1", "да", "+"})
 _FALSE = frozenset({"no", "n", "false", "0", "нет", "-", ""})
 
@@ -295,17 +295,20 @@ def _parse_date(row: RawRow, column: str, rejections: list[Rejection]) -> date |
 
 
 def _parse_geo(row: RawRow, rejections: list[Rejection]) -> str:
-    """ISO 3166-1 alpha-2 проверяется формой, а не справочником.
+    """Страна, несколько через запятую или Worldwide — по справочнику ISO 3166-1.
 
-    Полный справочник — отдельная зависимость ради двухбуквенного кода; ошибку
-    вида `Германия` форма ловит, а выдуманный, но правдоподобный `XZ` поймает
-    Ahrefs пустой историей — с пометкой в `RunItem`, а не потерей строки.
+    До 07.10.2026 код проверялся только формой (две буквы), и выдуманный `XZ`
+    доходил до Ahrefs. Справочник понадобился для названий стран на листе и
+    экране (`storage.geo`) — и тот же справочник теперь отказывает строке.
     """
     raw = row.get("geo")
-    if raw and not _GEO_RE.match(raw):
-        rejections.append(Rejection(row.row_no, "geo", RejectReason.BAD_GEO, raw))
+    if not raw:
         return ""
-    return raw.upper()
+    result = parse_geo(raw)
+    if isinstance(result, GeoRejected):
+        rejections.append(Rejection(row.row_no, "geo", RejectReason.BAD_GEO, result.detail))
+        return ""
+    return result
 
 
 def _parse_target_mode(row: RawRow, rejections: list[Rejection]) -> TargetMode | None:

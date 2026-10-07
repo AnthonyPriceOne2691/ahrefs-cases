@@ -41,6 +41,7 @@ from ahrefs_cases.collect.scheme import (
 )
 from ahrefs_cases.config.ahrefs import CollectSchemeMode
 from ahrefs_cases.storage._enums import Metric, MetricSource
+from ahrefs_cases.storage.geo import ahrefs_country
 from ahrefs_cases.storage.models.project import Project
 
 
@@ -445,7 +446,7 @@ async def _tasks_for_spec(
                 request=HistoryRequest(
                     target=project.domain,
                     mode=project.target_mode,
-                    country=project.geo,
+                    country=ahrefs_country(project.geo),
                     date_from=asked_window.date_from,
                     date_to=asked_window.date_to,
                     period_end=project.period_end,

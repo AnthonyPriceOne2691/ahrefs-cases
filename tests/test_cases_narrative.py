@@ -124,6 +124,28 @@ def test_stoplist_reads_the_text_too() -> None:
     assert [hit.where for hit in check(dirty)] == ["текст"]
 
 
+@pytest.mark.parametrize(
+    ("geo", "phrase"),
+    [
+        ("DE", "страна — Германия (DE)."),
+        ("DE,AT", "страны — Германия (DE), Австрия (AT); цифры Ahrefs — по первой из них."),
+        ("WW", "география — весь мир."),
+    ],
+)
+def test_text_names_countries_and_which_one_counts(geo: str, phrase: str) -> None:
+    """M7: страны словами; у нескольких — по какой из них цифры: без этого рост
+    под тремя странами читается как сумма по всем."""
+    assert phrase in _case(geo=geo).narrative
+
+
+def test_stoplist_checks_every_listed_country() -> None:
+    """M6: запрет касается каждой страны списка, а не только первой, по которой цифры."""
+    hits = {(hit.where, hit.matched) for hit in check(_case(geo="DE,RU"))}
+
+    assert ("гео", "RU") in hits
+    assert ("гео", "DE") not in hits
+
+
 async def _project_with_verdict(session: AsyncSession) -> tuple[Project, int]:
     """Проект с вердиктом: кейс без вердикта в базе не живёт по построению."""
     project = Project(
