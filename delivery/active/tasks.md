@@ -10,4 +10,4 @@
       шапка листа — M6, M7.
 - [x] API: `geo_label`; подсказка к файлу — M8. Экран — поставка `countries-on-screen`.
 - [x] Концепты `intake`, `case-content`, `collection-scheme`; Z53 в реестре.
-- [ ] verify: pytest целиком, vitest, гейты, `delivery_check`, CI.
+- [x] verify: pytest целиком (784 passed, 11 skipped), гейты, `delivery_check`, живой проход по стенду; CI — по PR.
