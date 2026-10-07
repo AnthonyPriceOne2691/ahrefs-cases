@@ -26,7 +26,7 @@ implementation:
 | Гейты формы | `.venv/bin/python -m pre_commit run --all-files` (27 хуков) |
 | Контур поставки | `python scripts/delivery_check.py [--diff-base REF]` |
 | Канон знаний | `python scripts/okf_validate.py`, `python scripts/okf_sync_gate.py --staged` |
-| API | `src/ahrefs_cases/api/main.py` — health, вход, люди, приём списка, проекты, кейсы, расход, прогоны и смета, пороги, алерты |
+| API | `src/ahrefs_cases/api/main.py` — health, вход, люди, приём списка, проекты, бриф проекта, кейсы, расход, прогоны и смета, пороги, алерты |
 | Прод | `ssh prod-hetzner`, каталог `/srv/ahrefs-cases` на общем сервере: обновление, откат, логи, люди, бэкап — `docs/PROD.md` |
 | Алерты | Telegram (`config.alerts`: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`): упавшие прогоны объявляет реапер (`workers/failed_runs.py`, отметка «объявлено до» в Redis), сбой бэкапа — `scripts/backup.sh`, здоровье — `scripts/healthcheck.sh` из крона; `/api/alerts` — состояние для экрана, не доставка |
 | Бэкап | `scripts/backup.sh` (крон): локальная копия → внешняя, шифрованная gpg, в S3-совместимый бакет (`scripts/offsite_push.sh`) → при любом сбое алерт в Telegram (`scripts/notify.sh`); обратно — `scripts/offsite_fetch.sh` и `scripts/restore.sh`. Настройки — `OFFSITE_*`, `TELEGRAM_*` в `.env` |

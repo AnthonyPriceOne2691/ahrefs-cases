@@ -1,29 +1,40 @@
-# Verify report: niche-digits-in-text
+# Verify report: brief-fields-api
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| Падение до правки | `pytest tests/test_cases_narrative.py -k niche` без правки `narrative.py` | 4 падения: `NumbersMismatchError: в тексте кейса числа, которых нет в его данных: 3` (и `2` у «B2B») |
-| I1 | `test_niche_with_digits_does_not_break_the_text` (три ниши) | текст собран, ниша в кавычках |
-| I2 | `test_niche_does_not_hide_a_foreign_number_elsewhere` | «3» вне кавычек — по-прежнему `NumbersMismatchError` |
-| Соседи | `tests/test_cases_{narrative,pdf,archive,pack,journal,builder}.py` | 74 passed |
-| Лист глазами | `render_pdf` кейса с нишей «B2B» → PNG | шапка «Германия (DE) · B2B · seo», текст «Проект в нише «B2B», страна — Германия (DE)…», одна страница |
+| M14–M17 | `tests/test_storage_brief.py` | 14 passed |
+| M18–M23 | `tests/test_api_project_brief.py` (своя запись, свои люди) | 6 passed; соседи `test_api_auth`, `test_api_users`, `test_api_read`, `test_migrations_match_models` — зелёные (60 вместе) |
+| Сверка моделей с миграциями | `test_migrations_match_models` | `server_default` модели = миграции |
+| Экран людей | vitest `users.test.tsx`, `users-manage.test.tsx` | 22 passed |
+| Живой проход | стенд на свежей копии дев-базы (миграция `c0d1e2f3a4b5`), Chrome по CDP | «Пользователи»: значок «заполнять бриф» у всех групп, включая «пользователь», строки не поехали; из браузера `GET /api/brief-fields` — 200, 5 разделов, 22 поля; `PATCH` с «Маркетплейс» — 200, хранится `marketplace`; «адская» сложность — 422 «Сложность проекта: «адская» не из списка: Низкая, Средняя, Высокая, Очень высокая»; после `nda: true` на карточке — «публиковать без названия», после `nda: false` значок ушёл |
 
 ## Ревью рисковых мест
 
-**Сверка не ослабла**, потому что `_without_names` вырезает нишу только в кавычках «…», в которых её
-ставит `_intro`, а не её цифры по всему тексту: число, совпавшее с цифрой ниши, вне кавычек сверяется
-как раньше (I2). `allowed_numbers` не менялся. Пустая ниша не вырезает ничего (`if case.niche:`).
+**Безопасность.** Новое право `edit_briefs` стоит зависимостью `require_right("edit_briefs")`
+на `edit_brief`, а каталог — под `require_right("read")`; личное «Нет» отбирает правку (M23).
+Ссылка на папку проходит только как https на `drive.google.com` / `docs.google.com` —
+`_drive_link` сверяет `hostname`, а не подстроку, поэтому `drive.google.com.evil.example`
+отклоняется (M16). Значения брифа в журнал не уходят: `brief_updated` пишет `sorted(patch.fields)`
+— ключи, без значений.
 
-**Производительность — риска нет**, потому что вырезается одна подстрока на текст, `verify_numbers`
-зовётся один раз на кейс.
+**Транзакция БД.** `edit_brief` не пишет ничего, пока `_merged` не проверил все поля: отказ
+поднимается до присваивания `project.brief`, а сессия `session_scope` откатывается на исключении —
+годное поле того же запроса не записано (M21). Новый словарь вместо правки на месте — иначе
+изменение внутри JSONB ORM не увидел бы.
+
+**Производительность — риска нет**, потому что каталог собирается из кортежа `FIELDS` в 22
+элемента, а правка читает один проект по ключу (`session.get`).
+
+**Новые модули.** `storage/brief.py` — данные и две чистые функции; `api/routers/briefs.py` —
+два эндпоинта без состояния.
 
 ## Чего проверка НЕ доказывает
 
-Что другие исключения сборки одного проекта не уронят пачку: изолирован только контент-запрет (Z54).
-Пачку через интерфейс на стенде не прогнать: копия базы снята посреди pytest и держит прогон «идёт»,
-замок «один активный прогон» отвечает 409 — исправление проверено тестами и рендером листа.
+- Что списки «тип услуги», «вид проекта», «срез динамики» совпадут с листом шаблона
+  агентства — это предложение до сверки, показано владельцу.
+- Формы брифа на экране ещё нет (поставка 2б): бриф правится только через API.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -36,8 +47,8 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 3 code (+10 process docs) / +30/-3 (net +27) |
-| commits | 1 |
+| files_touched / loc_diff | 0 code (+0 process docs) / +0/-0 (net +0) |
+| commits | 0 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | no |

@@ -12,6 +12,7 @@ from ahrefs_cases import config
 from ahrefs_cases.api.routers import (
     alerts_router,
     auth_router,
+    briefs_router,
     cases_router,
     health_router,
     intake_router,
@@ -59,6 +60,7 @@ for router in (
     auth_router,
     intake_router,
     projects_router,
+    briefs_router,
     cases_router,
     rulesets_router,
     runs_router,

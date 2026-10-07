@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from ahrefs_cases.api.routers.alerts import router as alerts_router
 from ahrefs_cases.api.routers.auth import router as auth_router
+from ahrefs_cases.api.routers.briefs import router as briefs_router
 from ahrefs_cases.api.routers.cases import router as cases_router
 from ahrefs_cases.api.routers.health import router as health_router
 from ahrefs_cases.api.routers.intake import router as intake_router
@@ -20,6 +21,7 @@ from ahrefs_cases.api.routers.users import router as users_router
 __all__ = [
     "alerts_router",
     "auth_router",
+    "briefs_router",
     "cases_router",
     "health_router",
     "intake_router",

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import Boolean, Date, Enum, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, Enum, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ahrefs_cases.storage._enums import ProjectStatus, TargetMode
@@ -43,14 +44,21 @@ class Project(Base, TimestampMixin):
     client: Mapped[str] = mapped_column(String(255), nullable=False)
     owner: Mapped[str] = mapped_column(String(255), nullable=False)
     publishable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    """Разрешение назвать клиента. `False` → кейс анонимный, домен не появляется
-    ни в тексте, ни в имени файла."""
+    """Разрешение назвать клиента. `False` — проект непубличный (NDA), и кейс
+    анонимный: домен не появляется ни в тексте, ни в имени файла. Флажок
+    «непубличный проект» в карточке пишет сюда же (NDA = `not publishable`)."""
 
     work_volume: Mapped[int | None] = mapped_column(Integer, nullable=True)
     """Например число построенных ссылок. По ТЗ необязательно: при пустом
     значении блок «что сделали» в кейсе скрывается, а не выдумывается."""
 
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    brief: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    """Бриф копирайтеру: ключ поля `storage.brief` → значение (у списков — ключ
+    пункта). Чего нет — не заполнено; на листе это «заполняет специалист»."""
+
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus, name="project_status"), nullable=False, default=ProjectStatus.NEW
     )

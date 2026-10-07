@@ -31,12 +31,15 @@ SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 # Права как строки; роль — набор. Добавить право группе = правка этой таблицы,
 # а не поиск сравнений с ролью по всему коду. `delete_projects` — своё право, а
-# не `run` (решение владельца 24.09.2026): списки грузит и PR-отдел.
-_MANAGING = frozenset({"run", "read", "edit_thresholds", "manage_users", "delete_projects"})
+# не `run` (решение владельца 24.09.2026): списки грузит и PR-отдел. `edit_briefs`
+# — у всех: бриф заполняет специалист, который вёл проект (07.10.2026).
+_MANAGING = frozenset(
+    {"run", "read", "edit_thresholds", "manage_users", "delete_projects", "edit_briefs"}
+)
 _GROUP_RIGHTS: dict[UserGroup, frozenset[str]] = {
     UserGroup.ENGINEER: _MANAGING | {"change_technical_settings"},
     UserGroup.ADMIN: _MANAGING,
-    UserGroup.USER: frozenset({"run", "read"}),
+    UserGroup.USER: frozenset({"run", "read", "edit_briefs"}),
 }
 
 
