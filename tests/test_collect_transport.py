@@ -172,6 +172,27 @@ async def test_live_sends_minimal_select() -> None:
     assert seen["mode"] == "subdomains"
 
 
+@pytest.mark.parametrize(("country", "sent"), [("DE", "de"), ("", None)])
+async def test_live_sends_the_country_or_none_for_the_world(country: str, sent: str | None) -> None:
+    """M3: весь мир — запрос без параметра страны, а не `country=` с пустым значением."""
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(dict(request.url.params))
+        return httpx.Response(200, json={"metrics": []}, headers={})
+
+    request = HistoryRequest(
+        target="example.com",
+        mode=TargetMode.SUBDOMAINS,
+        country=country,
+        date_from=date(2025, 1, 1),
+    )
+    async with _client(handler) as client:
+        await AhrefsLive(AhrefsTransport(client)).fetch_history(METRICS_HISTORY, request)
+
+    assert seen.get("country") == sent
+
+
 def test_cost_model_is_one_place() -> None:
     """B10: модель стоимости считает по спеке endpoint'а, а не по имени в коде."""
     # Замерено живым ключом: строка стоит 10 за поле плюс 1, минимум запроса 50.

@@ -23,6 +23,7 @@ import re
 from ahrefs_cases.cases.format import number, percent
 from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, Change
 from ahrefs_cases.storage._enums import Metric
+from ahrefs_cases.storage.geo import WORLDWIDE, countries
 
 MONTHS_RU = (
     "январь",
@@ -68,10 +69,23 @@ def compose(case: CaseData) -> str:
 def _intro(case: CaseData) -> str:
     start, end = case.period.start, case.period.end
     return (
-        f"Проект в нише «{case.niche}», основная страна — {case.geo}. "
+        f"Проект в нише «{case.niche}», {_where(case)}. "
         f"Период работ — {case.period.months} мес.: "
         f"{MONTHS_RU[start.month - 1]} {start.year} — {MONTHS_RU[end.month - 1]} {end.year}."
     )
+
+
+def _where(case: CaseData) -> str:
+    """Где шли работы. У нескольких стран — по какой из них цифры (`storage.geo`):
+    без этого «трафик +40 %» под тремя странами читается как сумма по всем."""
+    count = len(countries(case.geo))
+    if case.geo == WORLDWIDE:
+        return "география — весь мир"
+    if count == 0:
+        return "страна не указана"
+    if count == 1:
+        return f"страна — {case.geo_label}"
+    return f"страны — {case.geo_label}; цифры Ahrefs — по первой из них"
 
 
 def _result(case: CaseData) -> str:

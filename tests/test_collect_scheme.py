@@ -246,8 +246,10 @@ async def test_estimate_matches_the_rows_provider_returns() -> None:
             assert result.units_actual == METRICS_HISTORY.estimate_units(window.rows)
 
 
-async def _project(session: AsyncSession, domain: str, *, end: str = "2026-06-30") -> Project:
-    row = f"{domain},2025-01-01,{end},fintech,US,seo,10,Acme,i.petrov,yes,subdomains,"
+async def _project(
+    session: AsyncSession, domain: str, *, end: str = "2026-06-30", geo: str = "US"
+) -> Project:
+    row = f"{domain},2025-01-01,{end},fintech,{geo},seo,10,Acme,i.petrov,yes,subdomains,"
     await accept(session, parse_csv_text(f"{COLUMNS}\n{row}\n", origin="test"))
     return (await session.execute(select(Project).where(Project.domain == domain))).scalars().one()
 
@@ -299,6 +301,22 @@ async def test_bought_window_is_not_bought_again(
     assert second.tasks[0].request.date_from > date(2025, 4, 1)
     assert [cached.reason for cached in second.cached] == ["окно 2025-01 уже куплено"]
     assert second.estimated_units() == 50
+
+
+@pytest.mark.parametrize(("geo", "asked"), [('"de, at, ch"', "DE"), ("Worldwide", "")])
+async def test_ahrefs_is_asked_for_the_first_country_or_none(
+    db_session: AsyncSession, geo: str, asked: str
+) -> None:
+    """M2 и M3: несколько стран — запрос по первой (решение владельца 07.10.2026),
+    весь мир — без страны: пустая страна не уходит параметром (`collect.live`)."""
+    project = await _project(db_session, "several-countries.example.com", geo=geo)
+
+    plan = await build_stage1_plan(
+        db_session, [project], source=MetricSource.FIXTURE, now=NOW, windows=PointWindows()
+    )
+
+    assert plan.tasks
+    assert {task.request.country for task in plan.tasks} == {asked}
 
 
 async def test_breakdown_counts_projects_not_tasks(

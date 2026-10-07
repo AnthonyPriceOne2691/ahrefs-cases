@@ -46,6 +46,7 @@ from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.export.html_renderer import POINTS_NOTE
 from ahrefs_cases.storage import Group, Metric, MetricSource, RunStatus
+from ahrefs_cases.storage.geo import label as geo_label
 from ahrefs_cases.storage.locks import hold_start, work_is_idle
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
@@ -308,6 +309,7 @@ def _row(project: Project, verdict: Verdict | None) -> ProjectRow:
         domain=project.domain,
         niche=project.niche,
         geo=project.geo,
+        geo_label=geo_label(project.geo),
         service_type=project.service_type,
         period_start=project.period_start,
         period_end=project.period_end,

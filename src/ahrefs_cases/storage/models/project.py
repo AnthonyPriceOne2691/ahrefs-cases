@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, Date, Enum, Integer, String, Text, UniqueConstra
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ahrefs_cases.storage._enums import ProjectStatus, TargetMode
+from ahrefs_cases.storage.geo import GEO_MAX_LEN
 from ahrefs_cases.storage.models._base import Base, TimestampMixin
 
 
@@ -34,8 +35,9 @@ class Project(Base, TimestampMixin):
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
 
     niche: Mapped[str] = mapped_column(String(120), nullable=False)
-    geo: Mapped[str] = mapped_column(String(2), nullable=False)
-    """ISO 3166-1 alpha-2 основной страны проекта: гео-разрез берём из файла."""
+    geo: Mapped[str] = mapped_column(String(GEO_MAX_LEN), nullable=False)
+    """Страны проекта каноном `storage.geo`: «DE», «DE,AT,CH» или «WW» (весь мир).
+    Цифры Ahrefs считаются по первой стране списка; гео-разрез берём из файла."""
 
     service_type: Mapped[str] = mapped_column(String(120), nullable=False)
     client: Mapped[str] = mapped_column(String(255), nullable=False)

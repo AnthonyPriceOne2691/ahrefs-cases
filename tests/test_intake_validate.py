@@ -182,6 +182,30 @@ def test_geo_is_upper_cased() -> None:
     assert drafts[0].geo == "US"
 
 
+@pytest.mark.parametrize(
+    ("cell", "canon"),
+    [
+        ('"de, at, ch"', "DE,AT,CH"),
+        ("Worldwide", "WW"),
+        ("весь мир", "WW"),
+    ],
+)
+def test_several_countries_or_the_world_are_accepted(cell: str, canon: str) -> None:
+    """M2 и M3: страны через запятую и Worldwide — строка принята, гео в каноне."""
+    drafts, rejections, _notices = _validate(BASE.replace(",US,", f",{cell},"))
+
+    assert not rejections
+    assert drafts[0].geo == canon
+
+
+def test_unknown_country_is_named_in_the_rejection() -> None:
+    """M4: отказ называет непонятый код — по нему человек и чинит ячейку."""
+    _drafts, rejections, _notices = _validate(BASE.replace(",US,", ',"DE, XZ",'))
+
+    assert [(item.field, item.reason) for item in rejections] == [("geo", RejectReason.BAD_GEO)]
+    assert "XZ" in rejections[0].detail
+
+
 def test_report_lines_name_row_and_reason() -> None:
     """B1: текст отчёта называет строку и причину — по ней и ищут в Excel."""
     _drafts, rejections, _notices = _validate(BASE.replace(",yes,", ",ага,"))

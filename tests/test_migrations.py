@@ -49,6 +49,59 @@ def _enum_types(url: str) -> list[str]:
     return asyncio.run(_query())
 
 
+def _run_sql(url: str, *statements: str) -> list[tuple[object, ...]]:
+    """Выполнить операторы по порядку; вернуть строки последнего."""
+    import asyncio
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    async def _go() -> list[tuple[object, ...]]:
+        engine = create_async_engine(url)
+        try:
+            async with engine.begin() as conn:
+                result = None
+                for statement in statements:
+                    result = await conn.execute(text(statement))
+                return [tuple(row) for row in result] if result and result.returns_rows else []
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(_go())
+
+
+_GEO_ROWS = (
+    "INSERT INTO projects (domain, target_mode, period_start, period_end, niche, geo, "
+    "service_type, client, owner, publishable, notes, status) VALUES "
+    "('several.migration.example', 'SUBDOMAINS', '2025-01-01', '2025-12-01', 'x', 'DE,AT,CH', "
+    "'seo', 'c', 'o', true, '', 'NEW'), "
+    "('world.migration.example', 'SUBDOMAINS', '2025-01-01', '2025-12-01', 'x', 'WW', "
+    "'seo', 'c', 'o', true, '', 'NEW')"
+)
+_GEO_READ = "SELECT domain, geo FROM projects WHERE domain LIKE '%.migration.example' ORDER BY 1"
+_GEO_DROP = "DELETE FROM projects WHERE domain LIKE '%.migration.example'"
+
+
+def test_geo_downgrade_keeps_the_country_ahrefs_counted_by(
+    alembic_config: Config, needs_db: None
+) -> None:
+    """M9: откат колонки в две буквы оставляет страну, по которой считал сбор, —
+    первую из списка; весь мир — пустое гео: прежний код ровно тогда и спрашивал
+    Ahrefs без страны."""
+    from ahrefs_cases import config
+
+    url = config.storage.database_url
+    command.upgrade(alembic_config, "head")
+    _run_sql(url, _GEO_DROP, _GEO_ROWS)
+
+    command.downgrade(alembic_config, "a8b9c0d1e2f3")  # pragma: allowlist secret
+    rows = _run_sql(url, _GEO_READ)
+    command.upgrade(alembic_config, "head")
+    _run_sql(url, _GEO_DROP)
+
+    assert rows == [("several.migration.example", "DE"), ("world.migration.example", "")]
+
+
 def test_upgrade_downgrade_upgrade_cycle(alembic_config: Config, needs_db: None) -> None:
     """A1: три шага подряд без ошибок, и после downgrade не остаётся ENUM-типов.
 

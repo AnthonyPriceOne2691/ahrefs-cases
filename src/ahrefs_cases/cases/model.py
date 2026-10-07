@@ -19,6 +19,7 @@ from types import MappingProxyType
 
 from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.classify.points import KW_TOP10
+from ahrefs_cases.storage import geo as geo_module
 from ahrefs_cases.storage._enums import Group, Metric
 
 KW_TOTAL = "kw_total"
@@ -172,6 +173,8 @@ class CaseData:
 
     anonymized: bool
     geo: str
+    """Канон `storage.geo`: «DE», «DE,AT,CH» или «WW». Словами — `geo_label`."""
+
     niche: str
     service: str
     period: Period
@@ -224,6 +227,11 @@ class CaseData:
     15.09.2026 их разводил счётчик `(2)`, `(4)`, который говорил о порядке
     совпадений и ничего — о самом файле. `0` — версия неизвестна (предпросмотр),
     тогда в имени её нет."""
+
+    @property
+    def geo_label(self) -> str:
+        """Страны словами — «Германия (DE)»: на листе и в тексте код один не читается."""
+        return geo_module.label(self.geo)
 
     def change(self, subject: str) -> Change | None:
         """Изменение по метрике — или `None`, если её в кейсе нет."""
