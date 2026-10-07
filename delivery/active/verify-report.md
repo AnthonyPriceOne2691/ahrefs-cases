@@ -10,6 +10,7 @@
 | Отказ кнопки | `tests/test_api_runs.py` | 33 passed: 409 тем же текстом, что прежде |
 | Полный сьют с покрытием | `pytest --cov=src/ahrefs_cases` | 862 passed, 11 skipped; один красный — `test_every_declared_repro_test_exists` читал комментарий в строке `repro_test` STATUS — комментарий убран, тест зелёный. `cli/collect_commands.py` 41,7 → 93,6 %, `cli/case_commands.py` 60,5 → 87,3 %, `cli/source.py` 69,2 → 100 % |
 | Типы | `mypy` strict (пакет и новые тесты) | чисто |
+| Замер покрытия в CI | блокирующий шаг «Diff coverage» на PR #58 | первый прогон красный: `api/routers/runs.py` 67,1 % в CI при 98,1 % локально. Причина — трассировщик Python 3.12 теряет строки после переключения greenlet асинхронного SQLAlchemy; `COVERAGE_CORE=ctrace` воспроизвёл 67,1 % локально, `concurrency = ["thread", "greenlet"]` вернул 98,1 %. Оракул — `test_coverage_sees_code_after_greenlet_switches` |
 
 ## Исполнение рисковых путей
 
@@ -158,7 +159,7 @@ asserts_without_example: 0
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — .github/workflows/quality.yml, tests/cli_world.py (новый оракул), tests/test_cli_commands.py (новый оракул), tests/test_cli_run_lock.py (новый оракул) |
 | implement_retries | 2 — первые тесты консоли на `db_session` зависли (`TRUNCATE` её транзакции держал сессии команд на замках таблиц) — переписаны на коммиты со своей версией порогов; точка вердикта в тесте M76 без `derived` — `VerdictFormatError` |
-| verify_fails_before_green | 1 — полный сьют: `test_every_declared_repro_test_exists` читал комментарий в строке `repro_test` STATUS как имя теста |
+| verify_fails_before_green | 2 — полный сьют: `test_every_declared_repro_test_exists` читал комментарий в строке `repro_test` STATUS как имя теста; CI: блокирующий гейт покрытия — `runs.py` 67,1 % из-за слепоты замера под greenlet (закреплено оракулом) |
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.

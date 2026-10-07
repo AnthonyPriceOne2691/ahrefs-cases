@@ -198,6 +198,20 @@ def test_diff_coverage_blocks_since_the_cli_debt_is_paid() -> None:
     assert [step.get("continue-on-error", False) for step in judging] == [False] * len(judging)
 
 
+def test_coverage_sees_code_after_greenlet_switches() -> None:
+    """M78: замер покрытия видит строки после переключения greenlet асинхронного SQLAlchemy.
+
+    Без `concurrency = ["greenlet"]` трассировщик Python 3.12 в CI теряет строки после
+    запроса к базе: роутер прогонов давал 67 % в CI при 98 % локально, и блокирующий
+    гейт покрытия краснел бы на коде, который исполняется тестами (07.10.2026).
+    """
+    settings = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    concurrency = settings["tool"]["coverage"]["run"].get("concurrency", [])
+
+    assert "greenlet" in concurrency
+    assert "thread" in concurrency
+
+
 def test_a_manifest_without_dependencies_is_not_a_dependency_decision() -> None:
     """Манифест с нулём зависимостей не требует объявления в STATUS.
 
