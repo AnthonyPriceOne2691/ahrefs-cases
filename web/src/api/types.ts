@@ -264,6 +264,35 @@ export interface ProjectDeletion {
   twin_campaigns: number;
   /** Свежая пачка содержит кейс проекта и после удаления не скачается. */
   pack_blocked: boolean;
+  /** Скрины брифа: строки и файлы уходят вместе с проектом. */
+  screenshots: number;
+}
+
+/** Вид скрина: код для сервера и подпись для человека — с сервера, одна на лист и экран. */
+export interface ScreenshotKind {
+  key: string;
+  label: string;
+}
+
+/** Что экрану знать до загрузки: виды словами и пределы, по которым отказывает сервер. */
+export interface ScreenshotRules {
+  kinds: ScreenshotKind[];
+  max_bytes: number;
+  max_count: number;
+  /** Длинная сторона, до которой ужимает сервер, — до неё же ужимает экран. */
+  max_side: number;
+}
+
+export interface ScreenshotView {
+  id: number;
+  project_id: number;
+  kind: string;
+  caption: string;
+  mime: string;
+  width: number;
+  height: number;
+  size_bytes: number;
+  created_at: string;
 }
 
 export interface ChartBlock {

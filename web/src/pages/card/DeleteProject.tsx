@@ -86,6 +86,11 @@ function AskAndDelete({ projectId, domain, onDeleted }: Props) {
   );
 }
 
+/** Скрины брифа — только когда они есть: «скринов: 0» у большинства проектов — шум. */
+function screens(view: ProjectDeletion): string {
+  return view.screenshots > 0 ? `; скринов: ${num(view.screenshots)}` : '';
+}
+
 /** Что уйдёт и что останется — числами сервера. */
 function Consequences({ view }: { view: ProjectDeletion }) {
   return (
@@ -93,7 +98,8 @@ function Consequences({ view }: { view: ProjectDeletion }) {
       <Text size="sm">
         Уйдут: точек рядов: {num(view.metric_points)} — за них платили, повторная загрузка купит их
         заново; вердиктов: {num(view.verdicts)}; кейсов: {num(view.cases)}; файлов PDF:{' '}
-        {num(view.files)}.
+        {num(view.files)}
+        {screens(view)}.
       </Text>
       <Text size="sm">
         Останутся: строк журнала прогонов: {num(view.run_items)} — там домен будет подписан «(проект
@@ -138,7 +144,8 @@ export function ProjectDeleted({ result }: { result: ProjectDeletion }) {
           <Title order={3}>Проект {result.domain} удалён</Title>
           <Text size="sm">
             Ушло: точек рядов: {num(result.metric_points)}; вердиктов: {num(result.verdicts)};
-            кейсов: {num(result.cases)}; файлов PDF: {num(result.files)}.
+            кейсов: {num(result.cases)}; файлов PDF: {num(result.files)}
+            {screens(result)}.
           </Text>
           <Text size="sm">
             Осталось: строк журнала прогонов: {num(result.run_items)} — домен там подписан «(проект
