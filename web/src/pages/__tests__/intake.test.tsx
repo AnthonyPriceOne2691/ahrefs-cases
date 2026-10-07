@@ -564,3 +564,33 @@ describe('справка о таблице', () => {
     expect(SHEET_ACCESS).toMatch(/приватную/i);
   });
 });
+
+describe('отказ гео в отчёте приёма', () => {
+  it('M13: отказ гео называет новый формат и непонятый код', async () => {
+    rememberToken('токен');
+    server({
+      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/intake/file': {
+        status: 200,
+        body: {
+          ...REPORT,
+          accepted: 3,
+          created: 3,
+          rejected_rows: 1,
+          by_reason: { bad_geo: 1 },
+          rejections: [{ row_no: 5, field: 'geo', reason: 'bad_geo', detail: 'не код страны: XZ' }],
+          notices: [],
+        },
+      },
+    });
+
+    showRuns();
+    await upload();
+
+    expect(
+      await screen.findByText('гео — не код страны (DE; несколько — DE, AT; весь мир — Worldwide)'),
+    ).toBeInTheDocument();
+    // Какой код не понят — подробность сервера: по ней человек и чинит ячейку.
+    expect(screen.getByText('не код страны: XZ')).toBeInTheDocument();
+  });
+});

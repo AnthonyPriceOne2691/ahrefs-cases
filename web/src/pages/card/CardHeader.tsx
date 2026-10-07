@@ -23,7 +23,8 @@ export function CardHeader({ card }: { card: ProjectCard }) {
         <Stack gap={2}>
           <Title order={2}>{project.domain}</Title>
           <Text size="sm" c="dimmed">
-            {project.niche} · {project.geo} · {months(project.period_start, project.period_end)}
+            {project.niche} · {project.geo_label} ·{' '}
+            {months(project.period_start, project.period_end)}
           </Text>
         </Stack>
         <Group gap="xs" align="center">

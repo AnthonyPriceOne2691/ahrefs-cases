@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** countries-multi-geo
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: новое требование команды агентства (страны словами, несколько стран, весь мир)
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (план этапа «Страны» в сообщении владельцу — «Германия (DE)» на экранах и в PDF, «DE, AT, CH» и Worldwide → «Весь мир», сверка кодов со справочником вместо выдуманного XZ; владелец ответил «Первая страна списка» на вопрос о цифрах мультигео, затем «проведи разведку…, спланируй и этапами начинай работу» и «начни с быстрого»; примеры M5, M6, M9, M10 выведены агентом из тех же правил и показаны в PR)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** лист PDF — артефакт: шапка с шестью странами по-прежнему одна страница (растеризация WeasyPrint, M7), текст кейса называет страну цифр; запрет RU/BY проверен на артефакте — файла нет
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки; основной клон свободен
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no reason=справочник стран — данные в коде (`storage/countries.py`), пакетов не прибавилось
+- **runtime_paths:** src/ahrefs_cases/collect/plan.py <!-- страна уходит параметром в живой запрос к Ahrefs: тесты видят фикстуру и подменённый транспорт, а как живой Ahrefs читает запрос без country — только исполнением (при пустом гео так было и раньше) -->
+- **irreversible_surfaces:** none reason=миграция расширяет колонку и откатывается (M9: откат сводит список к первой стране — цифры те же, сбор считал по ней); автомерж выключен, каждый PR сливает человек; выкатка и миграция на проде — руками по `docs/PROD.md` после слова владельца
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки: список со строками «DE, AT» и «Worldwide» принят, в «Проектах» и карточке — «Германия (DE), Австрия (AT)» и «Весь мир»; в журнале расхода живого шага 1 запрос мультигео идёт по первой стране, «весь мир» — без страны (по `units_ledger` и логу запроса); строка с «XZ» отклонена с названным кодом
+- **observe_until:** 2026-10-21
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

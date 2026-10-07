@@ -24,6 +24,7 @@ function project(id: number, domain: string, group: string | null, score: number
     domain,
     niche: 'финтех',
     geo: 'US',
+    geo_label: 'США (US)',
     service_type: 'seo',
     period_start: '2025-01-01',
     period_end: '2025-12-01',
@@ -77,6 +78,8 @@ describe('экран проектов: таблица', () => {
     expect(screen.getByText('не классифицирован')).toBeInTheDocument();
     // Счёт округляется: дробные знаки читались бы как точность, которой нет.
     expect(screen.getByText('1 400')).toBeInTheDocument();
+    // M11: колонка «Гео» — словами, с кодом в скобках, а не двумя буквами.
+    expect(screen.getAllByText('США (US)')).toHaveLength(ROWS.length);
   });
 
   it('E3: «данных не хватает» — не «плохой»', async () => {

@@ -1,129 +1,37 @@
-# Verify report: countries-multi-geo
+# Verify report: countries-on-screen
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M1–M5, M10 | `tests/test_storage_geo.py` (в том числе свойство на hypothesis: канон → ячейка → канон) | зелёные |
-| M2–M4 на приёме | `tests/test_intake_validate.py` — строки «de, at, ch», Worldwide, «весь мир», «DE, XZ» | приняты в каноне / отказ `bad_geo` с «XZ» в подробностях |
-| M2, M3 в сборе | `tests/test_collect_scheme.py::test_ahrefs_is_asked_for_the_first_country_or_none`, `tests/test_collect_transport.py::test_live_sends_the_country_or_none_for_the_world` | запрос мультигео — `DE`; весь мир — параметра `country` в запросе нет |
-| M6, M7 | `tests/test_cases_narrative.py`, `tests/test_cases_pdf.py` | запрет на «гео: RU» в списке `DE,RU`; текст и шапка называют страны; шесть стран — лист одна страница |
-| M8 | `tests/test_api_read.py` | `geo_label` «США (US)»; на стенде API отдал «Германия (DE), Австрия (AT), Швейцария (CH)», «Великобритания (GB)» (в файле `uk`), «Весь мир» |
-| M9 | `tests/test_migrations.py::test_geo_downgrade_keeps_the_country_ahrefs_counted_by` (`MIGRATION_CYCLE_TEST=1`) | откат: `DE,AT,CH` → `DE`, `WW` → пусто; повторный upgrade проходит |
-| Живой проход по экранам | стенд на копии дев-базы (`cases_geo`, миграция `b9c0d1e2f3a4`), API + фронт, Chrome по CDP: загрузка `geo-list.csv` кнопкой «Загрузить файл», «Проекты», карточки | отчёт приёма: «принято 3, отклонено строк 1», строка 5 — `geo` с подробностью сервера «не код страны: XZ»; строки приняты в каноне `DE,AT,CH`, `GB`, `WW`. Подписи на экранах прокликаны с правкой экрана поверх (колонка «Гео», шапка карточки, текст отказа) — она уезжает следующей поставкой и будет прокликана там же заново |
-| Лист PDF глазами | `render_pdf` с гео `DE,AT,CH` и `WW` → PNG | шапка «Германия (DE), Австрия (AT), Швейцария (CH) · мода · seo», текст «страны — …; цифры Ahrefs — по первой из них», «география — весь мир»; страница одна |
-| Гейты формы | ruff, ruff format, mypy, import-linter, tsc, eslint, prettier | чисто; слои целы (`storage.geo` ниже `collect` и `intake`) |
+| M11 | vitest `projects.test.tsx` (E1 и E2 с проверкой колонки) | у всех четырёх строк — «США (US)» |
+| M12 | vitest `card.test.tsx` (E1, шапка) | «Германия (DE), Австрия (AT)» в шапке |
+| M13 | vitest `intake.test.tsx` («отказ гео в отчёте приёма») | «гео — не код страны (DE; несколько — DE, AT; весь мир — Worldwide)» и подробность «не код страны: XZ» |
+| Фронт целиком | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run` | чисто; 219 passed (20 файлов) |
+| Живой проход | стенд на копии дев-базы (API 8010 с #45, фронт этой ветки), Chrome по CDP: «Загрузить файл» → `geo-list.csv`, «Проекты» с поиском `geo-`, карточка `geo-multi.example.com` | отчёт: «принято 3, обновлено 3, отклонено строк 1», строка 5 — «гео — не код страны (DE; несколько — DE, AT; весь мир — Worldwide)» и «не код страны: XZ»; колонка «Гео» — «Германия (DE), Австрия (AT), Швейцария (CH)», «Великобритания (GB)», «Весь мир» — длинная подпись переносится в ячейке, соседние колонки на месте; шапка карточки — «мода · Германия (DE), Австрия (AT), Швейцария (CH) · 10.2024 — 09.2025» |
 
 ## Ревью рисковых мест
 
-**Деньги (units).** Страна запроса меняет только параметр `country`, а не число строк:
-`country=ahrefs_country(project.geo)` в `collect/plan.py` стоит столько же, сколько прежний
-`country=project.geo`. Сумма по странам (units × N) отвергнута владельцем. Риск, который остаётся, —
-не цена, а смысл купленного: ряды не помнят страну (Z53), и смена первой страны повторной загрузкой
-цифры не перекупает — записано в реестр.
+**Раскладка — риска нет**, потому что `ProjectsTable.tsx` меняет только `accessorKey: 'geo_label'`, а
+длинная подпись трёх стран на снимке стенда переносится внутри ячейки: «Период работ», «Группа» и
+«Публикация» остались на месте. Шапка карточки (`CardHeader.tsx`) — одна строка текста через «·».
 
-**Интеграция.** `ahrefs_country` отдаёт пустую строку для `WORLDWIDE`, и `collect.live._params`
-пропускает пустую страну (`if request.country:`) — Ahrefs получает запрос без фильтра, как и раньше
-при пустом гео. Тест на `httpx.MockTransport` проверяет именно отсутствие параметра, а не пустое
-значение; как живой Ahrefs считает «все страны», видно только живым прогоном (`runtime_paths`).
+**Данные экрана — риска нет**, потому что `geo_label` приходит с сервера в той же строке
+`ProjectRow`, что и `geo`; тип в `web/src/api/types.ts` объявлен обязательным — экран без подписи
+не соберётся типами.
 
-**Производительность — риска нет**, потому что `_SEPARATORS` в `storage/geo.py` компилируется один
-раз на модуль, `parse_geo` работает на одну ячейку, а `COUNTRY_NAMES` — словарь на 249 ключей.
-
-**Транзакция БД.** Миграция `b9c0d1e2f3a4` меняет только ширину `projects.geo`; откат выполняет
-`UPDATE` и `ALTER` в одной транзакции alembic — проверено тестом M9 через `engine.begin()` на копии
-цикла CI. Запись проекта (`upsert`) не менялась: канон приходит из `parse_geo` строкой.
-
-**Безопасность — риска нет**, потому что новых прав, токенов и путей входа нет; `geo_label`
-печатается в шаблоне с автоэкранированием, а на экране — текстом React; ячейка файла до базы
-проходит только через `parse_geo`, и непонятое не сохраняется вовсе.
-
-**Новые модули.** `storage/countries.py` — данные без логики; `storage/geo.py` — четыре функции без
-состояния, их читают приём, сбор, кейс и API.
-
-## Исполнение рисковых путей
-
-- `src/ahrefs_cases/collect/plan.py` — прогнал `pytest tests/test_collect_scheme.py -k first_country` (план шага 1 по
-  проектам из файла на дев-базе) и `pytest tests/test_collect_transport.py -k country` (запрос живого провайдера
-  через `httpx.MockTransport`), увидел: у «de, at, ch» `request.country == "DE"`, у Worldwide — пусто, и параметр
-  `country` в запрос не уходит вовсе; у `DE` — `country=de`, как раньше. at=2026-10-07. Живой Ahrefs не
-  исполнялся: переключение в `live` решает владелец — ответ живого API на запрос без страны проверяется после
-  выкатки по `observe_signal`.
+**Текст отказа.** `bad_geo` в `IntakeOutcome.tsx` назван новым форматом; подробность (какой код не
+понят) — по-прежнему от сервера: отчёт не переводит её сам.
 
 ## Чего проверка НЕ доказывает
 
-- Как живой Ahrefs отвечает на запрос без `country` у мультигео-проекта со словом Worldwide —
-  только живой прогон после выкатки (`observe_signal`).
-- Цикл «по файлу» через интерфейс на стенде не прогнан до PDF: копия дев-базы снята посреди
-  полного pytest и унесла прогон в статусе «идёт», а замок «один активный прогон» отвечает на
-  запуск 409. Править строку прогона в копии мне не разрешено — лист проверен рендером напрямую
-  и тестами; сборку через кнопку проверю на чистой копии.
+Что подпись не упрётся в ширину экрана на узком ноутбуке у проекта на десяток стран — снимок стенда
+сделан на 1440 px.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
-
-asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
-
-## Assertion digest (ревью ожиданий, не кода)
-
-База: `origin/main` · сгенерировано `assert_digest.sh`
-
-Новых/изменённых утверждений: **41**, из них без ссылки на пример спеки:
-**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
-значение — из спеки или придумано под реализацию?**
-
-```
-M8	assert by_domain["alpha.example"]["geo_label"] == "США (US)"
-M7	assert phrase in _case(geo=geo).narrative
-M6	assert ("гео", "RU") in hits
-M6	assert ("гео", "DE") not in hits
-M7	assert "<span>Германия (DE), Австрия (AT)</span>" in html
-M7	assert six.pages == 1
-M2	assert plan.tasks
-M2	assert {task.request.country for task in plan.tasks} == {asked}
-M3	assert seen.get("country") == sent
-M2	assert not rejections
-M2	assert drafts[0].geo == canon
-M4	assert [(item.field, item.reason) for item in rejections] == [("geo", RejectReason.BAD_GEO)]
-M4	assert "XZ" in rejections[0].detail
-M9	assert rows == [("several.migration.example", "DE"), ("world.migration.example", "")]
-M1	assert parse_geo("de") == "DE"
-M1	assert label("DE") == "Германия (DE)"
-M1	assert ahrefs_country("DE") == "DE"
-M2	assert canon == "DE,AT,CH"
-M2	assert countries(canon) == ("DE", "AT", "CH")
-M2	assert ahrefs_country(canon) == "DE"
-M2	assert label(canon) == "Германия (DE), Австрия (AT), Швейцария (CH)"
-M2	assert parse_geo("DE, de, AT") == "DE,AT"
-M2	assert label("XZ") == "XZ"
-M2	assert label("") == ""
-M2	assert ahrefs_country("") == ""
-M3	assert parse_geo(cell) == WORLDWIDE
-M3	assert countries(WORLDWIDE) == ()
-M3	assert ahrefs_country(WORLDWIDE) == ""
-M3	assert label(WORLDWIDE) == "Весь мир"
-M4	assert isinstance(result, GeoRejected)
-M4	assert named in result.detail
-M4	assert isinstance(parse_geo(cell), GeoRejected)
-M4	assert isinstance(result, GeoRejected)
-M4	assert "Worldwide" in result.detail
-M5	assert parse_geo("uk, ie") == "GB,IE"
-M5	assert label("GB") == "Великобритания (GB)"
-M10	assert canon == ",".join(unique)
-M10	assert parse_geo(canon) == canon
-M10	assert countries(canon) == unique
-M10	assert ahrefs_country(canon) == unique[0]
-M10	assert all(f"{COUNTRY_NAMES[code]} ({code})" in shown for code in unique)
-```
-
-✅ **Каждое утверждение ведёт к примеру спеки** (M1 M10 M2 M3 M4 M5 M6 M7 M8 M9), а примеры человек
-подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
-**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
-`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
-
-asserts_without_example: 0
 
 ## Harness metrics (this shipment)
 
@@ -131,13 +39,13 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 22 code (+15 process docs) / +755/-20 (net +735) |
-| commits | 4 |
-| time_to_accepted_spec | 0.0h |
-| rework_after_done | 3 commit(s) after first phase: handoff |
-| harness_hardened | yes — tests/test_storage_geo.py (новый оракул) |
-| implement_retries | 2 — коммит отклонён гейтом длины (`collect/plan.py` 502 > 500); дифф разрезан по пределу файлов (28 > 25) |
-| verify_fails_before_green | 1 — `test_fates_say_why_in_words`: запрет называл слово из текста раньше кода страны (порядок исправлен) |
+| files_touched / loc_diff | 7 code (+12 process docs) / +42/-4 (net +38) |
+| commits | 1 |
+| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
+| rework_after_done | 0 (handoff not declared yet) |
+| harness_hardened | no |
+| implement_retries | 2 — ESLint: блок тестов вырос до 82 строк (M13 вынесен в свой `describe`); Prettier перенёс строку шапки карточки |
+| verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
