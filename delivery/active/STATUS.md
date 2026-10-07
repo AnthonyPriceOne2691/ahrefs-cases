@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** jscpd-5-braces
-- **stack:** delivery@1.99, cqg@2.49, okf@1.19
+- **stack:** delivery@1.99, cqg@2.50, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
