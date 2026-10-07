@@ -16,6 +16,10 @@
 # argv[0] и падает FileNotFoundError. Нашло приёмочное развёртывание.
 
 default_install_hook_types: [pre-commit]
+# Хук без `stages:` идёт на КАЖДОЙ установленной стадии, а pre-push контур ставит
+# сам (§8.5 ③). Без этой строки все гейты коммита шли на push ещё раз — та же
+# работа дважды. На push идёт только то, у чего стоит `stages: [pre-push]` (`cqg@2.47`).
+default_stages: [pre-commit]
 fail_fast: false
 
 repos:

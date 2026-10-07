@@ -1,7 +1,7 @@
 # Stack acceptance
 
 **Date:** 2026-10-01 (прежняя приёмка — 2026-09-10)
-**Stack:** delivery@1.99 · cqg@2.45 · okf@1.19 · stack-map@1.52
+**Stack:** delivery@1.99 · cqg@2.48 · okf@1.19 · stack-map@1.52
 **Где лежат каноны:** вне репо: `~/Documents/Prepare` (вариант D, см. «Остатки»)
 
 stack-selftest: external (~/Documents/Prepare)
@@ -54,7 +54,7 @@ stale_after: 2026-11-01
 | уязвимые зависимости | `check_deps_audit.sh` | он же | CI-only по бюджету §8.6 |
 | снимки только вниз | `check_baseline_ratchet.sh` | он же | pre-push + CI; в этом прогоне сверять было не с чем (снимков нет в origin/main — bootstrap) |
 | покрытие диффа | `check_diff_coverage.sh` | он же | не подключён осознанно: ручной DoD-шаг (§3.5) |
-| мутационный | `check_mutation_gate.sh` | он же | не подключён осознанно: CI-only, минуты (§8.6) |
+| мутационный | `check_mutation_gate.sh` | n/a | ВРЕМЕННО с 07.10.2026 (cqg@2.47): объявлен в `not-applicable.json` — сьют около 4,5 мин при бюджете 300 с, базы в джобе gates нет; вернуть отдельной джобой с базой |
 | новая зависимость | `check_new_dependency.py` | он же | не подключён осознанно: нужен remote-ref BASE, место — pre-push |
 | мета-гейт покрытия | `check_gate_coverage.sh` | он же | как есть, последним хуком |
 

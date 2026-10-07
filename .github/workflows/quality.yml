@@ -600,7 +600,11 @@ jobs:
       # (Z18). Второй прогон в отдельной джобе стоил бы ещё четыре минуты на
       # каждый push (бюджет §8.6), а ответ дал бы тот же.
       - name: Tests
-        run: pytest -q --cov=src/ahrefs_cases --cov-report=json:coverage.json
+        run: |
+          pytest -q --cov=src/ahrefs_cases --cov-report=json:coverage.json
+          # Привязка отчёта к коммиту (cqg@2.47): гейт ниже откажется судить
+          # отчёт чужого SHA, а не посчитает по нему.
+          git rev-parse HEAD > coverage.json.head
 
       # SKIP_TESTS=1 — штатный шов самого скрипта: сьют уже отработал строкой
       # выше, здесь гейт только читает coverage.json и судит изменённые файлы.
@@ -622,5 +626,7 @@ jobs:
         continue-on-error: true
         env:
           MIN_PCT: "70"
-          SKIP_TESTS: "1"
+          # Отчёт шага Tests, привязанный к коммиту (cqg@2.47): чужой SHA или его
+          # отсутствие — отказ. Прежний SKIP_TESTS=1 читал любой coverage.json.
+          LINT_COV_FILE: coverage.json
         run: bash scripts/lint/check_diff_coverage.sh
