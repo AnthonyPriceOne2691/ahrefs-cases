@@ -93,9 +93,21 @@ function NdaLine({ nda }: { nda: boolean }) {
 }
 
 function BriefRead({ catalog, brief }: { catalog: BriefCatalog; brief: Record<string, string> }) {
+  // Пустой бриф — одна строка, а не двадцать пять «заполняет специалист»: иначе цифры и
+  // «Почему эта группа» уезжают далеко вниз (решение владельца 07.10.2026). Частично
+  // заполненный показывает пробелы, как прежде.
+  const sections = bySection(catalog);
+  const listed = sections.flatMap(([, fields]) => fields);
+  if (!listed.some((field) => brief[field.key])) {
+    return (
+      <Text size="sm" c="dimmed" data-brief-empty>
+        Бриф ещё не заполнен — пунктов для специалиста: {listed.length}
+      </Text>
+    );
+  }
   return (
     <Stack gap="md">
-      {bySection(catalog).map(([section, fields]) => (
+      {sections.map(([section, fields]) => (
         <Stack gap={4} key={section}>
           <Title order={5}>{section}</Title>
           <Table withRowBorders={false} verticalSpacing={4}>

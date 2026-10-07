@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** rows-remember-country
+- **slug:** card-geo-note
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
-- **kind:** bugfix
-- **repro_test:** tests/test_rows_country.py::test_twins_share_months_only_within_one_country
-- **diagnosis:** n/a reason=причина названа в реестре (Z53): у точки нет страны — ни общие месяцы кампаний (`collect/cache.py`), ни сбор после смены первой страны её не видят
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: экранная часть Z53 и сжатие пустого брифа по слову владельца
+- **diagnosis:** n/a reason=не дефект кода
 - **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «давай сделаем при смене страны только предупреждать»; примеры M79–M87 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «при смене страны только предупреждать»; про пустой бриф одной строкой — «да, сделай заодно с долгами»; примеры M88–M90 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=лист брифа проверяется тестами листа (оговорка в строке «ГЕО»), PDF собирается тем же рендером
+- **artifact_oracle:** n/a reason=артефакта нет: экран — тесты экрана и прокликивание на стенде
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=миграция исполняется тестами на настоящей базе (вверх и вниз), сбор — фикстурным провайдером
-- **irreversible_surfaces:** none reason=миграция добавляет колонку `metric_points.country` и откатывается её удалением; проставленные страны выводятся из `projects.geo`; выкатка — руками владельца по `docs/PROD.md`, бэкап до неё
+- **runtime_paths:** none reason=экран исполняется тестами vitest и прокликиванием на стенде
+- **irreversible_surfaces:** none reason=миграций нет; правка экрана откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** после выкатки на проде: `select country, count(*) from metric_points group by 1` — страны совпадают с первыми странами проектов; повторная загрузка проекта с другой первой страной — замечание «первая страна сменилась» в отчёте приёма
+- **observe_signal:** на проде после выкатки: карточка проекта со сменённой первой страной показывает предупреждение «Цифры не по первой стране»; карточка без брифа — одна строка вместо двадцати пяти
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

@@ -29,5 +29,5 @@
 - **waivers:** none
 - **observability:** 1
 - **observe_signal:** следующий мерж из основного клона через `bash scripts/merge_guard.sh` без MERGE_GUARD_BORROW печатает «одолжено окружение: web/node_modules», и гейт pre-commit (all files) на нём OK
-- **observe_until:** 2026-10-08
+- **observe_until:** 2026-10-15 (сдвинут 08.10.2026: срок вышел разом у поставок, которые 24.09 сдвинули на одну дату (#8); сигналы проверяются пакетом — отдельной поставкой наблюдений, по значению на проде к каждому примеру, до 15.10)
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
