@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** npm-audit-brace-expansion
-- **stack:** delivery@1.93, cqg@2.35, okf@1.18
+- **slug:** jscpd-5-braces
+- **stack:** delivery@1.99, cqg@2.48, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
-- **repro_test:** n/a reason=падение воспроизводит гейт deps-audit в CI на main (run 36721095756: `critical=0 high=1 — снимком не легализуются`); тест на версию пакета проверял бы lock, а не поведение by=agent:claude
-- **diagnosis:** n/a reason=причина названа отчётом `npm audit`: brace-expansion ≤1.1.20 и 4.0.0–5.0.11 (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, high), fast-uri 3.0.0–3.1.7 (GHSA-hrr3-gc8f-f4qj, moderate); исправленные версии вышли
+- **repro_test:** n/a reason=падение воспроизводит гейт deps-audit в CI на main (b9a7407: braces high через jscpd 4.3.0, source-map-js high); тест на версию пакета проверял бы lock, а не поведение by=agent:claude
+- **diagnosis:** n/a reason=причина названа отчётом `npm audit`: braces (все версии, high) приходит только через jscpd 4 → @jscpd/finder → fast-glob → micromatch; source-map-js 1.0.0–1.2.1 (high); исправление — jscpd 5.4.0 и `npm audit fix`
 - **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** deferred (reason=срочная починка CI: main красный у всех с выхода advisory; сообщила соседняя сессия prepare-3c, at=2026-09-30)
+- **human_ok_spec:** deferred (reason=срочная починка CI: main красный у всех с выхода advisory; сообщила соседняя сессия prepare-e4 07.10, решение «вынести или waiver» оставлено владельцу — выбран вынос, он гейт не ослабляет, at=2026-10-07)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=бандл фронта собирается так же: пакеты — инструменты сборки и линтера, в выдачу не попадают
+- **artifact_oracle:** n/a reason=бандл фронта делает то же: список групп перенесён без изменения значений, экран людей покрыт vitest
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки, класс S
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
-- **new_dependency:** no reason=только патч-версии трёх транзитивных пакетов в `web/package-lock.json`
-- **runtime_paths:** none reason=brace-expansion и fast-uri — зависимости eslint/typescript-eslint и ajv, в собранный бандл и в образ web не попадают
-- **irreversible_surfaces:** none reason=правка lock-файла, откат — прежний lock
+- **new_dependency:** no reason=jscpd уже в devDependencies; меняется мажорная версия инструмента гейта дублей (4 → 5), имён зависимостей не прибавилось
+- **runtime_paths:** none reason=в рантайм идёт только перенос константы GROUPS между модулями экрана людей, значения те же; jscpd — инструмент CI
+- **irreversible_surfaces:** none reason=lock-файл и перенос константы, откат — прежний коммит
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** следующий CI на main зелёный, `deps-audit: OK` со снимком из нулей
-- **observe_until:** 2026-10-14
+- **observe_signal:** следующий CI на main зелёный: `deps-audit: OK` с нулями и `jscpd: OK` с нулём пар на jscpd 5
+- **observe_until:** 2026-10-21
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

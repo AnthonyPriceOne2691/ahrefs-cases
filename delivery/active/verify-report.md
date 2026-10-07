@@ -1,29 +1,31 @@
-# Verify report: npm-audit-brace-expansion
+# Verify report: jscpd-5-braces
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| Падение до правки | CI на main, run 36721095756 (gates → «Vulnerable dependencies») | `npm audit`: brace-expansion high ×2 пути, fast-uri moderate; `critical=0 high=1 — снимком не легализуются`; pip-audit по lock — «No known vulnerabilities found» |
-| S1 | `npm audit fix`, затем `npm audit` во `web/` | `found 0 vulnerabilities`; в `web/package-lock.json` изменились ровно три записи: brace-expansion 1.1.18 → 1.1.21, 5.0.9 → 5.0.12 (под `@typescript-eslint/typescript-estree`), fast-uri 3.1.7 → 3.1.8 |
-| S2 | `npx vitest run`, `npm run build`, `npx eslint src` | 218 passed (20 файлов); сборка прошла; eslint чист |
-| S3 | GitHub Actions, PR #39 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием; `deps-audit: OK` со снимком из нулей |
+| Падение до правки | CI на main, b9a7407 (gates → «Vulnerable dependencies»); `npm audit` во `web/` | braces `*` high — цепочка `jscpd` → `@jscpd/finder` → `fast-glob` → `micromatch` → `braces`; source-map-js 1.0.0–1.2.1 high; всего 6 high |
+| O1 | `npm install --save-dev jscpd@^5.4.0`, `npm audit fix`, `npm audit` | `found 0 vulnerabilities`; `jscpd --version` — 5.4.0; lock похудел на ~830 строк (у пятой версии меньше зависимостей) |
+| O2 | `scripts/lint/check_jscpd_gate.sh` на jscpd 5 | до выноса — «дубли выросли: 1 clone-пар (baseline 0)»; после — `jscpd: OK — просмотрено 213 файл(ов), clone-пар 0, снимок 0` |
+| O3 | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run`, `npm run build` | чисто; 218 passed (20 файлов); сборка прошла; `*.tsbuildinfo` в индекс не попал (L236) |
+| O4 | GitHub Actions, PR #43 — прогон на последнем коммите ветки | delivery, gates, tests — зелёные перед слиянием |
 
 ## Ревью рисковых мест
 
-**Безопасность** — лучше, чем было: закрыты три advisory brace-expansion (DoS разбором фигурных скобок) и
-одно fast-uri. В диффе `web/package-lock.json` — записи `node_modules/brace-expansion` (`"version": "1.1.21"`),
-`node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion` (`"version": "5.0.12"`) и
-`node_modules/fast-uri` (`"version": "3.1.8"`); в `scripts/lint/deps_audit_baseline.txt` —
-`py_total=0 js_critical=0 js_high=0 js_total=0`. Оба пакета — транзитивные зависимости инструментов (typescript-eslint, ajv): в собранный
-бандл и в образ web не попадают, то есть уязвимость жила в CI и у разработчика, а не на проде.
+**Безопасность** — лучше, чем было: уходят braces (DoS разбором шаблонов путей) и source-map-js, оба high. Оба —
+зависимости инструментов (`jscpd` и сборщика), в собранный бандл не попадают.
 
-**Интеграция — риска нет**, потому что меняются только патч-версии в пределах диапазонов, которые уже
-объявили родительские пакеты; vitest, сборка и eslint прошли на новом lock.
+**Интеграция.** `jscpd` — мажорная смена 4 → 5 у инструмента гейта дублей: другой разборщик мог бы молча
+видеть меньше. Не видит: просмотрено 213 файлов по той же маске, а настоящий клон, которого четвёртая версия
+не замечала, пятая нашла — гейт стал строже, а не слепее.
+
+**Экран людей — риска нет**, потому что `GROUPS` перенесён в `web/src/pages/users/rights.ts` с теми же
+значениями (`user`/`admin`/`engineer` → «пользователь»/«админ»/«инженер»), а `CreateUser.tsx` и
+`ManageUser.tsx` берут его импортом рядом с `rightLabel`; vitest по экрану людей зелёный.
 
 ## Чего проверка НЕ доказывает
 
-Что завтра не выйдет следующее advisory: гейт судит каждый PR, и снимок из нулей не даст росту пройти молча.
+Что завтра не выйдет следующее advisory на инструменты фронта: гейт судит каждый PR, снимок — нули.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -36,11 +38,11 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 3 code (+9 process docs) / +11/-10 (net +1) |
+| files_touched / loc_diff | 5 code (+8 process docs) / +156/-991 (net -835) |
 | commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 — счётчик видит handoff поставки coverage-waiver-extended: её архив едет первым коммитом |
-| harness_hardened | yes — scripts/lint/deps_audit_baseline.txt |
+| rework_after_done | 0 — счётчик видит handoff поставки npm-audit-brace-expansion: её архив едет первым коммитом |
+| harness_hardened | no |
 | implement_retries | 0 |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |

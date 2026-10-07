@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** npm-audit-brace-expansion
+- **stack:** delivery@1.93, cqg@2.35, okf@1.18
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** bugfix
+- **repro_test:** n/a reason=падение воспроизводит гейт deps-audit в CI на main (run 36721095756: `critical=0 high=1 — снимком не легализуются`); тест на версию пакета проверял бы lock, а не поведение by=agent:claude
+- **diagnosis:** n/a reason=причина названа отчётом `npm audit`: brace-expansion ≤1.1.20 и 4.0.0–5.0.11 (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, high), fast-uri 3.0.0–3.1.7 (GHSA-hrr3-gc8f-f4qj, moderate); исправленные версии вышли
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** deferred (reason=срочная починка CI: main красный у всех с выхода advisory; сообщила соседняя сессия prepare-3c, at=2026-09-30)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=бандл фронта собирается так же: пакеты — инструменты сборки и линтера, в выдачу не попадают
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no reason=только патч-версии трёх транзитивных пакетов в `web/package-lock.json`
+- **runtime_paths:** none reason=brace-expansion и fast-uri — зависимости eslint/typescript-eslint и ajv, в собранный бандл и в образ web не попадают
+- **irreversible_surfaces:** none reason=правка lock-файла, откат — прежний lock
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** следующий CI на main зелёный, `deps-audit: OK` со снимком из нулей
+- **observe_until:** 2026-10-14
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
