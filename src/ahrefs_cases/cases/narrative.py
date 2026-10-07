@@ -77,15 +77,21 @@ def _intro(case: CaseData) -> str:
 
 def _where(case: CaseData) -> str:
     """Где шли работы. У нескольких стран — по какой из них цифры (`storage.geo`):
-    без этого «трафик +40 %» под тремя странами читается как сумма по всем."""
+    без этого «трафик +40 %» под тремя странами читается как сумма по всем. Ряды,
+    купленные не по первой стране, называются оговоркой (Z53): обещать «по первой
+    из них» тогда значило бы соврать."""
     count = len(countries(case.geo))
     if case.geo == WORLDWIDE:
-        return "география — весь мир"
-    if count == 0:
-        return "страна не указана"
-    if count == 1:
-        return f"страна — {case.geo_label}"
-    return f"страны — {case.geo_label}; цифры Ahrefs — по первой из них"
+        place = "география — весь мир"
+    elif count == 0:
+        place = "страна не указана"
+    elif count == 1:
+        place = f"страна — {case.geo_label}"
+    else:
+        place = f"страны — {case.geo_label}"
+        if case.geo_note is None:
+            return f"{place}; цифры Ahrefs — по первой из них"
+    return place if case.geo_note is None else f"{place}; {case.geo_note}"
 
 
 def _result(case: CaseData) -> str:

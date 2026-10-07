@@ -126,6 +126,10 @@ class ProjectCard(BaseModel):
     brief: dict[str, str] = {}
     """Бриф копирайтеру: ключ поля → записанное значение (`/api/brief-fields`)."""
 
+    geo_note: str | None = None
+    """Оговорка, когда ряды куплены не по первой стране проекта (Z53). Текст один на
+    карточку и лист брифа — `storage.geo.rows_note`."""
+
 
 class CaseRow(BaseModel):
     """Кейс в библиотеке. Имя файла — то самое, что уйдёт клиенту."""

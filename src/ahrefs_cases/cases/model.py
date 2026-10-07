@@ -254,6 +254,9 @@ class CaseData:
     screenshots: tuple[CaseImage, ...] = ()
     """Скрины, которые специалист загрузил в карточку, — в порядке загрузки."""
 
+    geo_note: str | None = None
+    """Оговорка, когда ряды куплены не по первой стране проекта (`storage.geo.rows_note`, Z53)."""
+
     @property
     def geo_label(self) -> str:
         """Страны словами — «Германия (DE)»: на листе и в тексте код один не читается."""

@@ -254,8 +254,8 @@ async def build_plan(
     # endpoint'у. Кэш отвечает на вопрос «что куплено раньше», а этот реестр —
     # «что купит соседняя кампания того же сайта через три задачи отсюда».
     # Без него две кампании одного домена платят за общие месяцы дважды в
-    # одном прогоне, и смета показывает эту двойную цену как норму (Z8).
-    claimed: dict[tuple[str, str, str], set[date]] = {}
+    # одном прогоне, и смета показывает эту двойную цену как норму (Z8). Страна в ключе (Z53).
+    claimed: dict[tuple[str, str, str, str], set[date]] = {}
     for project in projects:
         skip_reason = await _skip_reason(session, project, refresh=refresh)
         for spec in specs:
@@ -267,7 +267,7 @@ async def build_plan(
             planned, saved = await _tasks_for_spec(
                 session, project, spec, choice, source=source, now=now, refresh=refresh
             )
-            key = (project.domain, project.target_mode.value, spec.name)
+            key = (project.domain, project.target_mode, ahrefs_country(project.geo), spec.name)
             planned, twin_saved = _drop_twin_months(
                 project, spec, planned, claimed.setdefault(key, set())
             )

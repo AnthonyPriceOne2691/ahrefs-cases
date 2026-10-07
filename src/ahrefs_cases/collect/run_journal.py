@@ -370,7 +370,9 @@ async def store_outcome(session: AsyncSession, run: Run, item: TaskOutcome) -> i
     """Записать исход одной задачи: точки, расход, строку журнала, статус проекта."""
     points = 0
     if item.result is not None:
-        points = await store_history(session, item.task.project_id, item.result)
+        points = await store_history(
+            session, item.task.project_id, item.result, country=item.task.request.country
+        )
         await record_spend(session, run.id, item.result)
     await add_item(
         session,

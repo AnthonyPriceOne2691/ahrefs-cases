@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_rows_country.py::test_twins_share_months_only_within_one_country
 - **diagnosis:** n/a reason=причина названа в реестре (Z53): у точки нет страны — ни общие месяцы кампаний (`collect/cache.py`), ни сбор после смены первой страны её не видят
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «давай сделаем при смене страны только предупреждать»; примеры M79–M87 выведены агентом)

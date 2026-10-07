@@ -283,6 +283,7 @@ async def test_second_campaign_does_not_buy_the_same_months_again(
                 point_date=date(2025, month, 1),
                 value=1000.0 + month,
                 source=MetricSource.FIXTURE,
+                country="US",
                 fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
         )
@@ -329,6 +330,7 @@ async def test_sharing_does_not_stretch_the_series_beyond_the_period(
                 point_date=date(2023, month, 1),
                 value=500.0,
                 source=MetricSource.FIXTURE,
+                country="US",
                 fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
             )
         )
@@ -368,6 +370,7 @@ async def test_sharing_ignores_another_target_mode(db_session: AsyncSession) -> 
             point_date=date(2025, 8, 1),
             value=1000.0,
             source=MetricSource.FIXTURE,
+            country="US",
             fetched_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
     )

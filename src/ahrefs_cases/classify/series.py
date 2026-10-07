@@ -36,6 +36,19 @@ async def load_series(session: AsyncSession, project_id: int, source: MetricSour
     return series
 
 
+async def bought_countries(
+    session: AsyncSession, project_id: int, source: MetricSource
+) -> tuple[str, ...]:
+    """По каким странам куплены точки проекта — для оговорки `storage.geo.rows_note` (Z53)."""
+    stmt = (
+        select(MetricPoint.country)
+        .where(MetricPoint.project_id == project_id, MetricPoint.source == source)
+        .distinct()
+        .order_by(MetricPoint.country)
+    )
+    return tuple((await session.execute(stmt)).scalars().all())
+
+
 def months_covered(series: MetricSeries, metric: Metric) -> list[date]:
     """Отсортированные месяцы, по которым есть значения метрики."""
     return sorted(series.get(metric, {}))
