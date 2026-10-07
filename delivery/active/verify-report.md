@@ -39,15 +39,34 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
+Новых/изменённых утверждений: **17**, из них без ссылки на пример спеки:
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+значение — из спеки или придумано под реализацию?**
 
-⚠ **Внимание: 1 незакоммиченных тест-файл(ов).** Дайджест считает
-ЗАКОММИЧЕННЫЙ дифф, поэтому их утверждений здесь нет. Закоммить и повторить
-до того, как ставить `asserts_reviewed_by: n/a` — иначе n/a подписывает пустоту.
+```
+M41	assert prepared.mime in {"image/png", "image/jpeg"}
+M41	assert (prepared.width, prepared.height) == (640, 400)
+M41	assert len(prepared.checksum) == 64
+M41	assert Image.open(BytesIO(prepared.content)).format in {"PNG", "JPEG"}
+M44	assert (prepared.width, prepared.height) == (MAX_SIDE, MAX_SIDE // 2)
+M45	assert not Image.open(BytesIO(prepared.content)).getexif()
+M46	assert image.mode == "RGB"
+M46	assert image.getpixel((10, 10)) == (255, 255, 255)
+M47	assert key.startswith("7/") and key.endswith(".png")
+M47	assert read(tmp_path, key) == prepared.content
+M47	assert not list((tmp_path / "7").glob(".*.part"))
+M47	assert remove(tmp_path, key) is True
+M47	assert remove(tmp_path, key) is False
+M47	assert remove_project(tmp_path, 7) == 2
+M47	assert not (tmp_path / "7").exists()
+M47	assert read(tmp_path, neighbour) == prepared.content
+M47	assert remove_project(tmp_path, 7) == 0
+```
 
-**Новых утверждений нет.**
-
-Это либо тесты не добавлялись (тогда чем закрыт DoD?), либо изменения
-только в реализации. Второе законно; первое — повод спросить.
+✅ **Каждое утверждение ведёт к примеру спеки** (M41 M44 M45 M46 M47), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
 
 asserts_without_example: 0
 
@@ -57,12 +76,12 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 0 code (+0 process docs) / +0/-0 (net +0) |
-| commits | 0 |
-| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
+| files_touched / loc_diff | 10 code (+14 process docs) / +392/-2 (net +390) |
+| commits | 1 |
+| time_to_accepted_spec | spec drafted, not yet accepted |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | no |
-| implement_retries | 1 — имя исключения по правилу N818 |
+| harness_hardened | yes — tests/test_storage_screenshots.py (новый оракул) |
+| implement_retries | 2 — имя исключения по правилу N818; гейт знаний на `pyproject.toml` (карта репозитория) |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 
