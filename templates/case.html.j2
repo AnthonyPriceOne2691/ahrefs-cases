@@ -1,5 +1,9 @@
 {#
-  Одностраничный кейс: печатный лист A4 и он же — будущая веб-карточка.
+  Бриф для копирайтера (с 07.10.2026): сначала пункты шаблона кейса агентства —
+  что известно и что «заполняет специалист», ссылки на отчёты Ahrefs для скринов;
+  затем с новой страницы — лист «Динамика»: прежний одностраничный кейс.
+
+  Лист «Динамика»: печатный лист A4 и он же — будущая веб-карточка.
 
   Вёрстка печатная, а не экранная: размеры в миллиметрах и пунктах, разрывы
   запрещены там, где блок обязан остаться целым, шрифты системные — сервер
@@ -162,10 +166,92 @@
   .chart:last-child { margin-right: 0; }
   .chart h2 { margin: 0 0 1.5mm; }
   .chart svg { display: block; width: 100%; }
+
+  /* Бриф. Таблицы брифа рвутся между страницами по строкам: разделы бывают длинными,
+     и держать раздел целым значило бы оставлять пустые полстраницы. */
+  .brief-head {
+    background: var(--accent);
+    color: #ffffff;
+    border-radius: 3mm;
+    padding: 5mm 7mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .brief-head__kicker { font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.92; }
+  .brief-head__title { font-size: 18pt; font-weight: 600; line-height: 1.15; margin: 1mm 0 0; }
+  .brief-head__meta { margin-top: 2mm; font-size: 8.5pt; opacity: 0.92; }
+  .brief-head__meta span + span::before { content: " · "; }
+  .brief-head__aside { font-size: 9pt; white-space: nowrap; }
+  .nda {
+    margin: 4mm 0 0;
+    padding: 2.5mm 4mm;
+    border: 0.4mm solid #c2410c;
+    border-radius: 2mm;
+    background: #fff7ed;
+    color: #9a3412;
+    font-weight: 600;
+  }
+  .brief-table { break-inside: auto; }
+  .brief-table tr { break-inside: avoid; }
+  .brief-table tr:first-child td { border-top: 0; }
+  .brief-table td { text-align: left; vertical-align: top; padding: 1.2mm 0; }
+  .brief-table__label { width: 42%; color: var(--ink-2); padding-right: 4mm; }
+  .brief-table__value { white-space: pre-wrap; }
+  .empty { color: var(--muted); font-style: italic; }
+  .links-note { color: var(--ink-2); font-size: 8pt; margin: 0 0 1.5mm; }
+  .brief a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  .sheet { break-before: page; }
 </style>
 </head>
 <body>
 
+<section class="brief">
+<header class="brief-head">
+  <div>
+    <div class="brief-head__kicker">Бриф для копирайтера</div>
+    <p class="brief-head__title">{{ case.title }}</p>
+    <div class="brief-head__meta">
+      {% if case.client %}<span>Клиент: {{ case.client }}</span>{% endif %}<span>{{ case.geo_label }}</span>
+    </div>
+  </div>
+  <div class="brief-head__aside">{{ case.period.start.strftime("%m.%Y") }} — {{ case.period.end.strftime("%m.%Y") }}</div>
+</header>
+
+{% if case.anonymized %}
+<p class="nda">{{ nda_warning }}</p>
+{% endif %}
+
+{% for section in sections %}
+<h2>{{ section.title }}</h2>
+<table class="brief-table">
+  <tbody>
+    {% for row in section.rows %}
+    <tr>
+      <td class="brief-table__label">{{ row.label }}</td>
+      <td class="brief-table__value">{% if not row.value %}<span class="empty">{{ empty }}</span>{% elif row.link %}<a href="{{ row.value }}">{{ row.value }}</a>{% else %}{{ row.value }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endfor %}
+
+<h2>Отчёты Ahrefs для скринов</h2>
+<p class="links-note">{{ links_note }}</p>
+<table class="brief-table">
+  <tbody>
+    {% for link in links %}
+    <tr>
+      <td class="brief-table__label">{{ link.country }}</td>
+      <td class="brief-table__value"><a href="{{ link.url }}">{{ link.report }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</section>
+
+<!-- sheet -->
+<section class="sheet">
 <header class="masthead">
   <div>
     <p class="masthead__title">{{ case.title }}</p>
@@ -174,7 +260,7 @@
     </div>
   </div>
   <div class="masthead__aside">
-    <div class="masthead__kicker">Кейс</div>
+    <div class="masthead__kicker">Динамика</div>
     <div class="masthead__period">{{ case.period.months }} мес.</div>
     <div>{{ case.period.start.strftime("%m.%Y") }} — {{ case.period.end.strftime("%m.%Y") }}</div>
   </div>
@@ -247,6 +333,8 @@
   <p><strong>{{ attribution }}</strong> {{ points_note }}</p>
   <p class="note__source">{{ footnote }}</p>
 </footer>
+</section>
+<!-- /sheet -->
 
 </body>
 </html>

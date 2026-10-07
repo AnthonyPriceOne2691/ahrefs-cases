@@ -96,6 +96,12 @@ def check(case: CaseData) -> tuple[Hit, ...]:
         if code.upper() in FORBIDDEN_GEO
     ]
     hits.extend(hit for where, value in fields.items() for hit in _scan(where, value))
+    # С 07.10.2026 лист — бриф: на нём клиент и пункты, которые вписал специалист.
+    # Печатается — значит проверяется, иначе «Яндекс» в «Трудностях» ушёл бы
+    # копирайтеру, а от него в публичный текст.
+    hits.extend(_scan("клиент", case.client))
+    for key, value in sorted(case.brief.items()):
+        hits.extend(_scan(f"бриф: {key}", value))
     return tuple(hits)
 
 

@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** brief-form
+- **slug:** brief-pdf
 - **stack:** delivery@2.00, cqg@2.51, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
-- **repro_test:** n/a reason=не дефект: экранная часть брифа (этап 2б)
+- **repro_test:** n/a reason=не дефект: требование команды агентства (PDF — бриф копирайтеру), этап 3
 - **diagnosis:** n/a reason=не дефект кода
 - **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: ручные поля шаблона в карточке, «Пометка „заполняет специалист“ для пустых полей — ок», флажок NDA в карточке; владелец — «дальше делай разработку по порядку»; примеры M28–M32 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (ответы команды, переданные владельцем: PDF — бриф копирайтеру, домен всегда, NDA предупреждением, все пункты шаблона, «заполняет специалист», ссылки на три отчёта с периодом и страной; владелец — «дальше делай разработку по порядку»; примеры M33–M37 выведены агентом из этих правил)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефактов не производит: экран читает и пишет бриф через API
+- **artifact_oracle:** PDF — артефакт: лист брифа и лист «Динамика» отрендерены WeasyPrint, страницы растеризованы и просмотрены; на стенде PDF собран циклом по файлу через интерфейс и скачан кнопкой карточки; одностраничность листа «Динамика» — тестом разности страниц
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no reason=пакетов не прибавилось
-- **runtime_paths:** none reason=экран проверен на стенде кликами и снимками, включая тёмную тему
-- **irreversible_surfaces:** none reason=экранная правка без данных и миграций; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** templates/case.html.j2 <!-- раскладка печатного листа видна только растеризацией: тесты меряют страницы, а глазами просмотрены снимки страниц PDF -->
+- **irreversible_surfaces:** none reason=миграций нет; правка шаблона и сборки откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** после выкатки: на карточке проекта блок «Бриф для копирайтера»; специалист группы «пользователь» видит «Заполнить бриф», сохраняет пункты, и они видны подписями; флажок NDA ставит предупреждение и «публиковать без названия»
+- **observe_signal:** после выкатки и пересборки кейсов: PDF открывается брифом («Бриф для копирайтера», пункты шаблона, «заполняет специалист» у пустых, ссылки на отчёты по странам), у NDA-проекта — предупреждение; последняя страница — лист «Динамика»; одну ссылку владелец открывает в Ahrefs и сверяет, что отчёт, страна и период подставились
 - **observe_until:** 2026-10-21
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

@@ -16,12 +16,19 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from tests.sheet_pages import sheet_pages
 
 from ahrefs_cases.cases.model import CaseData, Change, Period
 from ahrefs_cases.cases.stoplist import ContentBlockedError, check
 from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.export import pdf_renderer
-from ahrefs_cases.export.html_renderer import ATTRIBUTION, DATA_FOOTNOTE, number, render_html
+from ahrefs_cases.export.html_renderer import (
+    ATTRIBUTION,
+    DATA_FOOTNOTE,
+    NDA_WARNING,
+    number,
+    render_html,
+)
 from ahrefs_cases.storage._enums import Group
 
 SUBJECTS = ("org_traffic", "kw_top10", "kw_top3", "kw_total", "refdomains", "org_cost", "dr")
@@ -55,13 +62,15 @@ def _case(**overrides: object) -> CaseData:
     return CaseData(**fields)  # type: ignore[arg-type]
 
 
-def test_pdf_is_written_and_is_a_single_page(tmp_path: Path) -> None:
-    """E1 и E10: файл на диске, сигнатура PDF, одна страница на семи метриках."""
+def test_pdf_is_written_brief_first_and_the_sheet_is_one_page(tmp_path: Path) -> None:
+    """M36 (E1, E10): файл на диске; бриф идёт первым, лист «Динамика» на семи
+    метриках — ровно одна страница, как одностраничный кейс до брифа."""
     rendered = pdf_renderer.render_pdf(_case(), output_dir=tmp_path)
 
     assert rendered.path.exists()
     assert rendered.path.read_bytes()[:5] == b"%PDF-"
-    assert rendered.pages == 1
+    assert rendered.pages > 1
+    assert sheet_pages(render_html(_case())) == 1
 
 
 def test_required_footnote_and_attribution_are_in_the_html() -> None:
@@ -77,27 +86,26 @@ def test_required_footnote_and_attribution_are_in_the_html() -> None:
     assert "благодаря работ" not in html.lower()
 
 
-def test_anonymous_case_shows_no_domain(tmp_path: Path) -> None:
-    """E3: ни в HTML, ни в имени файла."""
-    case = _case(title="сайт в нише travel", anonymized=True, niche="travel")
+def test_nda_case_warns_the_copywriter_and_still_names_the_domain() -> None:
+    """M34: с 07.10.2026 лист — бриф копирайтеру: домен назван всегда, а NDA —
+    предупреждение в шапке, которого у публичного проекта нет."""
+    closed = render_html(_case(anonymized=True))
+    open_ = render_html(_case())
 
-    html = render_html(case)
-    rendered = pdf_renderer.render_pdf(case, output_dir=tmp_path)
-
-    assert "example.com" not in html
-    assert "сайт в нише travel" in html
-    assert "example" not in rendered.path.name
+    assert NDA_WARNING in closed
+    assert "example.com" in closed
+    assert NDA_WARNING not in open_
 
 
-def test_masthead_names_the_countries(tmp_path: Path) -> None:
-    """M7: в шапке листа страны словами с кодом, а не код в одиночку, — и длинный
-    список стран не уводит лист на вторую страницу."""
+def test_masthead_names_the_countries() -> None:
+    """M7 и M36: в шапке листа страны словами с кодом, а не код в одиночку, — и
+    длинный список стран не уводит лист «Динамика» на вторую страницу."""
     # Мерить, а не надеяться: лист судит растеризация, а не разметка.
     html = render_html(_case(geo="DE,AT"))
-    six = pdf_renderer.render_pdf(_case(geo="DE,AT,CH,NL,BE,LU"), output_dir=tmp_path)
+    six = render_html(_case(geo="DE,AT,CH,NL,BE,LU"))
 
     assert "<span>Германия (DE), Австрия (AT)</span>" in html
-    assert six.pages == 1
+    assert sheet_pages(six) == 1
 
 
 @pytest.mark.parametrize("geo", ["RU", "by", "DE,RU"])

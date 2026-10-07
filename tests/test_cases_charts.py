@@ -19,6 +19,7 @@ from itertools import combinations, pairwise
 from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
+from tests.sheet_pages import sheet_pages
 
 from ahrefs_cases.cases.builder import VerdictView, build_case
 from ahrefs_cases.cases.model import CaseSeries
@@ -201,7 +202,7 @@ def test_gradient_stops_are_opaque() -> None:
 
 
 def test_case_with_two_charts_still_fits_one_page(tmp_path: Path) -> None:
-    """E9: две кривые не уводят кейс на вторую страницу."""
+    """E9 и M36: две кривые не уводят лист «Динамика» на вторую страницу (бриф — перед ним)."""
     months = _months(16, date(2024, 12, 1))
     case = build_case(
         _project(),
@@ -221,7 +222,8 @@ def test_case_with_two_charts_still_fits_one_page(tmp_path: Path) -> None:
     assert html.count("<svg") == 2
     assert "Динамика органического трафика" in html
     assert "Динамика позиций" in html
-    assert rendered.pages == 1
+    assert sheet_pages(html) == 1
+    assert rendered.pages > 1, "бриф идёт перед листом, документ не одностраничный"
 
 
 def test_svg_is_deterministic() -> None:
