@@ -19,7 +19,7 @@
 - **worktree:** none reason=единственный исполнитель ветки, класс S
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
-- **new_dependency:** no reason=пакетов не прибавилось
+- **new_dependency:** none <!-- пакетов не прибавилось; форма «none» — гейт новой зависимости читает архивные STATUS окна, а «no reason=» принимает за пакет «no» -->
 - **runtime_paths:** none reason=подписи проверены снимками стенда
 - **irreversible_surfaces:** none reason=экранная правка без данных; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
