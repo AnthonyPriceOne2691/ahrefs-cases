@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** countries-multi-geo
-- **stack:** delivery@1.99, cqg@2.48, okf@1.19
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
@@ -20,7 +20,7 @@
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no reason=справочник стран — данные в коде (`storage/countries.py`), пакетов не прибавилось
-- **runtime_paths:** src/ahrefs_cases/collect/plan.py reason=страна уходит параметром в живой запрос к Ahrefs; тесты видят фикстуру и подменённый транспорт, а как живой Ahrefs читает запрос без `country` — только исполнением (при пустом гео так было и раньше)
+- **runtime_paths:** src/ahrefs_cases/collect/plan.py <!-- страна уходит параметром в живой запрос к Ahrefs: тесты видят фикстуру и подменённый транспорт, а как живой Ahrefs читает запрос без country — только исполнением (при пустом гео так было и раньше) -->
 - **irreversible_surfaces:** none reason=миграция расширяет колонку и откатывается (M9: откат сводит список к первой стране — цифры те же, сбор считал по ней); автомерж выключен, каждый PR сливает человек; выкатка и миграция на проде — руками по `docs/PROD.md` после слова владельца
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
