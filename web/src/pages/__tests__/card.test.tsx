@@ -19,7 +19,8 @@ const PROJECT = {
   id: 7,
   domain: 'klinika.example',
   niche: 'медицина',
-  geo: 'RU',
+  geo: 'DE,AT',
+  geo_label: 'Германия (DE), Австрия (AT)',
   service_type: 'seo',
   period_start: '2024-03-01',
   period_end: '2025-09-01',
@@ -168,6 +169,7 @@ describe('карточка проекта: основание вердикта',
     // не сказала бы, чем судили. Счёт из шапки снят 16.09.2026 — он сравнивает
     // соседей, а в карточке одного проекта соседей нет.
     expect(screen.getByText('пороги 0.0.0-default')).toBeInTheDocument();
+    expect(screen.getByText(/Германия \(DE\), Австрия \(AT\)/)).toBeInTheDocument(); // M12
   });
 
   it('E2 и E10: таблица А → Б показывает числа вердикта', async () => {

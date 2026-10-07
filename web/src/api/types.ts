@@ -122,6 +122,8 @@ export interface ProjectRow {
   domain: string;
   niche: string;
   geo: string;
+  /** Гео словами — «Германия (DE)», «Весь мир»: справочник один, на сервере. */
+  geo_label: string;
   service_type: string;
   period_start: string;
   period_end: string;

@@ -22,7 +22,7 @@ const REASONS: Record<string, string> = {
   missing_field: 'пустое обязательное поле',
   bad_date: 'дата не разобрана',
   period_order: 'конец периода раньше начала',
-  bad_geo: 'гео не двухбуквенный код',
+  bad_geo: 'гео — не код страны (DE; несколько — DE, AT; весь мир — Worldwide)',
   bad_enum: 'значение не из списка',
   bad_number: 'число не разобрано',
   bad_flag: 'флаг не «да»/«нет»',

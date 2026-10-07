@@ -30,7 +30,7 @@ export function ProjectsTable({
     () => [
       { accessorKey: 'domain', header: 'Домен' },
       { accessorKey: 'niche', header: 'Ниша' },
-      { accessorKey: 'geo', header: 'Гео' },
+      { accessorKey: 'geo_label', header: 'Гео' },
       {
         id: 'period',
         header: 'Период работ',
