@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** screenshots-api
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: этап 4 — скриншоты в бриф, часть 2
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: «загрузка скрина в карточку проекта»; владелец: «дальше делай разработку по порядку»; примеры M48–M53 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефакт — файл скрина: тест и стенд читают его обратно через API и сверяют тип, заголовки и формат
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none <!-- пакетов не прибавилось: pillow объявлен поставкой screenshots-storage -->
+- **runtime_paths:** src/ahrefs_cases/api/routers/screenshots.py <!-- загрузка через прокси nginx с пределом 3 МБ проверяется только исполнением на сервере: тесты и стенд ходят мимо прокси -->
+- **irreversible_surfaces:** none reason=миграций нет; удаление скрина и проекта стирает файлы, но это действие человека кнопкой, а бэкап ночью берёт `data/screenshots`; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки этапа 4: загрузка скрина 1–2,5 МБ через сайт отвечает 201 (не 413 и не 500 прокси); картинка открывается в карточке; удаление проекта с скринами оставляет `/app/data/screenshots/<проект>` пустым
+- **observe_until:** 2026-10-28
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

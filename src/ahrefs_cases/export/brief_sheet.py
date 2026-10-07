@@ -66,6 +66,22 @@ def _growth(case: CaseData) -> str:
     return "; ".join(shown)
 
 
+def _screens(case: CaseData) -> str:
+    """Пункт шаблона — про Ahrefs; скрины видимости в ИИ названы отдельно, чтобы счёт сходился."""
+    ahrefs = sum(1 for image in case.screenshots if image.kind == "ahrefs")
+    ai = len(case.screenshots) - ahrefs
+    told = (
+        f"{ahrefs} шт. — в разделе «Скрины» ниже"
+        if ahrefs
+        else "ещё не загружены: снимите по ссылкам ниже и загрузите в карточку проекта"
+    )
+    if not ai:
+        return told
+    if ahrefs:
+        return f"{told}; там же видимость в ИИ — {ai} шт."
+    return f"{told}; видимость в ИИ — {ai} шт. в разделе «Скрины» ниже"
+
+
 _AUTO: Mapping[str, tuple[str, Callable[[CaseData], str]]] = MappingProxyType(
     {
         "@owner": ("Кто из сотрудников вёл проект", lambda case: case.owner),
@@ -77,10 +93,7 @@ _AUTO: Mapping[str, tuple[str, Callable[[CaseData], str]]] = MappingProxyType(
             "Динамика показателей (подробно)",
             lambda _: "лист «Динамика» в конце брифа: точки А и Б, графики, текст",
         ),
-        "@screens": (
-            "Скрины результатов работ из Ahrefs",
-            lambda _: "по ссылкам на отчёты ниже — скрины специалист снимает сам",
-        ),
+        "@screens": ("Скрины результатов работ из Ahrefs", _screens),
     }
 )
 """Пункты, которые сервис заполняет сам. Ключ с `@` — чтобы не спутать с полем брифа."""

@@ -202,6 +202,9 @@
   .links-note { color: var(--ink-2); font-size: 8pt; margin: 0 0 1.5mm; }
   .brief a { color: var(--accent); text-decoration: none; word-break: break-all; }
   .sheet { break-before: page; }
+  .screen { margin: 3mm 0 0; break-inside: avoid; }
+  .screen img { display: block; max-width: 100%; max-height: 120mm; border: 0.3mm solid var(--hairline); }
+  .screen figcaption { color: var(--ink-2); font-size: 8pt; margin-top: 1mm; }
 </style>
 </head>
 <body>
@@ -248,6 +251,16 @@
     {% endfor %}
   </tbody>
 </table>
+
+{% if screens %}
+<h2>Скрины</h2>
+{% for screen in screens %}
+<figure class="screen">
+  <img src="{{ screen.src }}" alt="{{ screen.caption or screen.kind }}">
+  <figcaption>{{ screen.kind }}{% if screen.caption %} · {{ screen.caption }}{% endif %}</figcaption>
+</figure>
+{% endfor %}
+{% endif %}
 </section>
 
 <!-- sheet -->

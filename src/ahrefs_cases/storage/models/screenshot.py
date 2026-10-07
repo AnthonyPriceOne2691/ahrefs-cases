@@ -10,6 +10,9 @@ from ahrefs_cases.storage.models._base import Base, TimestampMixin
 SCREENSHOT_KINDS = ("ahrefs", "ai")
 """Отчёт Ahrefs или экран видимости бренда в ChatGPT, Perplexity, AI Overviews."""
 
+KIND_LABELS = {"ahrefs": "Отчёт Ahrefs", "ai": "Видимость в ИИ"}
+"""Вид скрина словами — одна подпись на лист PDF и экран карточки."""
+
 
 class ProjectScreenshot(Base, TimestampMixin):
     """Файл лежит на диске (`storage.screenshots`), здесь — где и что это.

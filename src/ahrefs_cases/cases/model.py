@@ -119,6 +119,16 @@ class CaseOutcome(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class CaseImage:
+    """Скрин брифа: отчёт Ahrefs (`ahrefs`) или экран видимости в ИИ (`ai`)."""
+
+    kind: str
+    caption: str
+    mime: str
+    content: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class Change:
     """Изменение метрики от А к Б — обёртка вокруг `Delta` классификации, а не
     вторая копия арифметики: кейс показывает ровно её результат."""
@@ -240,6 +250,9 @@ class CaseData:
 
     brief: dict[str, str] = field(default_factory=dict)
     """Бриф копирайтеру из карточки и файла (`storage.brief`): ключ поля → значение."""
+
+    screenshots: tuple[CaseImage, ...] = ()
+    """Скрины, которые специалист загрузил в карточку, — в порядке загрузки."""
 
     @property
     def geo_label(self) -> str:

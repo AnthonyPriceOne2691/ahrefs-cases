@@ -102,6 +102,8 @@ def check(case: CaseData) -> tuple[Hit, ...]:
     hits.extend(_scan("клиент", case.client))
     for key, value in sorted(case.brief.items()):
         hits.extend(_scan(f"бриф: {key}", value))
+    for image in case.screenshots:
+        hits.extend(_scan("подпись скрина", image.caption))
     return tuple(hits)
 
 
