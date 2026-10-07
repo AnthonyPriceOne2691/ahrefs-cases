@@ -87,8 +87,8 @@ M8	assert by_domain["alpha.example"]["geo_label"] == "США (US)"
 M7	assert phrase in _case(geo=geo).narrative
 M6	assert ("гео", "RU") in hits
 M6	assert ("гео", "DE") not in hits
-L45	assert "<span>Германия (DE), Австрия (AT)</span>" in html
-L45	assert six.pages == 1
+M7	assert "<span>Германия (DE), Австрия (AT)</span>" in html
+M7	assert six.pages == 1
 M2	assert plan.tasks
 M2	assert {task.request.country for task in plan.tasks} == {asked}
 M3	assert seen.get("country") == sent
@@ -126,7 +126,7 @@ M10	assert ahrefs_country(canon) == unique[0]
 M10	assert all(f"{COUNTRY_NAMES[code]} ({code})" in shown for code in unique)
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (L45 M1 M10 M2 M3 M4 M5 M6 M7 M8 M9), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M1 M10 M2 M3 M4 M5 M6 M7 M8 M9), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
