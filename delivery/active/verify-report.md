@@ -71,3 +71,64 @@
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
+
+asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
+
+## Assertion digest (ревью ожиданий, не кода)
+
+База: `origin/main` · сгенерировано `assert_digest.sh`
+
+Новых/изменённых утверждений: **41**, из них без ссылки на пример спеки:
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+значение — из спеки или придумано под реализацию?**
+
+```
+M8	assert by_domain["alpha.example"]["geo_label"] == "США (US)"
+M7	assert phrase in _case(geo=geo).narrative
+M6	assert ("гео", "RU") in hits
+M6	assert ("гео", "DE") not in hits
+L45	assert "<span>Германия (DE), Австрия (AT)</span>" in html
+L45	assert six.pages == 1
+M2	assert plan.tasks
+M2	assert {task.request.country for task in plan.tasks} == {asked}
+M3	assert seen.get("country") == sent
+M2	assert not rejections
+M2	assert drafts[0].geo == canon
+M4	assert [(item.field, item.reason) for item in rejections] == [("geo", RejectReason.BAD_GEO)]
+M4	assert "XZ" in rejections[0].detail
+M9	assert rows == [("several.migration.example", "DE"), ("world.migration.example", "")]
+M1	assert parse_geo("de") == "DE"
+M1	assert label("DE") == "Германия (DE)"
+M1	assert ahrefs_country("DE") == "DE"
+M2	assert canon == "DE,AT,CH"
+M2	assert countries(canon) == ("DE", "AT", "CH")
+M2	assert ahrefs_country(canon) == "DE"
+M2	assert label(canon) == "Германия (DE), Австрия (AT), Швейцария (CH)"
+M2	assert parse_geo("DE, de, AT") == "DE,AT"
+M2	assert label("XZ") == "XZ"
+M2	assert label("") == ""
+M2	assert ahrefs_country("") == ""
+M3	assert parse_geo(cell) == WORLDWIDE
+M3	assert countries(WORLDWIDE) == ()
+M3	assert ahrefs_country(WORLDWIDE) == ""
+M3	assert label(WORLDWIDE) == "Весь мир"
+M4	assert isinstance(result, GeoRejected)
+M4	assert named in result.detail
+M4	assert isinstance(parse_geo(cell), GeoRejected)
+M4	assert isinstance(result, GeoRejected)
+M4	assert "Worldwide" in result.detail
+M5	assert parse_geo("uk, ie") == "GB,IE"
+M5	assert label("GB") == "Великобритания (GB)"
+M10	assert canon == ",".join(unique)
+M10	assert parse_geo(canon) == canon
+M10	assert countries(canon) == unique
+M10	assert ahrefs_country(canon) == unique[0]
+M10	assert all(f"{COUNTRY_NAMES[code]} ({code})" in shown for code in unique)
+```
+
+✅ **Каждое утверждение ведёт к примеру спеки** (L45 M1 M10 M2 M3 M4 M5 M6 M7 M8 M9), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
+
+asserts_without_example: 0

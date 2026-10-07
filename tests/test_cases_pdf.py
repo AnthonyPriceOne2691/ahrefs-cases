@@ -91,7 +91,8 @@ def test_anonymous_case_shows_no_domain(tmp_path: Path) -> None:
 
 def test_masthead_names_the_countries(tmp_path: Path) -> None:
     """M7: в шапке листа страны словами с кодом, а не код в одиночку, — и длинный
-    список стран не уводит лист на вторую страницу (урок L45: мерить, а не надеяться)."""
+    список стран не уводит лист на вторую страницу."""
+    # Мерить, а не надеяться: лист судит растеризация, а не разметка.
     html = render_html(_case(geo="DE,AT"))
     six = pdf_renderer.render_pdf(_case(geo="DE,AT,CH,NL,BE,LU"), output_dir=tmp_path)
 
