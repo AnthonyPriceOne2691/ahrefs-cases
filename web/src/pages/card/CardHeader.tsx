@@ -5,7 +5,7 @@
  * живут в базе одновременно, и число без версии ничего не значит — по другой
  * версии тот же проект может оказаться в другой группе.
  */
-import { Anchor, Badge, Group, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Group, Stack, Text, Title } from '@mantine/core';
 import { Link } from 'react-router-dom';
 
 import type { ProjectCard } from '../../api/types';
@@ -47,6 +47,23 @@ export function CardHeader({ card }: { card: ProjectCard }) {
           )}
         </Group>
       </Group>
+      <GeoNote note={card.geo_note} />
     </Stack>
+  );
+}
+
+/** Цифры куплены не по первой стране (Z53): шапка называет страну словами, и без
+ *  оговорки человек принял бы цифры за цифры этой страны. Текст — с сервера. */
+function GeoNote({ note }: { note: string | null | undefined }) {
+  if (!note) {
+    return null;
+  }
+  return (
+    <Alert color="yellow" variant="light" title="Цифры не по первой стране" data-geo-note>
+      <Text size="sm">
+        {note.charAt(0).toUpperCase() + note.slice(1)}. Чтобы цифры шли по новой стране, ряды
+        покупают заново — проект удаляют и загружают снова.
+      </Text>
+    </Alert>
   );
 }

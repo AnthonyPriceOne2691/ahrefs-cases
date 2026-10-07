@@ -188,6 +188,66 @@ describe('бриф на карточке: просмотр', () => {
   });
 });
 
+describe('бриф на карточке: пустой и частичный', () => {
+  it('M89: пустой бриф — одна строка с числом пунктов; форма открывает все', async () => {
+    server(routes({}));
+
+    renderCard(['read', 'edit_briefs']);
+
+    expect(
+      await screen.findByText('Бриф ещё не заполнен — пунктов для специалиста: 4'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('заполняет специалист')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Заполнить бриф' }));
+    expect(screen.getByLabelText('Тип сайта')).toBeInTheDocument();
+    expect(screen.getByLabelText('Запрос клиента на входе')).toBeInTheDocument();
+  });
+
+  it('M90: один заполненный пункт — разделы с пробелами, как прежде', async () => {
+    server(routes({ client_request: 'рост заявок' }));
+
+    renderCard(['read']);
+
+    expect(await screen.findByText('рост заявок')).toBeInTheDocument();
+    expect(screen.getAllByText('заполняет специалист')).toHaveLength(3);
+    expect(screen.queryByText(/Бриф ещё не заполнен/)).not.toBeInTheDocument();
+  });
+});
+
+const GEO_NOTE =
+  'цифры Ahrefs куплены по стране США (US) — до того, как первой страной проекта стала Германия (DE)';
+
+describe('карточка: страна цифр', () => {
+  it('M88: ряды не по первой стране — предупреждение текстом сервера и следующим шагом', async () => {
+    const noted = card({});
+    server({
+      ...routes({}),
+      'GET /api/projects/7': {
+        status: 200,
+        body: { ...(noted.body as object), geo_note: GEO_NOTE },
+      },
+    });
+
+    renderCard(['read']);
+
+    expect(await screen.findByText('Цифры не по первой стране')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^Цифры Ahrefs куплены по стране США \(US\) — до того, как первой страной проекта стала Германия \(DE\)\. Чтобы цифры шли по новой стране/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('M88: без оговорки предупреждения нет', async () => {
+    server(routes({}));
+
+    renderCard(['read']);
+    await screen.findByText('Бриф для копирайтера');
+
+    expect(screen.queryByText('Цифры не по первой стране')).not.toBeInTheDocument();
+  });
+});
+
 describe('бриф на карточке: правка', () => {
   it('M30: уходит только изменённое и NDA; карточка показывает сохранённое', async () => {
     const saved = { ...SAVED, client_request: 'рост заявок из органики', site_type: 'saas' };

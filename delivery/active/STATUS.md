@@ -7,7 +7,7 @@
 - **kind:** feature
 - **repro_test:** n/a reason=не дефект: экранная часть Z53 и сжатие пустого брифа по слову владельца
 - **diagnosis:** n/a reason=не дефект кода
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «при смене страны только предупреждать»; про пустой бриф одной строкой — «да, сделай заодно с долгами»; примеры M88–M90 выведены агентом)
