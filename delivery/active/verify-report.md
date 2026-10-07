@@ -1,23 +1,55 @@
-# Verify report: brief-labels
+# Verify report: screenshots-storage
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M38 | vitest `cases.test.tsx` | «публичный» и «NDA» в строках; 18 passed |
-| Фронт целиком | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run` | чисто; 224 passed |
-| Живой проход | стенд (Chrome по CDP) | «Кейсы»: колонка «Публичность», метки «NDA» и «публичный» помещаются; «Проекты»: «Публичность» — «открытый» / «NDA»; шапка карточки `brief-ok.example.com` — «NDA» |
+| M41–M47 | `tests/test_storage_screenshots.py` (картинки собираются в памяти настоящим Pillow) | 12 passed |
+| Модель = миграция | `tests/test_migrations_match_models.py` | зелёный |
+| Lock | `tests/test_dependency_lock.py`; `scripts/lock_deps.sh` | Pillow записан прямой зависимостью, версия 12.3.0 прежняя; lock — +2 строки |
 
 ## Ревью рисковых мест
 
-**Подписи — риска нет**, потому что меняется только текст меток: `Publishing` в `CasesTable.tsx` по-прежнему
-читает `anonymized` и ставит `data-anonymized`, `ProjectsTable.tsx` — `publishable`; данных и запросов правка
-не трогает.
+**Безопасность.** Байтам на входе не верим: `prepare` открывает только `FORMATS` (PNG, JPEG, WebP) по
+содержимому, площадь сверяет с `MAX_PIXELS` до `load()`, ловит `DecompressionBombError` и
+предупреждение о бомбе, перекодирует картинку заново — EXIF и хвосты файла не переживают. Путь файла
+строит `save` из номера проекта и uuid; `_inside` не пускает ключ из базы за пределы каталога
+(`../outside.png` — отказ).
+
+**Транзакция БД — риска нет в этой поставке**, потому что запись строки и файла появится в API
+следующим PR; здесь — таблица с каскадом от проекта и `SET NULL` от автора.
+
+**Производительность.** Перекодирование PNG с `optimize=True` и `LANCZOS` — работа процессора; в API её
+надо вынести из цикла событий (`anyio.to_thread`) — записано в план следующей поставки.
+
+**Новые модули.** `storage/screenshots.py` — пять функций без состояния; `storage/models/screenshot.py` — модель.
+
+## Чего проверка НЕ доказывает
+
+- Загрузку через API и экран — их ещё нет; живой проход будет с ними.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
+
+asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
+
+## Assertion digest (ревью ожиданий, не кода)
+
+База: `origin/main` · сгенерировано `assert_digest.sh`
+
+
+⚠ **Внимание: 1 незакоммиченных тест-файл(ов).** Дайджест считает
+ЗАКОММИЧЕННЫЙ дифф, поэтому их утверждений здесь нет. Закоммить и повторить
+до того, как ставить `asserts_reviewed_by: n/a` — иначе n/a подписывает пустоту.
+
+**Новых утверждений нет.**
+
+Это либо тесты не добавлялись (тогда чем закрыт DoD?), либо изменения
+только в реализации. Второе законно; первое — повод спросить.
+
+asserts_without_example: 0
 
 ## Harness metrics (this shipment)
 
@@ -25,12 +57,12 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 6 code (+12 process docs) / +20/-19 (net +1) |
-| commits | 1 |
+| files_touched / loc_diff | 0 code (+0 process docs) / +0/-0 (net +0) |
+| commits | 0 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | no |
-| implement_retries | 0 |
+| implement_retries | 1 — имя исключения по правилу N818 |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 

@@ -12,6 +12,7 @@ from ahrefs_cases.storage.models.metric_point import MetricPoint
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.run import Run, RunItem
+from ahrefs_cases.storage.models.screenshot import ProjectScreenshot
 from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 from ahrefs_cases.storage.models.user import User
 from ahrefs_cases.storage.models.verdict import Verdict
@@ -22,6 +23,7 @@ __all__ = [
     "CaseArtifact",
     "MetricPoint",
     "Project",
+    "ProjectScreenshot",
     "Ruleset",
     "Run",
     "RunItem",
