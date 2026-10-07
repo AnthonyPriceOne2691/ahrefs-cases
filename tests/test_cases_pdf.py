@@ -98,8 +98,8 @@ def test_nda_case_warns_the_copywriter_and_still_names_the_domain() -> None:
 
 
 def test_masthead_names_the_countries() -> None:
-    """M7: в шапке листа страны словами с кодом, а не код в одиночку, — и длинный
-    список стран не уводит лист на вторую страницу."""
+    """M7 и M36: в шапке листа страны словами с кодом, а не код в одиночку, — и
+    длинный список стран не уводит лист «Динамика» на вторую страницу."""
     # Мерить, а не надеяться: лист судит растеризация, а не разметка.
     html = render_html(_case(geo="DE,AT"))
     six = render_html(_case(geo="DE,AT,CH,NL,BE,LU"))
