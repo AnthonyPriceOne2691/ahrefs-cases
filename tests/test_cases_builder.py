@@ -137,29 +137,21 @@ def test_numbers_come_from_the_recorded_verdict() -> None:
     assert traffic.pct == pytest.approx(140.0)
 
 
-def test_anonymous_case_never_names_the_domain_on_the_sheet() -> None:
-    """E3: `publishable=false` — домена нет ни в одном поле, которое видит клиент.
+def test_nda_case_names_the_domain_and_keeps_the_flag() -> None:
+    """M34: `publishable=false` — лист всё равно называет домен, а флаг NDA остаётся.
 
-    Прежде проверка была «домена нет нигде в структуре» (`repr` целиком).
-    15.09.2026 владелец решил называть **файл** доменом и у скрытых проектов:
-    среди десятка «сайт в нише travel — Кейс (2).pdf» нужный не найти. Поле
-    `domain` заведено ровно под это и на лист не попадает.
-
-    Проверка поэтому сузилась до того, что она и охраняла: заголовок, текст,
-    ниша, гео, услуга — всё, что печатается. Если домен появится в любом из них,
-    тест снова покраснеет.
+    До 07.10.2026 скрытый проект назывался «сайт в нише X», и этот тест охранял,
+    чтобы домен не попал на лист. С тех пор лист — бриф для копирайтера (команда
+    агентства): домен ему нужен всегда, а непубличность — предупреждение в шапке.
     """
     verdict = _verdict_view({"org_traffic": 1000.0}, {"org_traffic": 2000.0})
 
     case = build_case(_project(publishable=False), verdict, {})
 
     assert case.anonymized is True
-    assert case.title == "сайт в нише fintech"
-    assert case.domain == "example.com", "домен нужен имени файла и обязан быть на месте"
-
-    on_the_sheet = (case.title, case.narrative, case.niche, case.geo, case.service)
-    assert all("example.com" not in str(field) for field in on_the_sheet)
-    assert build_case(_project(), verdict, {}).title == "example.com"
+    assert case.title == "example.com"
+    assert case.domain == "example.com"
+    assert build_case(_project(), verdict, {}).anonymized is False
 
 
 def test_empty_work_volume_leaves_the_block_out() -> None:

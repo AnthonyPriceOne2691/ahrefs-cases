@@ -1,82 +1,45 @@
-# Verify report: brief-form
+# Verify report: brief-pdf
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M28–M32 | vitest `card-brief.test.tsx` | 5 passed |
-| Карточка прежняя | vitest `card.test.tsx` | 40 passed — после проверки формы каталога (до неё 17 падений белым экраном) |
-| Фронт целиком | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run` | чисто; 224 passed (21 файл) |
-| Живой проход | стенд на копии дев-базы, Chrome по CDP, карточка `brief-ok.example.com` (бриф частично из файла #49, NDA из правки) | блок «Бриф для копирайтера» с NDA-предупреждением; «Заполнить бриф» → форма по разделам: флажок NDA, родные списки, поля; выбрал «SEO», «Рост существующего сайта», вписал цели и трудности → «Сохранить бриф» → просмотр подписями, в базе ключи (`seo`, `growth`), прежние пункты из файла на месте; ссылка на Яндекс.Диск → «Папка проекта на Google Drive: нужна ссылка https://drive.google.com/… на папку проекта», форма открыта; тёмная тема — подписи и значения читаются |
+| M33, M35, M37 | `tests/test_brief_sheet.py` | 6 passed |
+| M34, M36 | `tests/test_cases_pdf.py`, `tests/test_cases_charts.py`, `tests/test_cases_builder.py` | 59 passed вместе с прежними проверками листа |
+| Лист глазами | рендер кейса под NDA с брифом и двумя странами, страницы WeasyPrint по одной → PNG | стр. 1–2 — бриф: шапка «Бриф для копирайтера», клиент, страны, период; «Непубличный проект (NDA)…»; разделы шаблона, «заполняет специалист» у пустых; ссылки «Обзор / Органические ключевые слова / Ссылающиеся домены» по Германии и Австрии; стр. 3 — лист «Динамика» |
+| Живой проход | стенд на копии дев-базы (API и воркер на коде ветки), Chrome по CDP | «Загрузить файл» → «Запустить» → прогон №2330 «цикл по файлу — готов, собрано 2 кейса», «Скачать 2 кейса»; в карточке `brief-ok.example.com` «Скачать PDF» отдал «brief-ok.example.com — Кейс v1.pdf» на три страницы: бриф с NDA, пункты из файла (тематика, тип сайта, запрос клиента, сложность) и из карточки (отдел, вид проекта, цели, трудности) |
+
+## Исполнение рисковых путей
+
+- `templates/case.html.j2` — прогнал `render_html` + WeasyPrint на кейсе под NDA с брифом и `DE,AT`,
+  разрезал документ по страницам (`Document.copy`) и перевёл каждую в PNG через `sips`, увидел: бриф на
+  двух страницах без наездов и обрывов строк, лист «Динамика» — третья, целиком. Затем на стенде
+  собрал PDF циклом по файлу через интерфейс и скачал кнопкой карточки — те же три страницы. at=2026-10-07
 
 ## Ревью рисковых мест
 
-**Данные экрана.** `fetchBriefFields` проверяет форму каталога: без массивов `sections` и `fields`
-запрос падает словами «пункты брифа пришли не той формы», и блок брифа показывает отказ, а карточка
-живёт. До проверки чужое тело ответа роняло весь экран (`bySection` на `undefined.map`).
+**Безопасность — риска нет**, потому что ссылки на отчёты собирает `report_links` из домена, режима и
+кодов стран через `urlencode` с `quote`, а значение пункта-ссылки на листе — только то, что прошло
+`normalize` (https на Google Drive); шаблон выводит всё с автоэкранированием. `<a href>` WeasyPrint не
+загружает — запрет сети в `_DenyNetwork` прежний.
 
-**Кэш.** `BriefForm` кладёт ответ правки в `['project', projectId]` через `setQueryData` и
-перечитывает только `['projects']` — графики и кейс на своих ключах остаются на экране (L172).
+**Интеграция.** Формат адресов `app.ahrefs.com/site-explorer/…` взят из настоящих ссылок интерфейса,
+документации Ahrefs на него нет: если Ahrefs сменит параметры, ссылка откроет отчёт без периода или
+страны, а не сломает лист. Поэтому лист говорит «проверьте период в отчёте», а `observe_signal` — проверка
+одной ссылки владельцем.
 
-**Безопасность — риска нет**, потому что ссылка на папку открывается `Anchor` с
-`rel="noopener noreferrer"`, а принимает её только сервер (https на Google Drive); экран значения не
-вставляет как разметку — React экранирует текст.
+**Производительность — риска нет**, потому что раскладка листа — 31 строка на кейс из словаря
+`_AUTO` и `FIELDS_BY_KEY`, а ссылки — три на страну.
+
+**Новые модули.** `export/brief_sheet.py` — раскладка и подстановки; `export/ahrefs_links.py` — ссылки.
 
 ## Чего проверка НЕ доказывает
 
-- Поведение формы на узком экране — снимки стенда сделаны на 1440 px.
+- Что ссылки открывают в Ahrefs именно нужный отчёт с нужным периодом: агент в интерфейс Ahrefs не
+  ходит — проверка одной ссылки владельцем после выкатки.
+- Подписи «домен скрыт» на экранах кейсов и проектов ещё прежние — поставка 3б, до выкатки.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
-
-asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
-
-## Assertion digest (ревью ожиданий, не кода)
-
-База: `origin/main` · сгенерировано `assert_digest.sh`
-
-Новых/изменённых утверждений: **13**, из них без ссылки на пример спеки:
-**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
-значение — из спеки или придумано под реализацию?**
-
-```
-M28	expect(await screen.findByText('Маркетплейс')).toBeInTheDocument();
-M28	expect(screen.getByText('Бриф для копирайтера')).toBeInTheDocument();
-M28	expect(screen.getByText('Выполненные работы')).toBeInTheDocument();
-M28	expect(screen.getByText('рост заявок')).toBeInTheDocument();
-M28	expect(screen.getByRole('link', { name: DRIVE })).toHaveAttribute('href', DRIVE);
-M28	expect(screen.getByText('заполняет специалист')).toBeInTheDocument();
-M29	expect(
-M32	expect(screen.queryByRole('button', { name: 'Заполнить бриф' })).not.toBeInTheDocument();
-M30	expect(await screen.findByText('Сервис / SaaS')).toBeInTheDocument();
-M30	expect(sent).toEqual([
-M30	expect(screen.getByText(/Непубличный проект \(NDA\)/)).toBeInTheDocument();
-M31	expect(await screen.findByText(detail)).toBeInTheDocument();
-M31	expect(screen.getByRole('button', { name: 'Сохранить бриф' })).toBeInTheDocument();
-```
-
-✅ **Каждое утверждение ведёт к примеру спеки** (M28 M29 M30 M31 M32), а примеры человек
-подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
-**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
-`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
-
-asserts_without_example: 0
-
-## Harness metrics (this shipment)
-
-<!-- generated by scripts/delivery_metrics.py --base origin/main -->
-
-| Metric | Value |
-|---|---|
-| files_touched / loc_diff | 7 code (+15 process docs) / +621/-0 (net +621) |
-| commits | 1 |
-| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — web/src/pages/__tests__/card-brief.test.tsx (новый оракул) |
-| implement_retries | 2 — `briefForm.ts` столкнулся с `BriefForm.tsx` на macOS (TS1149); 17 тестов карточки упали на форме каталога |
-| verify_fails_before_green | 1 — `card.test.tsx` до проверки формы каталога |
-| est_token_or_cost | n/a |
-
-MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.

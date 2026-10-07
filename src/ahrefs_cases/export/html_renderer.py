@@ -21,6 +21,8 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 from ahrefs_cases import config
 from ahrefs_cases.cases.format import number, percent
 from ahrefs_cases.cases.model import CaseData, Change
+from ahrefs_cases.export.ahrefs_links import report_links
+from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections
 from ahrefs_cases.export.charts import SUBJECT_COLORS, curve_blocks
 
 TEMPLATE_NAME = "case.html.j2"
@@ -48,6 +50,16 @@ ATTRIBUTION = "Динамика показана за период работ: �
 """Атрибуция результата. Формулировка юридическая, а не стилистическая:
 «благодаря работам» утверждает причинно-следственную связь, которой у нас нет."""
 
+NDA_WARNING = "Непубличный проект (NDA): домен и название клиента в тексте кейса не раскрывать."
+"""Предупреждение копирайтеру в шапке брифа (команда агентства 07.10.2026): домен лист
+показывает всегда, а раскрывать ли его в публичном тексте — решает этот флажок."""
+
+LINKS_NOTE = (
+    "Ссылки открывают отчёты Ahrefs с доменом, страной и периодом — от трёх месяцев "
+    "до старта до конца работ. Проверьте период в отчёте, снимите экран и загрузите "
+    "его в карточку проекта."
+)
+
 MAIN_SUBJECT = "org_traffic"
 """Главная метрика ТЗ. Она же определяет группу проекта, поэтому она же стоит
 крупно наверху: кейс, который ведёт с Domain Rating, обсуждают не о результате."""
@@ -56,7 +68,7 @@ TILE_COUNT = 3
 
 
 def render_html(case: CaseData, *, templates_dir: Path | None = None) -> str:
-    """Кейс → HTML одной страницей."""
+    """Кейс → HTML: лист брифа, затем с новой страницы лист «Динамика»."""
     template = _environment(templates_dir).get_template(TEMPLATE_NAME)
     hero = case.change(MAIN_SUBJECT)
     rest = [change for change in case.changes if change is not hero]
@@ -70,6 +82,17 @@ def render_html(case: CaseData, *, templates_dir: Path | None = None) -> str:
         footnote=DATA_FOOTNOTE,
         points_note=POINTS_NOTE,
         attribution=ATTRIBUTION,
+        sections=brief_sections(case),
+        empty=EMPTY,
+        nda_warning=NDA_WARNING,
+        links=report_links(
+            case.domain or case.title,
+            case.target_mode,
+            case.geo,
+            case.period.start,
+            case.period.end,
+        ),
+        links_note=LINKS_NOTE,
     )
 
 

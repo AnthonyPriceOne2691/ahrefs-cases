@@ -51,7 +51,7 @@ from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
 from ahrefs_cases.classify.series import MetricSeries, load_series
 from ahrefs_cases.classify.thresholds import Windows
 from ahrefs_cases.intake.normalize import to_unicode
-from ahrefs_cases.storage._enums import Group, Metric, MetricSource
+from ahrefs_cases.storage._enums import Group, Metric, MetricSource, TargetMode
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.verdict import Verdict
 
@@ -112,7 +112,7 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
     changes = _changes(verdict)
     anonymized = not project.publishable
     case = CaseData(
-        title=_title(project, anonymized=anonymized),
+        title=_title(project),
         anonymized=anonymized,
         domain=project.domain,
         geo=project.geo,
@@ -127,24 +127,28 @@ def build_case(project: Project, verdict: VerdictView, series: MetricSeries) -> 
         series=chart_series(series),
         window_a=tuple(window_from(verdict.point_a.at, verdict.point_a.months_used, forward=True)),
         window_b=tuple(window_from(verdict.point_b.at, verdict.point_b.months_used, forward=False)),
+        owner=project.owner or "",
+        client=project.client or "",
+        # Умолчание колонки ставит база при вставке; у проекта, собранного в памяти
+        # (тесты, предпросмотр), режима ещё нет — тогда тот, что поставила бы база.
+        target_mode=(project.target_mode or TargetMode.SUBDOMAINS).value,
+        brief=dict(project.brief or {}),
     )
     # Текст собирается по готовой структуре и сверяется с её числами: собрать
     # его раньше значило бы считать те же величины второй раз.
     return replace(case, narrative=narrative_module.compose(case))
 
 
-def _title(project: Project, *, anonymized: bool) -> str:
-    """Как называем проект. Непубличный не называем никак, кроме ниши.
+def _title(project: Project) -> str:
+    """Как называем проект — доменом, у всех, в человеческом виде.
 
-    Домен не должен попасть в анонимный кейс ни в заголовке, ни в подписи
-    графика, ни в имени файла — поэтому решение принимается один раз здесь, а
-    рендеры получают готовый заголовок.
-
-    Публичный домен показывается **в человеческом виде**: в базе он канон
-    (`xn--…`), потому что таким его ждёт Ahrefs, но клиент агентства читает
-    кейс, а не документацию IDNA.
+    До 07.10.2026 непубличный проект лист не называл никак, кроме ниши («сайт в
+    нише X»). С тех пор лист — бриф для копирайтера (команда агентства), и домен
+    ему нужен всегда; непубличность стала предупреждением в шапке, а не пропуском
+    имени. В базе домен — канон (`xn--…`), таким его ждёт Ahrefs, а лист читает
+    человек, поэтому здесь — `to_unicode`.
     """
-    return f"сайт в нише {project.niche}" if anonymized else to_unicode(project.domain)
+    return to_unicode(project.domain)
 
 
 def _changes(verdict: VerdictView) -> tuple[Change, ...]:
