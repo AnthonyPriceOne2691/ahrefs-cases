@@ -42,7 +42,7 @@ Ask = Callable[[AsyncSession], Awaitable[Any]]
 
 @pytest.fixture(scope="module")
 def writer() -> Iterator[Callable[[Ask], Any]]:
-    """Свой цикл и движок на модуль — запись мимо приложения (уроки L51, L54)."""
+    """Свой цикл и движок на модуль — запись мимо приложения, а его движок закрывает `lifespan`."""
     loop = asyncio.new_event_loop()
     engine = create_async_engine(config.storage.database_url)
 
