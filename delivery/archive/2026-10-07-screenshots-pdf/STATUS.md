@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** screenshots-pdf
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: этап 4 — скриншоты в бриф, часть 3
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: пункт шаблона «Скрины результатов работ из Ahrefs», AI-экраны видимости бренда; владелец: «дальше делай разработку по порядку»; примеры M54–M59 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефакт — PDF-бриф: тест собирает его с настоящими PNG и меряет лист «Динамика», стенд — растеризует страницы и смотрит глазами
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none <!-- пакетов не прибавилось: pillow объявлен поставкой screenshots-storage -->
+- **runtime_paths:** src/ahrefs_cases/export/pdf_renderer.py <!-- загрузчик WeasyPrint и умолчание Pillow проверяются только исполнением рендера в воркере: тест рендерит в процессе pytest, а не в воркере RQ -->
+- **irreversible_surfaces:** none reason=миграций нет; сборка кейса только читает скрины; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки этапа 4: PDF проекта со скринами собирается воркером, раздел «Скрины» на листе, «Динамика» — одна страница; в журнале воркера нет `screenshot_damaged_for_case` на свежих загрузках
+- **observe_until:** 2026-10-28
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
