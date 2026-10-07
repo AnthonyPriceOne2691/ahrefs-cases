@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from ahrefs_cases.storage._enums import TargetMode
@@ -35,6 +35,8 @@ class ProjectDraft:
     publishable: bool
     work_volume: int | None
     notes: str
+    brief: dict[str, str] = field(default_factory=dict)
+    """Поля брифа из колонок файла — только понятые и непустые (`intake.brief_cells`)."""
 
     @property
     def key(self) -> tuple[str, TargetMode, date]:

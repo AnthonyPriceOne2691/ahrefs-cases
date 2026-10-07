@@ -33,6 +33,12 @@ class RejectReason(StrEnum):
     BAD_ENUM = "bad_enum"
     BAD_NUMBER = "bad_number"
     BAD_FLAG = "bad_flag"
+    BAD_LINK = "bad_link"
+    """Ссылка на папку проекта — не https на Google Drive. Только замечание: поле брифа."""
+
+    TOO_LONG = "too_long"
+    """Текст поля брифа длиннее предела. Только замечание: строка принята без этой ячейки."""
+
     DUPLICATE_IN_SOURCE = "duplicate_in_source"
     """Домен встречается в файле дважды. Побеждает последняя строка, но обе
     попадают в отчёт: тихое схлопывание скрыло бы ошибку в самом списке."""
