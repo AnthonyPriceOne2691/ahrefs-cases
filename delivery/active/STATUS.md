@@ -5,9 +5,9 @@
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_cli_run_lock.py::test_console_refuses_while_a_run_is_active <!-- M68: красный до правки — консоль открывала второй прогон при идущем -->
+- **repro_test:** tests/test_cli_run_lock.py::test_console_refuses_while_a_run_is_active
 - **diagnosis:** n/a reason=причина названа ревью 28.09.2026 (Z52): проверка «прогон уже идёт» и замок постановки живут только в `api/routers/runs.py::_enqueue`, а консоль открывает прогон через `collect_projects` без них
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-07 by=human:anthony (28.09: «сначала красный тест на обход замка консолью, затем CLI берёт тот же замок; закрыть Z22 тестами»; 07.10: «остальные зетки все можно», про Z52 — «да»; примеры M68–M78 выведены агентом)

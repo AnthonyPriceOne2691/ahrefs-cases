@@ -39,6 +39,7 @@ from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.classify.verdicts import classify_all, classify_project
 from ahrefs_cases.classify.windows import point_windows
 from ahrefs_cases.cli.source import provider_source, reading_source
+from ahrefs_cases.collect.run_journal import RunAlreadyActiveError, claim_start
 from ahrefs_cases.collect.runner import collect_all, collect_case_data, collect_stage2
 from ahrefs_cases.intake.accept import (
     SourceNotFoundError,
@@ -59,6 +60,7 @@ _SOURCE_ERRORS = (SourceNotFoundError, UnknownSourceError, SheetLinkError, Sheet
 _EXIT_BAD_SOURCE = 2
 _EXIT_RUN_FAILED = 3
 _EXIT_CONTENT_BLOCKED = 4
+_EXIT_BUSY = 5
 _EXIT_INTERRUPTED = 130
 
 
@@ -171,10 +173,27 @@ def _canonical(name: str) -> str:
     return canonical
 
 
+async def _busy(session: AsyncSession) -> bool:
+    """Идёт ли прогон — проверкой кнопки и под её замком постановки (Z52).
+
+    Звать прямо перед сбором и в его сессии: строку прогона сбор откроет и закоммитит
+    следом, и замок держится от проверки до этого коммита. Раньше консоль открывала
+    прогон в обход проверки, и при идущем прогоне кнопкой оба покупали одни и те же ряды.
+    """
+    try:
+        await claim_start(session)
+    except RunAlreadyActiveError as exc:
+        print(f"{exc}; дождаться его или смотреть журнал прогонов", file=sys.stderr)
+        return True
+    return False
+
+
 async def _collect(*, refresh: bool = False, only: list[str] | None = None) -> int:
     async with get_sessionmaker()() as session:
         if only is not None:
             print(f"собираем только названные домены: {len(only)}")
+        if await _busy(session):
+            return _EXIT_BUSY
         report = await collect_all(
             session, refresh=refresh, windows=await point_windows(session), only=only
         )
@@ -205,6 +224,8 @@ async def _stage2(*, refresh: bool = False, only: list[str] | None = None) -> in
             print("кандидатов нет: шаг 2 не нужен — за «плохих» дорогие метрики не платятся")
             return 0
         print(f"кандидатов: {len(candidates)} из {len(projects)}")
+        if await _busy(session):
+            return _EXIT_BUSY
         report = await collect_stage2(
             session, candidates, refresh=refresh, windows=await point_windows(session)
         )
@@ -248,6 +269,8 @@ async def _case_data(*, refresh: bool = False, only: list[str] | None = None) ->
             print("кейсов нет: «хороших» и «средних» по действующим порогам не найдено")
             return 0
         print(f"проектов с кейсом: {len(ids)}")
+        if await _busy(session):
+            return _EXIT_BUSY
         report = await collect_case_data(
             session, ids, refresh=refresh, windows=await point_windows(session)
         )
