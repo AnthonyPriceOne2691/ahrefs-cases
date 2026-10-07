@@ -116,7 +116,7 @@ def _patch(client: TestClient, project_id: int, body: dict[str, Any], email: str
 
 def _card(client: TestClient, project_id: int) -> dict[str, Any]:
     response = client.get(f"/api/projects/{project_id}", headers=_headers(client))
-    assert response.status_code == 200
+    response.raise_for_status()
     return dict(response.json())
 
 

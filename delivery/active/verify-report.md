@@ -55,7 +55,7 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 значение — из спеки или придумано под реализацию?**
 
 ```
-L51	assert response.status_code == 200
+L80	assert response.status_code == 200
 M18	assert response.status_code == 200
 M18	assert catalog["sections"][0] == "Инфо о сотруднике"
 M18	assert "Очень высокая" in [choice["label"] for choice in by_key["complexity"]["choices"]]
@@ -95,7 +95,7 @@ M17	assert normalize(field, "   ") == ""
 M17	assert isinstance(normalize(field, "я" * (field.max_len + 1)), BriefRejected)
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (L51 M14 M15 M16 M17 M18 M19 M20 M21 M22 M23), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (L80 M14 M15 M16 M17 M18 M19 M20 M21 M22 M23), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -109,7 +109,7 @@ asserts_without_example: 0
 | Metric | Value |
 |---|---|
 | files_touched / loc_diff | 12 code (+16 process docs) / +742/-6 (net +736) |
-| commits | 1 |
+| commits | 2 |
 | time_to_accepted_spec | spec drafted, not yet accepted |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — tests/test_api_project_brief.py (новый оракул), tests/test_storage_brief.py (новый оракул) |
