@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** screenshots-storage
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: этап 4 — скриншоты в бриф
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: «готовые ссылки на отчёты… + загрузка скрина в карточку проекта», AI-экраны видимости бренда; владелец: «пилу для скриншотов говорю да», «дальше делай разработку по порядку»; примеры M41–M47 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефакт — файл скрина: тест читает его обратно Pillow и сверяет формат, размеры, метаданные и цвет
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** pillow reason=скриншоты в бриф: формат по содержимому, ужатие и снятие метаданных; уже стоял транзитивно через WeasyPrint (12.3.0 в lock, версия не меняется), прямой — чтобы версию решал наш lock; альтернатива — свой разбор заголовков PNG/JPEG — без перекодирования не снимает EXIF by=human:anthony
+- **runtime_paths:** none reason=обработка и файлы исполняются тестами на настоящем Pillow во временном каталоге; эндпоинтов в этой поставке нет
+- **irreversible_surfaces:** none reason=миграция создаёт таблицу и откатывается её удалением; файлов в проде ещё нет; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки всего этапа 4: загруженный скрин лежит в `/app/data/screenshots/<проект>/` под uuid-именем, без EXIF, длинная сторона ≤ 2000; ночной бэкап `casedata.tar` содержит каталог `screenshots`
+- **observe_until:** 2026-10-28
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

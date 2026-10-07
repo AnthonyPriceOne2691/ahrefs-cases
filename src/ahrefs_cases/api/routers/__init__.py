@@ -15,6 +15,7 @@ from ahrefs_cases.api.routers.intake import router as intake_router
 from ahrefs_cases.api.routers.projects import router as projects_router
 from ahrefs_cases.api.routers.rulesets import router as rulesets_router
 from ahrefs_cases.api.routers.runs import router as runs_router
+from ahrefs_cases.api.routers.screenshots import router as screenshots_router
 from ahrefs_cases.api.routers.usage import router as usage_router
 from ahrefs_cases.api.routers.users import router as users_router
 
@@ -28,6 +29,7 @@ __all__ = [
     "projects_router",
     "rulesets_router",
     "runs_router",
+    "screenshots_router",
     "usage_router",
     "users_router",
 ]

@@ -15,7 +15,7 @@ from typing import Annotated, Any
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ahrefs_cases import config
 from ahrefs_cases.api.deps import SessionDep, require_right
@@ -51,7 +51,9 @@ from ahrefs_cases.storage.locks import hold_start, work_is_idle
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.ruleset import Ruleset
 from ahrefs_cases.storage.models.run import Run
+from ahrefs_cases.storage.models.screenshot import ProjectScreenshot
 from ahrefs_cases.storage.models.verdict import Verdict
+from ahrefs_cases.storage.screenshots import remove_project as remove_project_screens
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -235,7 +237,12 @@ async def delete_project(
     await session.commit()
     files = await removal.own_files(session, project.id, trace, config.export.output_dir)
     removed = await anyio.to_thread.run_sync(removal.remove_files, files)
-    logger.info("project_deleted", extra={**view.model_dump(), "files": removed})
+    screens = await anyio.to_thread.run_sync(
+        remove_project_screens, config.export.screenshots_dir, project.id
+    )
+    logger.info(
+        "project_deleted", extra={**view.model_dump(), "files": removed, "screenshots": screens}
+    )
     return view.model_copy(update={"files": removed})
 
 
@@ -286,6 +293,12 @@ async def _deletion(
         run_items=trace.run_items,
         twin_campaigns=trace.twin_campaigns,
         pack_blocked=blocked,
+        screenshots=int(
+            await session.scalar(
+                select(func.count()).where(ProjectScreenshot.project_id == project.id)
+            )
+            or 0
+        ),
     )
 
 
