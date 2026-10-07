@@ -1,7 +1,7 @@
 # Stack acceptance
 
 **Date:** 2026-10-01 (прежняя приёмка — 2026-09-10)
-**Stack:** delivery@2.00 · cqg@2.51 · okf@1.19 · stack-map@1.52
+**Stack:** delivery@2.00 · cqg@2.55 · okf@1.19 · stack-map@1.52
 **Где лежат каноны:** вне репо: `~/Documents/Prepare` (вариант D, см. «Остатки»)
 
 stack-selftest: external (~/Documents/Prepare)
