@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
@@ -24,6 +25,7 @@ from ahrefs_cases.cases.model import CaseData, Change
 from ahrefs_cases.export.ahrefs_links import report_links
 from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections
 from ahrefs_cases.export.charts import SUBJECT_COLORS, curve_blocks
+from ahrefs_cases.storage.models.screenshot import KIND_LABELS
 
 TEMPLATE_NAME = "case.html.j2"
 
@@ -93,7 +95,24 @@ def render_html(case: CaseData, *, templates_dir: Path | None = None) -> str:
             case.period.end,
         ),
         links_note=LINKS_NOTE,
+        screens=screens(case),
     )
+
+
+def screens(case: CaseData) -> list[dict[str, str]]:
+    """Скрины брифа для листа: картинка — внутри HTML, `data:`-адресом.
+
+    Рендер в сеть и на диск не ходит (`pdf_renderer`): байты едут вместе с
+    разметкой, а загрузчик WeasyPrint пускает только проверенные картинки.
+    """
+    return [
+        {
+            "kind": KIND_LABELS.get(image.kind, image.kind),
+            "caption": image.caption,
+            "src": f"data:{image.mime};base64,{base64.b64encode(image.content).decode('ascii')}",
+        }
+        for image in case.screenshots
+    ]
 
 
 def charts(case: CaseData) -> list[dict[str, str]]:

@@ -79,6 +79,30 @@ def prepare(raw: bytes) -> PreparedImage:
     )
 
 
+STORED = {"image/png": "PNG", "image/jpeg": "JPEG"}
+"""Во что `prepare` перекодирует: тип в базе → формат файла на диске."""
+
+
+def ensure_intact(content: bytes, mime: str) -> None:
+    """Картинка целая и того типа, что записан в базе; иначе — отказ словами.
+
+    `verify` Pillow ловит битую контрольную сумму PNG, а JPEG не проверяет вовсе:
+    обрезанный JPEG проходит его и молча пропадает с листа при рендере. Поэтому
+    картинка ещё и распаковывается целиком — после `verify` её надо открыть заново.
+    """
+    fmt = STORED.get(mime)
+    if fmt is None:
+        message = f"скриншот типа {mime!r} не из тех, что мы храним"
+        raise ScreenshotRejectedError(message)
+    try:
+        with Image.open(BytesIO(content), formats=(fmt,)) as image:
+            image.verify()
+        with Image.open(BytesIO(content), formats=(fmt,)) as image:
+            image.load()
+    except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+        raise ScreenshotRejectedError("картинка повреждена: прочитать её не удалось") from exc
+
+
 def _flat(image: Image.Image) -> Image.Image:
     """Прозрачное — на белый лист; остальное — в RGB."""
     if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):

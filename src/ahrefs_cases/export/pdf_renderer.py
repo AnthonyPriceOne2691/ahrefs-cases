@@ -11,18 +11,28 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+from PIL import ImageFile
 from weasyprint import HTML
-from weasyprint.urls import FatalURLFetchingError
+from weasyprint.urls import FatalURLFetchingError, URLFetcherResponse
 
 from ahrefs_cases import config
 from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ensure_publishable
 from ahrefs_cases.export.html_renderer import render_html
+from ahrefs_cases.storage.screenshots import STORED, ScreenshotRejectedError, ensure_intact
+
+# WeasyPrint при импорте велит Pillow дочитывать обрезанные картинки — на весь
+# процесс (`weasyprint/images.py`), а импортируют его и API, и воркер. Обрезанный
+# скрин тогда распаковывается с серой полосой и проходит и загрузку
+# (`storage.screenshots.prepare`), и проверку перед листом. Наш процесс битую
+# картинку отвергает, а не дорисовывает: возвращаем умолчание Pillow.
+ImageFile.LOAD_TRUNCATED_IMAGES = False
 
 _UNSAFE_IN_NAME = re.compile(r"[^\w.\- ]+", re.UNICODE)
 """Пробел разрешён: «сайт в нише travel — Кейс.pdf» — имя из ТЗ, а не slug."""
@@ -46,20 +56,40 @@ class NetworkAccessDeniedError(RuntimeError):
 
 
 class _DenyNetwork:
-    """Загрузчик ресурсов WeasyPrint, который ничего не загружает.
+    """Загрузчик ресурсов WeasyPrint: в сеть не ходит, пускает только скрины брифа.
 
     Класс, а не функция, из-за протокола WeasyPrint: без атрибута
     `_fail_on_errors` исключение загрузчика превращается в **предупреждение**, и
     рендер продолжается без ресурса. То есть запрет, написанный самым очевидным
     способом, дал бы «кейс собрался, только без картинки» — ровно тот исход,
     ради запрета которого он писался.
+
+    Единственное, что пропускается, — `data:`-картинка PNG или JPEG (скрин брифа
+    едет внутри HTML). Байты проверяются Pillow здесь же: битую картинку WeasyPrint
+    при разборе молча выбросил бы, и лист вышел бы без скрина без единого слова.
     """
 
     _fail_on_errors = True
 
-    def __call__(self, url: str) -> dict[str, Any]:
-        message = f"рендер кейса не ходит в сеть, а шаблон запросил {url!r}"
+    def __call__(self, url: str) -> URLFetcherResponse:
+        for mime in STORED:
+            prefix = f"data:{mime};base64,"
+            if url.startswith(prefix):
+                body = _checked(url[len(prefix) :], mime)
+                return URLFetcherResponse(url, body=body, headers={"Content-Type": mime})
+        message = f"рендер кейса не ходит в сеть, а шаблон запросил {url[:80]!r}"
         raise NetworkAccessDeniedError(message)
+
+
+def _checked(encoded: str, mime: str) -> bytes:
+    """Байты скрина, если это целая картинка; иначе отказ сборки, а не пустое место."""
+    try:
+        content = base64.b64decode(encoded, validate=True)
+        ensure_intact(content, mime)
+    except (binascii.Error, ScreenshotRejectedError) as exc:
+        message = f"скрин в брифе не собрать: {exc}"
+        raise NetworkAccessDeniedError(message) from exc
+    return content
 
 
 def render_pdf(
@@ -75,9 +105,14 @@ def render_pdf(
         document = HTML(string=html, url_fetcher=_DenyNetwork()).render()
     except FatalURLFetchingError as exc:
         # Наружу уходит наша ошибка, а не библиотечная: запрет сети — условие
-        # этого модуля, и вызывающий ловит его по нашему имени.
-        message = f"рендер кейса не ходит в сеть: {exc}"
-        raise NetworkAccessDeniedError(message) from exc
+        # этого модуля, и вызывающий ловит его по нашему имени. Текст — причины:
+        # библиотечный повторяет адрес целиком, а адрес скрина — это мегабайты
+        # base64, которые ушли бы в журнал и в строку прогона.
+        reason = exc.__cause__
+        if isinstance(reason, NetworkAccessDeniedError):
+            raise reason from reason.__cause__
+        message = f"рендер кейса не ходит в сеть: {type(reason).__name__}"
+        raise NetworkAccessDeniedError(message) from reason
 
     directory = output_dir or config.export.output_dir
     directory.mkdir(parents=True, exist_ok=True)

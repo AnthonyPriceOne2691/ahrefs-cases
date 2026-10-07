@@ -42,6 +42,7 @@ from ahrefs_cases.cases.model import (
     Change,
     Period,
 )
+from ahrefs_cases.cases.screens import load_screens
 from ahrefs_cases.classify import points as points_module
 from ahrefs_cases.classify import verdicts as verdicts_module
 from ahrefs_cases.classify.deltas import between
@@ -397,10 +398,13 @@ async def _attempt(
     if diverged is not None:
         return _mismatch(project, diverged, rows=verdict.source)
 
+    case = replace(
+        build_case(project, view, series), screenshots=await load_screens(session, project.id)
+    )
     return CaseAttempt(
         domain=project.domain,
         outcome=CaseOutcome.BUILT,
-        case=build_case(project, view, series),
+        case=case,
         project_id=project.id,
         verdict_id=verdict.id,
         stale_subjects=stale_subjects(view, series),
