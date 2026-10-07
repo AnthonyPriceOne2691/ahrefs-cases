@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** cli-commands-are-tested
+- **slug:** rows-remember-country
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_cli_run_lock.py::test_console_refuses_while_a_run_is_active
-- **diagnosis:** n/a reason=причина названа ревью 28.09.2026 (Z52): проверка «прогон уже идёт» и замок постановки живут только в `api/routers/runs.py::_enqueue`, а консоль открывает прогон через `collect_projects` без них
-- **phase:** verify
+- **repro_test:** tests/test_rows_country.py::test_twins_share_months_only_within_one_country
+- **diagnosis:** n/a reason=причина названа в реестре (Z53): у точки нет страны — ни общие месяцы кампаний (`collect/cache.py`), ни сбор после смены первой страны её не видят
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (28.09: «сначала красный тест на обход замка консолью, затем CLI берёт тот же замок; закрыть Z22 тестами»; 07.10: «остальные зетки все можно», про Z52 — «да»; примеры M68–M78 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «давай сделаем при смене страны только предупреждать»; примеры M79–M87 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: консольные команды и проверка постановки — проверяются тестами исполнением
+- **artifact_oracle:** n/a reason=лист брифа проверяется тестами листа (оговорка в строке «ГЕО»), PDF собирается тем же рендером
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=консоль и постановка кнопкой исполняются тестами в процессе на настоящей базе; замок — настоящий advisory-lock Postgres
-- **irreversible_surfaces:** none reason=миграций нет; консоль только отказывает раньше, чем открывала прогон
+- **runtime_paths:** none reason=миграция исполняется тестами на настоящей базе (вверх и вниз), сбор — фикстурным провайдером
+- **irreversible_surfaces:** none reason=миграция добавляет колонку `metric_points.country` и откатывается её удалением; проставленные страны выводятся из `projects.geo`; выкатка — руками владельца по `docs/PROD.md`, бэкап до неё
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** CI на main после слияния: шаг «Diff coverage» без `continue-on-error` зелёный; на проде консольный `collect` при идущем прогоне кнопкой — код 5 и строка «прогон N ещё идёт»
-- **observe_until:** 2026-10-21
+- **observe_signal:** после выкатки на проде: `select country, count(*) from metric_points group by 1` — страны совпадают с первыми странами проектов; повторная загрузка проекта с другой первой страной — замечание «первая страна сменилась» в отчёте приёма
+- **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
