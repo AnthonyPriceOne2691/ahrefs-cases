@@ -91,17 +91,28 @@ def _to_project(draft: ProjectDraft) -> Project:
         publishable=draft.publishable,
         work_volume=draft.work_volume,
         notes=draft.notes,
+        brief=dict(draft.brief),
     )
 
 
 def _apply(project: Project, draft: ProjectDraft) -> None:
-    """Обновляем поля из файла и только их — `status` принадлежит прогону."""
+    """Обновляем поля из файла и только их — `status` принадлежит прогону.
+
+    Два поля файл не переписывает целиком. **NDA** файл может поставить
+    («нет» в `publishable`), а снять — нет: флажок «непубличный проект» в
+    карточке ставят ради клиента, и повторная загрузка старого списка не должна
+    молча открывать его домен (решение владельца 07.10.2026). **Бриф** файл
+    дополняет: пустая ячейка — «нет сведений», а не «очистить», и дописанное в
+    карточке переживает загрузку.
+    """
     project.period_end = draft.period_end
     project.niche = draft.niche
     project.geo = draft.geo
     project.service_type = draft.service_type
     project.client = draft.client
     project.owner = draft.owner
-    project.publishable = draft.publishable
+    project.publishable = project.publishable and draft.publishable
     project.work_volume = draft.work_volume
     project.notes = draft.notes
+    # Новый словарь, а не правка на месте: изменение внутри JSONB ORM не видит.
+    project.brief = {**(project.brief or {}), **draft.brief}

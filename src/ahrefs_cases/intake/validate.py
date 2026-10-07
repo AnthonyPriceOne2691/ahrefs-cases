@@ -19,6 +19,7 @@ import re
 from collections import Counter
 from datetime import date, datetime
 
+from ahrefs_cases.intake.brief_cells import BRIEF_COLUMNS, parse_brief
 from ahrefs_cases.intake.drafts import ProjectDraft
 from ahrefs_cases.intake.normalize import DomainRejected, normalize_domain
 from ahrefs_cases.intake.rejections import Notice, Rejection, RejectReason, UnfitSourceError
@@ -42,7 +43,8 @@ REQUIRED_COLUMNS = (
 значение может быть пустым: ТЗ требует его спрашивать, а модель Ф1 разрешает не
 знать (тогда блок «что сделали» в кейсе скрывается, а не выдумывается)."""
 
-OPTIONAL_COLUMNS = ("target_mode", "notes")
+OPTIONAL_COLUMNS = ("target_mode", "notes", *BRIEF_COLUMNS)
+"""Колонки брифа (`intake.brief_cells`) — необязательные: ими бриф заполняют пачкой."""
 MAY_BE_EMPTY = frozenset({"work_volume"})
 """Обязательная колонка, ячейки которой разрешено оставлять пустыми. Открыто
 наружу: подсказка экрана говорит то же самое, и тест сверяет их (V19)."""
@@ -224,6 +226,7 @@ def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection], lis
     target_mode = _parse_target_mode(row, rejections)
     publishable = _parse_flag(row, rejections)
     work_volume = _parse_volume(row, notices)
+    brief = parse_brief(row, notices)
     geo = _parse_geo(row, rejections)
 
     if rejections or domain is None or period is None or target_mode is None:
@@ -244,6 +247,7 @@ def validate_row(row: RawRow) -> tuple[ProjectDraft | None, list[Rejection], lis
             publishable=bool(publishable),
             work_volume=work_volume,
             notes=row.get("notes"),
+            brief=brief,
         ),
         [],
         notices,

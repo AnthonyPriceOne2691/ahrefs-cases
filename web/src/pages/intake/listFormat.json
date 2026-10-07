@@ -1,26 +1,90 @@
 {
   "columns": [
-    { "name": "domain", "what": "домен проекта", "example": "example.com" },
-    { "name": "period_start", "what": "начало работ", "example": "2024-12-01" },
-    { "name": "period_end", "what": "конец работ", "example": "2025-12-01" },
-    { "name": "niche", "what": "ниша", "example": "медицина" },
+    {
+      "name": "domain",
+      "what": "домен проекта",
+      "example": "example.com"
+    },
+    {
+      "name": "period_start",
+      "what": "начало работ",
+      "example": "2024-12-01"
+    },
+    {
+      "name": "period_end",
+      "what": "конец работ",
+      "example": "2025-12-01"
+    },
+    {
+      "name": "niche",
+      "what": "ниша",
+      "example": "медицина"
+    },
     {
       "name": "geo",
       "what": "страна кодом из двух букв; несколько — через запятую, цифры по первой; весь мир — Worldwide",
       "example": "DE, AT"
     },
-    { "name": "service_type", "what": "услуга", "example": "seo" },
-    { "name": "work_volume", "what": "объём работ", "example": "120", "mayBeEmpty": true },
-    { "name": "client", "what": "клиент", "example": "ООО «Ромашка»" },
-    { "name": "owner", "what": "ответственный", "example": "Пётр" },
-    { "name": "publishable", "what": "называть ли домен в кейсе", "example": "да" }
+    {
+      "name": "service_type",
+      "what": "услуга",
+      "example": "seo"
+    },
+    {
+      "name": "work_volume",
+      "what": "объём работ",
+      "example": "120",
+      "mayBeEmpty": true
+    },
+    {
+      "name": "client",
+      "what": "клиент",
+      "example": "ООО «Ромашка»"
+    },
+    {
+      "name": "owner",
+      "what": "ответственный",
+      "example": "Пётр"
+    },
+    {
+      "name": "publishable",
+      "what": "можно ли называть клиента; «нет» — проект под NDA, снять NDA можно только в карточке",
+      "example": "да"
+    }
   ],
   "optional": [
     {
       "name": "target_mode",
       "what": "как считать домен в Ahrefs: по умолчанию subdomains, prefix — раздел сайта, exact"
     },
-    { "name": "notes", "what": "заметки к проекту" }
+    {
+      "name": "notes",
+      "what": "заметки к проекту"
+    },
+    {
+      "name": "topic",
+      "what": "тематика из списка брифа, например «Путешествия»"
+    },
+    {
+      "name": "site_type",
+      "what": "тип сайта из списка брифа, например «Маркетплейс»"
+    },
+    {
+      "name": "client_request",
+      "what": "запрос клиента на входе"
+    },
+    {
+      "name": "complexity",
+      "what": "сложность: низкая, средняя, высокая или очень высокая"
+    },
+    {
+      "name": "complexity_note",
+      "what": "комментарий к сложности"
+    },
+    {
+      "name": "folder_url",
+      "what": "ссылка на папку проекта в Google Drive"
+    }
   ],
   "fileSuffixes": [".xlsx", ".xlsm", ".csv"],
   "maxMegabytes": 2

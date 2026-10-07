@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** brief-fields-api
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: требование команды агентства (бриф копирайтеру), этап 2 плана
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (план этапа 2 «поля брифа: ручные пункты шаблона, запрос клиента, сложность с комментарием, тип сайта, ссылка на папку Drive, NDA; право правки брифа» в сообщении владельцу; ответ — «дальше делай разработку по порядку», шкала сложности «подтверждаю», списки — «что у нас есть из контекста»; примеры M14–M23 выведены агентом из этих правил и показаны в PR)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: бриф пишется в базу, лист по нему — этап 3
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no reason=пакетов не прибавилось
+- **runtime_paths:** none reason=новые эндпоинты исполняются тестами через TestClient и на стенде из браузера; живого внешнего вызова нет
+- **irreversible_surfaces:** none reason=миграция добавляет колонку и откатывается её удалением; автомерж выключен, выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки: `GET /api/brief-fields` отдаёт 22 поля в пяти разделах; правка брифа специалистом группы «пользователь» отвечает 200, а флажок NDA ставит на карточке «публиковать без названия»; в журнале — `brief_updated` с ключами полей и без значений
+- **observe_until:** 2026-10-21
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

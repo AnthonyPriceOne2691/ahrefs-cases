@@ -100,7 +100,8 @@ function ListCard({ label, children }: { label: string; children: ReactNode }) {
               Даты: <b>2024-12-01</b>, 01.12.2024, 01/12/2024, 2024/12/01.
             </List.Item>
             <List.Item>
-              <b>publishable</b>: да/нет, yes/no, true/false, 1/0, +/-. Пустое читается как «нет».
+              <b>publishable</b>: да/нет, yes/no, true/false, 1/0, +/-. Пустая ячейка — отказ
+              строки. «Нет» ставит проекту NDA, а снять его можно только в карточке проекта.
             </List.Item>
             {OPTIONAL_COLUMNS.map((column) => (
               <List.Item key={column.name}>
