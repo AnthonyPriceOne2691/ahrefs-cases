@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** brief-columns-intake
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: требование команды агентства (колонки брифа в файле) и решение владельца по NDA
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: «ручные поля… дублируемые в необязательные колонки входного файла — ок»; владелец на вопрос о NDA при повторной загрузке — «давай как советуешь»: файл может поставить NDA, снять — только карточка; примеры M24–M27 выведены агентом из этих правил)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: бриф и NDA пишутся в базу
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** no reason=пакетов не прибавилось
+- **runtime_paths:** none reason=приём файла исполняется тестами и на стенде загрузкой через интерфейс; внешних вызовов нет
+- **irreversible_surfaces:** none reason=миграций нет; правило NDA меняет только запись при повторной загрузке, откат — прежний коммит; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки: список с колонками брифа заполняет бриф (видно в карточке после поставки 2б, до неё — в `GET /api/projects/{id}`); непонятая ячейка — строка «принято с замечаниями»; проект под NDA после повторной загрузки с «да» остаётся «публиковать без названия»
+- **observe_until:** 2026-10-21
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

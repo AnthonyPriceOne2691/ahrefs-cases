@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** brief-columns-intake
+- **slug:** brief-form
 - **stack:** delivery@2.00, cqg@2.51, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
-- **repro_test:** n/a reason=не дефект: требование команды агентства (колонки брифа в файле) и решение владельца по NDA
+- **repro_test:** n/a reason=не дефект: экранная часть брифа (этап 2б)
 - **diagnosis:** n/a reason=не дефект кода
 - **phase:** handoff
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: «ручные поля… дублируемые в необязательные колонки входного файла — ок»; владелец на вопрос о NDA при повторной загрузке — «давай как советуешь»: файл может поставить NDA, снять — только карточка; примеры M24–M27 выведены агентом из этих правил)
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: ручные поля шаблона в карточке, «Пометка „заполняет специалист“ для пустых полей — ок», флажок NDA в карточке; владелец — «дальше делай разработку по порядку»; примеры M28–M32 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефактов не производит: бриф и NDA пишутся в базу
+- **artifact_oracle:** n/a reason=артефактов не производит: экран читает и пишет бриф через API
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** no reason=пакетов не прибавилось
-- **runtime_paths:** none reason=приём файла исполняется тестами и на стенде загрузкой через интерфейс; внешних вызовов нет
-- **irreversible_surfaces:** none reason=миграций нет; правило NDA меняет только запись при повторной загрузке, откат — прежний коммит; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=экран проверен на стенде кликами и снимками, включая тёмную тему
+- **irreversible_surfaces:** none reason=экранная правка без данных и миграций; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** после выкатки: список с колонками брифа заполняет бриф (видно в карточке после поставки 2б, до неё — в `GET /api/projects/{id}`); непонятая ячейка — строка «принято с замечаниями»; проект под NDA после повторной загрузки с «да» остаётся «публиковать без названия»
+- **observe_signal:** после выкатки: на карточке проекта блок «Бриф для копирайтера»; специалист группы «пользователь» видит «Заполнить бриф», сохраняет пункты, и они видны подписями; флажок NDA ставит предупреждение и «публиковать без названия»
 - **observe_until:** 2026-10-21
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

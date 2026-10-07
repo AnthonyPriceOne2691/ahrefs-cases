@@ -205,6 +205,45 @@ export interface ProjectCard {
    * Решает сервер: правило одно на лист PDF и на карточку (Z10).
    */
   source_mismatch: string | null;
+  /** Бриф копирайтеру: ключ поля → записанное значение (`/api/brief-fields`). */
+  brief?: Record<string, string>;
+}
+
+/** Пункт списка брифа: хранится ключ, показывается подпись. */
+export interface BriefChoice {
+  key: string;
+  label: string;
+}
+
+export type BriefKind = 'text' | 'long_text' | 'choice' | 'link';
+
+/** Пункт шаблона кейса. Описание одно на сервере — экран его не повторяет. */
+export interface BriefField {
+  key: string;
+  label: string;
+  section: string;
+  kind: BriefKind;
+  choices: BriefChoice[];
+  /** Колонка входного файла; пусто — поле правится только в карточке. */
+  column: string;
+  max_len: number;
+}
+
+export interface BriefCatalog {
+  sections: string[];
+  fields: BriefField[];
+}
+
+/** Правка брифа: названное поле пишется, пустая строка его очищает. */
+export interface BriefPatch {
+  fields?: Record<string, string>;
+  nda?: boolean;
+}
+
+export interface BriefView {
+  project_id: number;
+  nda: boolean;
+  fields: Record<string, string>;
 }
 
 /**

@@ -1,85 +1,32 @@
-# Verify report: brief-columns-intake
+# Verify report: brief-form
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M24, M25 | `tests/test_intake_brief.py` (разбор строки) | бриф словами → ключи; «космодром», «адская», Яндекс.Диск — замечания `bad_enum`, `bad_enum`, `bad_link`, строка принята |
-| M26, M27 | `tests/test_intake_brief.py` (приём в базу, транзакция теста) | цели и запрос из карточки на месте, тип сайта добавлен; NDA остаётся при «да», ставится при «нет» |
-| Подсказка и приём говорят одно | `tests/test_intake_list_format.py` (V19) | колонки брифа в подсказке в порядке `OPTIONAL_COLUMNS` |
-| Соседи приёма | `tests/test_intake_validate.py`, `tests/test_intake_accept.py` | зелёные (51 вместе с новыми) |
-| Экран приёма | vitest `intake.test.tsx` | 23 passed |
-| Живой проход | стенд на копии дев-базы (API перезапущен на код ветки), Chrome по CDP | загрузка `brief-list.csv`: «принято 2, с замечаниями 1»; строки замечаний «complexity — значение не из списка», «folder_url — ссылка не на папку Google Drive», «site_type — значение не из списка» с подробностью сервера; общий текст «ячейку разобрать не удалось — она не записана…»; подсказка «каким должен быть файл» — шесть колонок брифа и «Пустая ячейка — отказ строки. «Нет» ставит проекту NDA, а снять его можно только в карточке проекта»; бриф годной строки записан ключами (`travel`, `marketplace`, `high`); NDA через API и цели в карточке → повторная загрузка с «да» → `publishable` остался `false`, цели на месте, на карточке «публиковать без названия» |
+| M28–M32 | vitest `card-brief.test.tsx` | 5 passed |
+| Карточка прежняя | vitest `card.test.tsx` | 40 passed — после проверки формы каталога (до неё 17 падений белым экраном) |
+| Фронт целиком | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run` | чисто; 224 passed (21 файл) |
+| Живой проход | стенд на копии дев-базы, Chrome по CDP, карточка `brief-ok.example.com` (бриф частично из файла #49, NDA из правки) | блок «Бриф для копирайтера» с NDA-предупреждением; «Заполнить бриф» → форма по разделам: флажок NDA, родные списки, поля; выбрал «SEO», «Рост существующего сайта», вписал цели и трудности → «Сохранить бриф» → просмотр подписями, в базе ключи (`seo`, `growth`), прежние пункты из файла на месте; ссылка на Яндекс.Диск → «Папка проекта на Google Drive: нужна ссылка https://drive.google.com/… на папку проекта», форма открыта; тёмная тема — подписи и значения читаются |
 
 ## Ревью рисковых мест
 
-**Транзакция БД.** Правило NDA и слияние брифа живут в `intake/upsert._apply` внутри той же
-записи списка, что и остальные поля: `project.publishable = project.publishable and
-draft.publishable` и новый словарь `project.brief = {**(project.brief or {}), **draft.brief}` —
-правка внутри JSONB на месте ORM не увидел бы. Отчёт приёма считается до записи, как раньше.
+**Данные экрана.** `fetchBriefFields` проверяет форму каталога: без массивов `sections` и `fields`
+запрос падает словами «пункты брифа пришли не той формы», и блок брифа показывает отказ, а карточка
+живёт. До проверки чужое тело ответа роняло весь экран (`bySection` на `undefined.map`).
 
-**Безопасность — риска нет**, потому что ссылка из файла проходит тот же `normalize`, что у API:
-только https на `drive.google.com` / `docs.google.com`, а непонятая ячейка в бриф не попадает
-вовсе (`parse_brief` пишет только понятое).
+**Кэш.** `BriefForm` кладёт ответ правки в `['project', projectId]` через `setQueryData` и
+перечитывает только `['projects']` — графики и кейс на своих ключах остаются на экране (L172).
 
-**Производительность — риска нет**, потому что разбор брифа — шесть ячеек на строку тем же
-`normalize`, без запросов в базу.
+**Безопасность — риска нет**, потому что ссылка на папку открывается `Anchor` с
+`rel="noopener noreferrer"`, а принимает её только сервер (https на Google Drive); экран значения не
+вставляет как разметку — React экранирует текст.
 
 ## Чего проверка НЕ доказывает
 
-- Что прежние проекты прода с «нет» в файле станут открытыми, если агентство решит их открыть:
-  теперь это делается только в карточке (форма — поставка 2б; до неё — `PATCH` API).
+- Поведение формы на узком экране — снимки стенда сделаны на 1440 px.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
-
-asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
-
-## Assertion digest (ревью ожиданий, не кода)
-
-База: `origin/main` · сгенерировано `assert_digest.sh`
-
-Новых/изменённых утверждений: **12**, из них без ссылки на пример спеки:
-**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
-значение — из спеки или придумано под реализацию?**
-
-```
-M24	assert not rejections and not notices
-M24	assert drafts[0].brief == {
-M25	assert not rejections
-M25	assert drafts[0].brief == {"topic": "travel"}
-M25	assert by_column["site_type"].reason is RejectReason.BAD_ENUM
-M25	assert "космодром" in by_column["site_type"].detail
-M25	assert by_column["complexity"].reason is RejectReason.BAD_ENUM
-M25	assert by_column["folder_url"].reason is RejectReason.BAD_LINK
-M25	assert "yadi.sk" in by_column["folder_url"].detail
-M26	assert project.brief == {
-M27	assert project.publishable is False
-M27	assert project.publishable is False
-```
-
-✅ **Каждое утверждение ведёт к примеру спеки** (M24 M25 M26 M27), а примеры человек
-подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
-**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
-`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
-
-asserts_without_example: 0
-
-## Harness metrics (this shipment)
-
-<!-- generated by scripts/delivery_metrics.py --base origin/main -->
-
-| Metric | Value |
-|---|---|
-| files_touched / loc_diff | 9 code (+17 process docs) / +270/-17 (net +253) |
-| commits | 1 |
-| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
-| rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — tests/test_intake_brief.py (новый оракул) |
-| implement_retries | 0 |
-| verify_fails_before_green | 0 |
-| est_token_or_cost | n/a |
-
-MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.

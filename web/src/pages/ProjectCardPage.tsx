@@ -15,6 +15,7 @@ import { fetchProjectCard, fetchProjectCharts } from '../api/projects';
 import type { Grouping } from '../api/projects';
 import type { ProjectDeletion } from '../api/types';
 
+import { Brief } from './card/Brief';
 import { CardHeader } from './card/CardHeader';
 import { CasePdf } from './card/CasePdf';
 import { Comparison } from './card/Comparison';
@@ -90,6 +91,8 @@ function ProjectCard({ id, onDeleted }: { id: number; onDeleted: (r: ProjectDele
         <CardHeader card={card.data} />
 
         <CasePdf projectId={id} />
+
+        <Brief projectId={id} brief={card.data.brief ?? {}} nda={!card.data.project.publishable} />
 
         <SourceMismatch reason={card.data.source_mismatch} />
 
