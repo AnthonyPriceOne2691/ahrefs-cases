@@ -153,8 +153,8 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 10 code (+17 process docs) / +594/-29 (net +565) |
-| commits | 2 |
+| files_touched / loc_diff | 11 code (+18 process docs) / +615/-29 (net +586) |
+| commits | 4 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — .github/workflows/quality.yml, tests/cli_world.py (новый оракул), tests/test_cli_commands.py (новый оракул), tests/test_cli_run_lock.py (новый оракул) |
