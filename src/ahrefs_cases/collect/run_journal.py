@@ -22,9 +22,38 @@ from ahrefs_cases.collect.budget import key_fingerprint, record_spend
 from ahrefs_cases.collect.fetch import TaskOutcome
 from ahrefs_cases.collect.series import store_history
 from ahrefs_cases.storage._enums import ProjectStatus, RunItemOutcome, RunStatus, UserGroup
+from ahrefs_cases.storage.locks import hold_start
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run, RunItem
 from ahrefs_cases.storage.models.user import User
+
+ACTIVE_STATUSES = (RunStatus.QUEUED, RunStatus.RUNNING)
+"""Прогон, который ещё идёт: второй при нём не открывается."""
+
+
+class RunAlreadyActiveError(RuntimeError):
+    """Прогон уже идёт: второй не открывается ни кнопкой, ни из консоли."""
+
+    def __init__(self, run: Run) -> None:
+        super().__init__(f"прогон {run.id} ещё идёт ({run.status.value}); второй не запускается")
+        self.run_id = run.id
+
+
+async def claim_start(session: AsyncSession) -> None:
+    """Замок постановки до конца транзакции и отказ, если прогон уже идёт.
+
+    Одна проверка на кнопку и консоль (Z52): консоль открывала прогон в обход неё, и при
+    идущем прогоне кнопкой оба покупали одни и те же ряды. «Активных нет» и строка прогона
+    неделимы — между ними поместился бы второй запуск, — поэтому строку вызывающий
+    открывает **в этой же транзакции**, и замок держится до её коммита. Тем же замком
+    берёт удаление проекта (`storage.locks`).
+    """
+    await hold_start(session)
+    stmt = select(Run).where(Run.status.in_(ACTIVE_STATUSES)).order_by(Run.id).limit(1)
+    active = (await session.execute(stmt)).scalars().first()
+    if active is not None:
+        raise RunAlreadyActiveError(active)
+
 
 SYSTEM_USER_EMAIL = "cli@local"
 _UNUSABLE_PASSWORD_HASH = "!"  # noqa: S105 — не секрет, а заведомо несовпадающий хеш

@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** screenshots-screen
+- **stack:** delivery@2.00, cqg@2.55, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: этап 4 — скриншоты в бриф, часть 4 (экран)
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** implement
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: «загрузка скрина в карточку проекта»; владелец: «доделываем эти две [поставки], потом всё выкатываем на прод»; примеры M60–M67 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефакта нет: экран — проверяется тестами экрана и прокликиванием на стенде
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none <!-- пакетов не прибавилось: pillow объявлен поставкой screenshots-storage -->
+- **runtime_paths:** web/src/pages/card/shrink.ts <!-- ужатие картинки в браузере (canvas, createImageBitmap) в jsdom не исполняется: проверяется только живым браузером на стенде -->
+- **irreversible_surfaces:** none reason=миграций нет; «Убрать» стирает скрин — действие человека с подтверждением, ночной бэкап берёт `data/screenshots`; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки этапа 4: в карточке на проде скрин 1–2,5 МБ загружается кнопкой (201, не 413 и не 500 прокси), миниатюра видна (CSP не режет `data:`), снимок 3–5 МБ ужимается браузером и уходит; «Убрать» убирает
+- **observe_until:** 2026-10-28
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

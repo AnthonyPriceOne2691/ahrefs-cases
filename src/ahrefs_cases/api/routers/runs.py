@@ -51,6 +51,8 @@ from ahrefs_cases.collect.run_journal import (
     STAGE1,
     STAGE2,
     ProjectFate,
+    RunAlreadyActiveError,
+    claim_start,
     cycle_children,
     open_run,
 )
@@ -58,8 +60,6 @@ from ahrefs_cases.collect.run_journal import fates as run_fates
 from ahrefs_cases.export.archive import run_pack_path
 from ahrefs_cases.export.removal import holds_deleted_case
 from ahrefs_cases.intake.normalize import to_unicode
-from ahrefs_cases.storage import RunStatus
-from ahrefs_cases.storage.locks import hold_start
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.run import Run
 from ahrefs_cases.storage.models.user import User
@@ -69,7 +69,6 @@ from ahrefs_cases.workers.queue import build_queue
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 
-ACTIVE_STATUSES = (RunStatus.QUEUED, RunStatus.RUNNING)
 MAX_FATES = 200
 """Потолок списка судеб: сто проектов прогона плюс запас. Граница нужна не от
 жадности — у прогона столько проектов, сколько в списке заказчика, и выдача без
@@ -417,20 +416,13 @@ async def _enqueue(
 ) -> RunStarted:
     """Создать прогон под замком постановки и поставить задачу.
 
-    «Нет активных» и строка прогона неделимы: между ними поместился бы второй
-    запрос. Тем же замком берёт удаление проекта (`storage.locks`).
+    Проверка «прогон уже идёт» — та же, что у консоли (`claim_start`): строка прогона
+    открывается в её транзакции, до коммита замок держит и второй запуск, и удаление.
     """
-    await hold_start(session)
-    active = (
-        (await session.execute(select(Run).where(Run.status.in_(ACTIVE_STATUSES)).limit(1)))
-        .scalars()
-        .first()
-    )
-    if active is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"прогон {active.id} ещё идёт ({active.status.value}); второй не запускается",
-        )
+    try:
+        await claim_start(session)
+    except RunAlreadyActiveError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     total = (
         len(cycle.projects)

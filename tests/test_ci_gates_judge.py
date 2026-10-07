@@ -177,6 +177,41 @@ def test_the_coverage_waiver_expires_out_loud() -> None:
             )
 
 
+def test_diff_coverage_blocks_since_the_cli_debt_is_paid() -> None:
+    """M78: шаг покрытия изменённых файлов снова роняет прогон — отсрочка Z22 снята.
+
+    Отсрочка жила с 15.09 до 07.10.2026: гейт считал и печатал, но не блокировал, пока
+    три файла CLI были ниже 70 %. Долг закрыт тестами (`cli-commands-are-tested`), и
+    гейт обязан судить: `STRICT=1` уровня workflow и ни одного `continue-on-error` у
+    шага. Вернуть отсрочку — сознательно, с датой (тест выше) и правкой этого теста.
+    """
+    workflow = yaml.safe_load(_QUALITY.read_text(encoding="utf-8"))
+    judging = [
+        step
+        for job in workflow["jobs"].values()
+        for step in job.get("steps", [])
+        if "check_diff_coverage.sh" in str(step.get("run", ""))
+    ]
+
+    assert judging, "шага покрытия изменённых файлов в CI нет"
+    assert str(workflow.get("env", {}).get("STRICT")) == "1"
+    assert [step.get("continue-on-error", False) for step in judging] == [False] * len(judging)
+
+
+def test_coverage_sees_code_after_greenlet_switches() -> None:
+    """M78: замер покрытия видит строки после переключения greenlet асинхронного SQLAlchemy.
+
+    Без `concurrency = ["greenlet"]` трассировщик Python 3.12 в CI теряет строки после
+    запроса к базе: роутер прогонов давал 67 % в CI при 98 % локально, и блокирующий
+    гейт покрытия краснел бы на коде, который исполняется тестами (07.10.2026).
+    """
+    settings = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    concurrency = settings["tool"]["coverage"]["run"].get("concurrency", [])
+
+    assert "greenlet" in concurrency
+    assert "thread" in concurrency
+
+
 def test_a_manifest_without_dependencies_is_not_a_dependency_decision() -> None:
     """Манифест с нулём зависимостей не требует объявления в STATUS.
 
