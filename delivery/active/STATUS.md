@@ -1,7 +1,7 @@
 # Active delivery status
 
 - **slug:** screenshots-screen
-- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
