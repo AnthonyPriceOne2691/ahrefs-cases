@@ -16,3 +16,7 @@ class ExportSettings(Settings):
     output_dir: Path = Field(Path("./data/out"), validation_alias="EXPORT_OUTPUT_DIR")
     default_format: Literal["html", "pdf"] = Field("pdf", validation_alias="EXPORT_FORMAT")
     templates_dir: Path = Field(Path("./templates"), validation_alias="EXPORT_TEMPLATES_DIR")
+    screenshots_dir: Path = Field(
+        Path("./data/screenshots"), validation_alias="EXPORT_SCREENSHOTS_DIR"
+    )
+    """Скриншоты проектов. Внутри `data/` — его целиком забирает ночной бэкап."""

@@ -7,6 +7,8 @@
 data/raw/*
 !data/raw/.gitkeep
 data/out/
+# Скриншоты проектов — с доменами клиентов на экранах, как и кейсы.
+data/screenshots/
 *.pdf
 *.docx
 

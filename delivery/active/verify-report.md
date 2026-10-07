@@ -1,23 +1,74 @@
-# Verify report: brief-labels
+# Verify report: screenshots-storage
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M38 | vitest `cases.test.tsx` | «публичный» и «NDA» в строках; 18 passed |
-| Фронт целиком | `tsc --noEmit`, `eslint src`, `prettier --check`, `vitest run` | чисто; 224 passed |
-| Живой проход | стенд (Chrome по CDP) | «Кейсы»: колонка «Публичность», метки «NDA» и «публичный» помещаются; «Проекты»: «Публичность» — «открытый» / «NDA»; шапка карточки `brief-ok.example.com` — «NDA» |
+| M41–M47 | `tests/test_storage_screenshots.py` (картинки собираются в памяти настоящим Pillow) | 12 passed |
+| Модель = миграция | `tests/test_migrations_match_models.py` | зелёный |
+| Lock | `tests/test_dependency_lock.py`; `scripts/lock_deps.sh` | Pillow записан прямой зависимостью, версия 12.3.0 прежняя; lock — +2 строки |
 
 ## Ревью рисковых мест
 
-**Подписи — риска нет**, потому что меняется только текст меток: `Publishing` в `CasesTable.tsx` по-прежнему
-читает `anonymized` и ставит `data-anonymized`, `ProjectsTable.tsx` — `publishable`; данных и запросов правка
-не трогает.
+**Безопасность.** Байтам на входе не верим: `prepare` открывает только `FORMATS` (PNG, JPEG, WebP) по
+содержимому, площадь сверяет с `MAX_PIXELS` до `load()`, ловит `DecompressionBombError` и
+предупреждение о бомбе, перекодирует картинку заново — EXIF и хвосты файла не переживают. Путь файла
+строит `save` из номера проекта и uuid; `_inside` не пускает ключ из базы за пределы каталога
+(`../outside.png` — отказ).
+
+**Транзакция БД — риска нет в этой поставке**, потому что запись строки и файла появится в API
+следующим PR; здесь — таблица с каскадом от проекта и `SET NULL` от автора.
+
+**Производительность.** Перекодирование PNG с `optimize=True` и `LANCZOS` — работа процессора; в API её
+надо вынести из цикла событий (`anyio.to_thread`) — записано в план следующей поставки.
+
+**Новые модули.** `storage/screenshots.py` — пять функций без состояния; `storage/models/screenshot.py` — модель.
+
+## Чего проверка НЕ доказывает
+
+- Загрузку через API и экран — их ещё нет; живой проход будет с ними.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
+
+asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
+
+## Assertion digest (ревью ожиданий, не кода)
+
+База: `origin/main` · сгенерировано `assert_digest.sh`
+
+Новых/изменённых утверждений: **17**, из них без ссылки на пример спеки:
+**0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
+значение — из спеки или придумано под реализацию?**
+
+```
+M41	assert prepared.mime in {"image/png", "image/jpeg"}
+M41	assert (prepared.width, prepared.height) == (640, 400)
+M41	assert len(prepared.checksum) == 64
+M41	assert Image.open(BytesIO(prepared.content)).format in {"PNG", "JPEG"}
+M44	assert (prepared.width, prepared.height) == (MAX_SIDE, MAX_SIDE // 2)
+M45	assert not Image.open(BytesIO(prepared.content)).getexif()
+M46	assert image.mode == "RGB"
+M46	assert image.getpixel((10, 10)) == (255, 255, 255)
+M47	assert key.startswith("7/") and key.endswith(".png")
+M47	assert read(tmp_path, key) == prepared.content
+M47	assert not list((tmp_path / "7").glob(".*.part"))
+M47	assert remove(tmp_path, key) is True
+M47	assert remove(tmp_path, key) is False
+M47	assert remove_project(tmp_path, 7) == 2
+M47	assert not (tmp_path / "7").exists()
+M47	assert read(tmp_path, neighbour) == prepared.content
+M47	assert remove_project(tmp_path, 7) == 0
+```
+
+✅ **Каждое утверждение ведёт к примеру спеки** (M41 M44 M45 M46 M47), а примеры человек
+подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
+**не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
+`asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
+
+asserts_without_example: 0
 
 ## Harness metrics (this shipment)
 
@@ -25,12 +76,12 @@
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 6 code (+12 process docs) / +20/-19 (net +1) |
+| files_touched / loc_diff | 10 code (+14 process docs) / +392/-2 (net +390) |
 | commits | 1 |
-| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
+| time_to_accepted_spec | spec drafted, not yet accepted |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | no |
-| implement_retries | 0 |
+| harness_hardened | yes — tests/test_storage_screenshots.py (новый оракул) |
+| implement_retries | 2 — имя исключения по правилу N818; гейт знаний на `pyproject.toml` (карта репозитория) |
 | verify_fails_before_green | 0 |
 | est_token_or_cost | n/a |
 

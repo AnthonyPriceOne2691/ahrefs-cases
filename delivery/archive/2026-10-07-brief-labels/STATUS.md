@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** brief-labels
+- **stack:** delivery@2.00, cqg@2.51, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** S
+- **kind:** feature
+- **repro_test:** n/a reason=не дефект: подписи экранов вслед за брифом (#51)
+- **diagnosis:** n/a reason=не дефект кода
+- **phase:** handoff
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (команда: домен в PDF всегда, флажок «непубличный проект / NDA»; владелец — «дальше делай разработку по порядку»; подписи — следствие брифа, объявлены в PR #51)
+- **human_ok_plan:** n/a reason=класс S
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефактов не производит: меняются подписи экранов
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки, класс S
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none <!-- пакетов не прибавилось; форма «none» — гейт новой зависимости читает архивные STATUS окна, а «no reason=» принимает за пакет «no» -->
+- **runtime_paths:** none reason=подписи проверены снимками стенда
+- **irreversible_surfaces:** none reason=экранная правка без данных; выкатка — руками владельца по `docs/PROD.md`
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** после выкатки: в «Кейсах» у проектов под NDA метка «NDA», у остальных «публичный»; в «Проектах» колонка «Публичность»; «домен скрыт» и «публиковать без названия» нигде не видны
+- **observe_until:** 2026-10-21
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
