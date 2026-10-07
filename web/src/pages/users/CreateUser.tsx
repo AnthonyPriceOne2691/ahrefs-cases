@@ -28,12 +28,7 @@ import type { UserWithPassword } from '../../api/types';
 import { failureText } from '../cases/failure';
 
 import { PasswordOnce } from './PasswordOnce';
-
-const GROUPS = [
-  { value: 'user', label: 'пользователь' },
-  { value: 'admin', label: 'админ' },
-  { value: 'engineer', label: 'инженер' },
-];
+import { GROUPS } from './rights';
 
 export function CreateUser({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);

@@ -24,13 +24,7 @@ import { failureText } from '../cases/failure';
 
 import { DeleteUser } from './DeleteUser';
 import { PasswordOnce } from './PasswordOnce';
-import { byLabel, rightLabel } from './rights';
-
-const GROUPS = [
-  { value: 'user', label: 'пользователь' },
-  { value: 'admin', label: 'админ' },
-  { value: 'engineer', label: 'инженер' },
-];
+import { GROUPS, byLabel, rightLabel } from './rights';
 
 const STATES = [
   { value: 'yes', label: 'Да' },

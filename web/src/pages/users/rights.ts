@@ -25,6 +25,15 @@ const LABELS: Record<string, string> = {
   delete_projects: 'удалять проекты',
 };
 
+/** Группы людей и их русские названия — одни на окно «Добавить» и строку
+ *  управления: группа — это набор прав по умолчанию, и назвать её по-разному в
+ *  двух местах экрана значит показать две разные группы. */
+export const GROUPS = [
+  { value: 'user', label: 'пользователь' },
+  { value: 'admin', label: 'админ' },
+  { value: 'engineer', label: 'инженер' },
+];
+
 export function rightLabel(right: string): string {
   return LABELS[right] ?? right;
 }
