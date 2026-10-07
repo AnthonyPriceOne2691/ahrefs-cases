@@ -1,32 +1,43 @@
-# Verify report: screenshots-storage
+# Verify report: screenshots-api
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M41–M47 | `tests/test_storage_screenshots.py` (картинки собираются в памяти настоящим Pillow) | 12 passed |
-| Модель = миграция | `tests/test_migrations_match_models.py` | зелёный |
-| Lock | `tests/test_dependency_lock.py`; `scripts/lock_deps.sh` | Pillow записан прямой зависимостью, версия 12.3.0 прежняя; lock — +2 строки |
+| M48–M53 | `tests/test_api_screenshots.py` (свои строки, свой каталог) | 6 passed |
+| Приём списка на общем чтении тела | `tests/test_api_intake.py` (413 «МБ», 400 пустое) | зелёные |
+| Удаление проекта | `tests/test_api_projects_delete.py` (след удаления с `screenshots: 0`) | 11 passed |
+| Живой проход | стенд (API на коде ветки, миграция `d1e2f3a4b5c6` на копии), Chrome по CDP: `fetch` через прокси Vite | загрузка настоящего снимка 1440 × 1000 — 201, перекодирован 373 → 331 КБ; список — 1; картинка — 200 `image/png`, `nosniff`; текст вместо картинки — 415 «это не картинка PNG, JPEG или WebP»; удаление — 200, список пуст, каталог проекта пуст |
+
+## Исполнение рисковых путей
+
+- `src/ahrefs_cases/api/routers/screenshots.py` — прогнал `node step10.mjs` (Chrome по CDP, `fetch` из
+  страницы через прокси Vite на uvicorn стенда), увидел: 201 на снимок 373 КБ, 200 и `nosniff` на
+  картинку, 415 на текст, 200 на удаление и пустой каталог. Прокси nginx с пределом 3 МБ на стенде нет —
+  загрузка большого скрина через сайт проверяется после выкатки (`observe_signal`). at=2026-10-07
 
 ## Ревью рисковых мест
 
-**Безопасность.** Байтам на входе не верим: `prepare` открывает только `FORMATS` (PNG, JPEG, WebP) по
-содержимому, площадь сверяет с `MAX_PIXELS` до `load()`, ловит `DecompressionBombError` и
-предупреждение о бомбе, перекодирует картинку заново — EXIF и хвосты файла не переживают. Путь файла
-строит `save` из номера проекта и uuid; `_inside` не пускает ключ из базы за пределы каталога
-(`../outside.png` — отказ).
+**Безопасность.** Загрузка и удаление — под `require_right("edit_briefs")`, просмотр — под
+`require_right("read")`. Картинка отдаётся с `X-Content-Type-Options: nosniff` и
+`Content-Disposition: inline`: браузер не угадывает тип. Тело читает `read_body` с пределом по ходу
+чтения — `Content-Length` не доверяем. Ключ файла берётся из базы и проходит `_inside` в
+`storage.screenshots`.
 
-**Транзакция БД — риска нет в этой поставке**, потому что запись строки и файла появится в API
-следующим PR; здесь — таблица с каскадом от проекта и `SET NULL` от автора.
+**Транзакция БД.** `upload_screenshot` пишет файл, затем строку и `commit`; сбой коммита стирает файл
+(`files.remove`) и пишет `screenshot_not_recorded` с исключением. `delete_screenshot` — строка и
+`commit`, файл после. Дубль ловится до записи (`checksum`), гонка — уникальным ключом
+`uq_screenshot_once_per_project`.
 
-**Производительность.** Перекодирование PNG с `optimize=True` и `LANCZOS` — работа процессора; в API её
-надо вынести из цикла событий (`anyio.to_thread`) — записано в план следующей поставки.
+**Производительность.** `prepare`, `save`, `read` и удаление идут через `anyio.to_thread.run_sync`:
+распаковка и перекодирование большой картинки не останавливают цикл событий.
 
-**Новые модули.** `storage/screenshots.py` — пять функций без состояния; `storage/models/screenshot.py` — модель.
+**Новые модули.** `api/body.py` — одна функция; `api/routers/screenshots.py` — четыре эндпоинта.
 
 ## Чего проверка НЕ доказывает
 
-- Загрузку через API и экран — их ещё нет; живой проход будет с ними.
+- Что прокси сервера пропустит скрин 2,5 МБ — на стенде прокси нет; проверка после выкатки.
+- Экрана загрузки ещё нет — последний PR этапа.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -39,31 +50,42 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **17**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **28**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M41	assert prepared.mime in {"image/png", "image/jpeg"}
-M41	assert (prepared.width, prepared.height) == (640, 400)
-M41	assert len(prepared.checksum) == 64
-M41	assert Image.open(BytesIO(prepared.content)).format in {"PNG", "JPEG"}
-M44	assert (prepared.width, prepared.height) == (MAX_SIDE, MAX_SIDE // 2)
-M45	assert not Image.open(BytesIO(prepared.content)).getexif()
-M46	assert image.mode == "RGB"
-M46	assert image.getpixel((10, 10)) == (255, 255, 255)
-M47	assert key.startswith("7/") and key.endswith(".png")
-M47	assert read(tmp_path, key) == prepared.content
-M47	assert not list((tmp_path / "7").glob(".*.part"))
-M47	assert remove(tmp_path, key) is True
-M47	assert remove(tmp_path, key) is False
-M47	assert remove_project(tmp_path, 7) == 2
-M47	assert not (tmp_path / "7").exists()
-M47	assert read(tmp_path, neighbour) == prepared.content
-M47	assert remove_project(tmp_path, 7) == 0
+M48	assert uploaded.status_code == 201
+M48	assert (shot["kind"], shot["caption"], shot["width"]) == (
+M48	assert [row["id"] for row in listed.json()] == [shot["id"]]
+M48	assert image.headers["content-type"] == "image/png"
+M48	assert image.headers["x-content-type-options"] == "nosniff"
+M48	assert Image.open(BytesIO(image.content)).format == "PNG"
+M48	assert len(list((root / str(project_id)).iterdir())) == 1
+M49	assert not_image.status_code == 415
+M49	assert "PNG, JPEG или WebP" in not_image.json()["detail"]
+M49	assert empty.status_code == 400
+M49	assert too_big.status_code == 413
+M49	assert "2,5 МБ" in too_big.json()["detail"]
+M50	assert _upload(client, project_id, _png()).status_code == 201
+M50	assert twin.status_code == 409
+M50	assert "уже есть" in twin.json()["detail"]
+M50	assert over.status_code == 409
+M50	assert "уберите лишние" in over.json()["detail"]
+M51	assert _upload(client, project_id, _png(color="black"), email=REVOKED).status_code == 403
+M51	assert client.delete(f"/api/screenshots/{shot['id']}", headers=viewer).status_code == 403
+M51	assert listed.status_code == 200
+M51	assert image.status_code == 200
+M52	assert removed.status_code == 200
+M52	assert listed.json() == []
+M52	assert not list((root / str(project_id)).iterdir())
+M52	assert gone.status_code == 404
+M53	assert preview.json()["screenshots"] == 1
+M53	assert deleted.status_code == 200
+M53	assert not (root / str(project_id)).exists()
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M41 M44 M45 M46 M47), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M48 M49 M50 M51 M52 M53), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -76,13 +98,13 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 10 code (+14 process docs) / +392/-2 (net +390) |
+| files_touched / loc_diff | 9 code (+17 process docs) / +486/-29 (net +457) |
 | commits | 1 |
-| time_to_accepted_spec | spec drafted, not yet accepted |
+| time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — tests/test_storage_screenshots.py (новый оракул) |
-| implement_retries | 2 — имя исключения по правилу N818; гейт знаний на `pyproject.toml` (карта репозитория) |
-| verify_fails_before_green | 0 |
+| harness_hardened | yes — tests/test_api_screenshots.py (новый оракул) |
+| implement_retries | 1 — роутер попал в импорт `main.py`, но не в кортеж подключения |
+| verify_fails_before_green | 1 — два теста удаления сравнивали след без поля `screenshots` |
 | est_token_or_cost | n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.

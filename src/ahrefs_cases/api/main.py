@@ -19,6 +19,7 @@ from ahrefs_cases.api.routers import (
     projects_router,
     rulesets_router,
     runs_router,
+    screenshots_router,
     usage_router,
     users_router,
 )
@@ -64,6 +65,7 @@ for router in (
     cases_router,
     rulesets_router,
     runs_router,
+    screenshots_router,
     alerts_router,
     usage_router,
     users_router,

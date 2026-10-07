@@ -63,7 +63,7 @@ JOURNAL = (("gone", RunItemOutcome.OK, 40), ("also_gone", RunItemOutcome.SKIPPED
 FIELDS = {"niche": "travel", "geo": "US", "service_type": "seo", "client": "Acme", "owner": "i.p"}
 POINT = {"metric": Metric.ORG_TRAFFIC, "source": MetricSource.FIXTURE, "value": 1.0}
 GONE_TRACE = {"domain": GONE, "metric_points": 3, "verdicts": 2, "cases": 1, "files": 1}
-GONE_TRACE |= {"run_items": 1, "twin_campaigns": 1}
+GONE_TRACE |= {"run_items": 1, "twin_campaigns": 1, "screenshots": 0}
 
 Ask = Callable[[AsyncSession], Awaitable[Any]]
 Write = Callable[[Ask], list[Any]]
