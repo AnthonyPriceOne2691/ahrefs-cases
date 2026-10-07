@@ -3,9 +3,9 @@
  *
  * Две колонки здесь не для красоты. **Версия** — потому что пересборка не
  * затирает прежний кейс, а добавляет следующий: рядом живут два PDF по одному
- * домену, и отдать нужно свежий. **Публикация** — потому что кейс
- * анонимизированного проекта нельзя называть именем клиента, и узнавать это,
- * открыв PDF, поздно.
+ * домену, и отдать нужно свежий. **Публичность** — потому что у проекта под NDA
+ * в публичном тексте кейса нельзя раскрывать домен и клиента, и узнавать это,
+ * открыв PDF, поздно (бриф называет домен всегда, с 07.10.2026).
  */
 import { Badge, Button, Checkbox, Table, Text } from '@mantine/core';
 
@@ -51,16 +51,17 @@ function SelectAll({ rows, selection }: { rows: CaseRow[]; selection: Selection 
   );
 }
 
-/** Метка говорит следствие, а не флаг: «anonymized: true» верно и бесполезно
- *  тому, кто решает, что отправить клиенту. */
+/** Метка говорит следствие, а не флаг. С 07.10.2026 PDF — бриф копирайтеру и
+ *  домен называет всегда, поэтому «домен скрыт» стало неправдой: метка говорит,
+ *  можно ли раскрывать клиента в публичном тексте. */
 function Publishing({ anonymized }: { anonymized: boolean }) {
   return anonymized ? (
     <Badge variant="light" color="orange" data-anonymized="yes">
-      домен скрыт
+      NDA
     </Badge>
   ) : (
     <Badge variant="light" color="teal" data-anonymized="no">
-      можно публиковать
+      публичный
     </Badge>
   );
 }
@@ -81,7 +82,7 @@ export function CasesTable({ rows, busyId, onDownload, selection }: Props) {
             <Table.Th ta="center">Версия</Table.Th>
             <Table.Th ta="center">Собран</Table.Th>
             <Table.Th ta="center">Статус</Table.Th>
-            <Table.Th ta="center">Публикация</Table.Th>
+            <Table.Th ta="center">Публичность</Table.Th>
             <Table.Th ta="center">Файл</Table.Th>
           </Table.Tr>
         </Table.Thead>

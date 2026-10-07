@@ -51,10 +51,8 @@ export function ProjectsTable({
       },
       {
         id: 'publishable',
-        header: 'Публикация',
-        cell: ({ row }) => (
-          <Text size="sm">{row.original.publishable ? 'можно' : 'без названия'}</Text>
-        ),
+        header: 'Публичность',
+        cell: ({ row }) => <Text size="sm">{row.original.publishable ? 'открытый' : 'NDA'}</Text>,
       },
     ],
     [],

@@ -129,9 +129,9 @@ describe('библиотека кейсов', () => {
     show();
 
     expect(await screen.findByText('site-1.example')).toBeInTheDocument();
-    expect(screen.getByText('можно публиковать')).toBeInTheDocument();
+    expect(screen.getByText('публичный')).toBeInTheDocument();
     // Анонимизированный кейс помечен следствием: публиковать под именем нельзя.
-    expect(screen.getByText('домен скрыт')).toBeInTheDocument();
+    expect(screen.getByText('NDA')).toBeInTheDocument();
   });
 
   it('E3: у кейса без файла скачивания нет, и сказано почему', async () => {

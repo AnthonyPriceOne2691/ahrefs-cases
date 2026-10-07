@@ -41,8 +41,8 @@ export function CardHeader({ card }: { card: ProjectCard }) {
             </Badge>
           )}
           {project.publishable ? null : (
-            <Badge variant="light" color="gray">
-              публиковать без названия
+            <Badge variant="light" color="orange">
+              NDA
             </Badge>
           )}
         </Group>
