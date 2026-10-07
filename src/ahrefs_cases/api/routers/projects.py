@@ -151,6 +151,7 @@ async def project_card(
         # которая разъехалась в кейсе (Z10). Правило расхождения берётся у
         # вердикта, а не пишется здесь второй раз.
         source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
+        brief=dict(project.brief or {}),
     )
 
 

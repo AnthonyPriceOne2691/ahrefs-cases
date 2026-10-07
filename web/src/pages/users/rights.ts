@@ -23,6 +23,7 @@ const LABELS: Record<string, string> = {
   manage_users: 'добавлять пользователей',
   change_technical_settings: 'технические настройки',
   delete_projects: 'удалять проекты',
+  edit_briefs: 'заполнять бриф',
 };
 
 /** Группы людей и их русские названия — одни на окно «Добавить» и строку
