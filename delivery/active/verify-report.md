@@ -55,6 +55,8 @@
 - [ ] NEED CONVERGE (new tasks)
 - [ ] BLOCKED
 
+asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
+
 ## Assertion digest (ревью ожиданий, не кода)
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
