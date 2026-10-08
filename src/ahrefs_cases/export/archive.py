@@ -27,6 +27,7 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 from ahrefs_cases import config
 from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ContentBlockedError
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.export.pdf_renderer import filename, render_pdf, unique_name
 
 logger = logging.getLogger(__name__)
@@ -38,14 +39,20 @@ MANIFEST_NOTE = "внутренний список: домены всех про
 class EmptyArchiveError(RuntimeError):
     """Собирать нечего. Не ошибка выгрузки, а её отсутствие — и это разные вещи.
 
-    Несёт кейсы, не попавшие по контент-запрету: пачка из одних запрещённых —
-    тоже пустая, и журнал прогона обязан назвать, кому отказано, а не только
-    что архива нет.
+    Несёт кейсы, не попавшие по контент-запрету и упавшие при рисовании: пачка
+    из одних таких — тоже пустая, и журнал прогона обязан назвать, кому и
+    почему отказано, а не только что архива нет.
     """
 
-    def __init__(self, message: str, skipped: Sequence[SkippedCase] = ()) -> None:
+    def __init__(
+        self,
+        message: str,
+        skipped: Sequence[SkippedCase] = (),
+        failed: Sequence[SkippedCase] = (),
+    ) -> None:
         super().__init__(message)
         self.skipped = tuple(skipped)
+        self.failed = tuple(failed)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,11 +101,19 @@ class Packed:
     path: Path
     packed: tuple[PackedCase, ...]
     skipped: tuple[SkippedCase, ...]
+    failed: tuple[SkippedCase, ...] = ()
+    """Упали при рисовании PDF (Z54): причина — исключение с первопричиной (`failure_reason`)."""
 
     def as_lines(self) -> list[str]:
         lines = [f"архив: {self.path}", f"кейсов внутри: {len(self.packed)}"]
         lines.extend(f"  не попал {item.domain}: {item.reason}" for item in self.skipped)
+        lines.extend(failed_lines(self.failed))
         return lines
+
+
+def failed_lines(failed: Sequence[SkippedCase]) -> list[str]:
+    """«не собран <домен>: <причина>» — по строке на упавший кейс."""
+    return [f"  не собран {item.domain}: {item.reason}" for item in failed]
 
 
 def pack(
@@ -112,12 +127,14 @@ def pack(
     Архив ничего не обходит: стоп-лист и сверка чисел остаются на месте, и кейс,
     который их не прошёл, в пачку не попадает — с названной причиной. Каждый
     вход даёт ровно один исход, и в исходе — номер проекта этого входа.
+    Упавший рисунок одного PDF — его исход, а не конец пачки (Z54).
     """
     target_dir = output_dir or config.export.output_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
     packed: list[PackedCase] = []
     skipped: list[SkippedCase] = []
+    failed: list[SkippedCase] = []
     used: set[str] = set()
     for wanted in cases:
         try:
@@ -126,6 +143,13 @@ def pack(
             skipped.append(
                 SkippedCase(project_id=wanted.project_id, domain=wanted.domain, reason=str(exc))
             )
+            continue
+        except Exception as exc:
+            logger.exception(
+                "case_render_failed",
+                extra={"project_id": wanted.project_id, "domain": wanted.domain},
+            )
+            failed.append(SkippedCase(wanted.project_id, wanted.domain, reason=failure_reason(exc)))
             continue
         packed.append(
             PackedCase(
@@ -139,14 +163,16 @@ def pack(
 
     if not packed:
         message = "кейсов для архива не набралось: собирать нечего"
-        raise EmptyArchiveError(message, skipped)
+        raise EmptyArchiveError(message, skipped, failed)
 
     archive_path = target_dir / (name or _default_name())
     with ZipFile(archive_path, "w", compression=ZIP_DEFLATED) as bundle:
         for item in packed:
             bundle.write(item.path, arcname=item.arcname)
         bundle.writestr(MANIFEST_NAME, manifest(packed))
-    return Packed(path=archive_path, packed=tuple(packed), skipped=tuple(skipped))
+    return Packed(
+        path=archive_path, packed=tuple(packed), skipped=tuple(skipped), failed=tuple(failed)
+    )
 
 
 def manifest(packed: Sequence[PackedCase]) -> bytes:

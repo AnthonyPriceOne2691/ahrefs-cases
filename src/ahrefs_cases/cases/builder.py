@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from datetime import date
@@ -26,6 +27,7 @@ from math import isclose
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.cases import highlights as highlights_module
@@ -51,11 +53,14 @@ from ahrefs_cases.classify.recalc import ruleset_by_version
 from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
 from ahrefs_cases.classify.series import MetricSeries, bought_countries, load_series
 from ahrefs_cases.classify.thresholds import Windows
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource, TargetMode
 from ahrefs_cases.storage.geo import rows_note
 from ahrefs_cases.storage.models.project import Project
 from ahrefs_cases.storage.models.verdict import Verdict
+
+logger = logging.getLogger(__name__)
 
 CASE_GROUPS = frozenset({Group.GOOD, Group.MEDIUM})
 """Кому положен кейс. Шаблон у «хороших» и «средних» пока один — решение ТЗ,
@@ -350,7 +355,8 @@ async def build_cases(
 
     Порядок — по домену, а у кампаний одного сайта — по началу периода: два
     запуска подряд обязаны давать одинаковый список, иначе его не сравнить
-    глазами.
+    глазами. Упавшая сборка одного проекта — его исход `failed` с причиной, а
+    не конец сборки всех (Z54); упавший запрос к базе — конец, как прежде.
     """
     ruleset = await (ruleset_by_version(session, version) if version else active_ruleset(session))
     # Окна нужны сверке чисел: точки пересчитываются по окнам **той версии
@@ -358,17 +364,29 @@ async def build_cases(
     windows = thresholds_of(ruleset).windows
     projects = await _projects(session, domain, only)
     verdicts = await _verdicts(session, ruleset.id)
-    attempts = [
-        await _attempt(
-            session,
-            project,
-            verdicts.get(project.id),
-            ruleset.version,
-            source=source,
-            windows=windows,
-        )
-        for project in projects
-    ]
+    attempts: list[CaseAttempt] = []
+    for project in projects:
+        verdict = verdicts.get(project.id)
+        try:
+            attempt = await _attempt(
+                session, project, verdict, ruleset.version, source=source, windows=windows
+            )
+        except SQLAlchemyError:
+            # Сбой базы — не сбой кейса: упавший запрос рвёт транзакцию всем
+            # следующим проектам, и «не собран» у каждого назвал бы чужую причину.
+            raise
+        except Exception as exc:
+            # Сбой одного проекта — его исход, а не конец сборки всех (Z54).
+            logger.exception(
+                "case_build_failed", extra={"project_id": project.id, "domain": project.domain}
+            )
+            attempt = CaseAttempt(
+                project.domain,
+                CaseOutcome.FAILED,
+                project_id=project.id,
+                detail=failure_reason(exc),
+            )
+        attempts.append(attempt)
     return CaseReport(ruleset_version=ruleset.version, attempts=tuple(attempts))
 
 
