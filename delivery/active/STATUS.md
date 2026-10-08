@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_transport.py::test_lost_response_is_not_bought_twice
 - **diagnosis:** n/a reason=причина названа в реестре (Z52): `ahrefs_transport._get_with_retries` повторяет любой `httpx.TimeoutException` и `TransportError` — и запрос, который не ушёл, и запрос, ответ на который потерян после отправки; второй Ahrefs мог выполнить и оплатить
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом третьим — «продолжаем работу»; примеры M99–M101 выведены агентом)
