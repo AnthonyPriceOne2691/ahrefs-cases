@@ -61,4 +61,5 @@ class AhrefsFixture:
             units_estimated=units,
             units_actual=units,
             source=self.source,
+            units_per_row=spec.row_units() if points else None,
         )

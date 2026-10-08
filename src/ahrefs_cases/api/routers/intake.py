@@ -20,6 +20,7 @@ intake`. Загружают его PR-отдел и руководители —
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterable
 
@@ -58,7 +59,9 @@ async def intake_file(
     """Принять список из файла: XLSX или CSV телом запроса."""
     data = await _read_body(request)
     try:
-        return await _accept(session, read_upload(filename, data))
+        # Разбор книги — работа процессора, и в своём потоке он не держит ответы
+        # другим запросам единственного процесса API (Z52).
+        return await _accept(session, await asyncio.to_thread(read_upload, filename, data))
     except UnknownSourceError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except UnfitSourceError as exc:
@@ -73,7 +76,9 @@ async def intake_link(session: SessionDep, link: IntakeLink) -> IntakeReportView
     отказ тот же — отличается только подлежащее.
     """
     try:
-        return await _accept(session, read_gsheet(link.url))
+        # Google отвечает секундами, а `read_gsheet` ждёт его синхронно: в своём
+        # потоке, иначе стоит весь API — вход, журнал, карточки у всех (Z52).
+        return await _accept(session, await asyncio.to_thread(read_gsheet, link.url))
     except (SheetLinkError, SheetAccessError) as exc:
         # Закрытая таблица отвечает **страницей входа со статусом 200** (L10).
         # Читатель это различает; роутер обязан донести причину как отказ, а не

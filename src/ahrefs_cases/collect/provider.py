@@ -69,6 +69,9 @@ class HistoryResult:
     units_estimated: int
     units_actual: int
     source: MetricSource
+    units_per_row: int | None = None
+    """Цена строки: у live — заголовок `x-api-units-cost-row` (факт; нет его — `None`), у
+    fixture — цена строки модели endpoint'а, той же, что дала её units."""
 
     @property
     def is_empty(self) -> bool:

@@ -40,6 +40,7 @@ _NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 _RETRY_AFTER_HEADER = "Retry-After"
 _UNITS_ACTUAL_HEADER = "x-api-units-cost-total-actual"
 _UNITS_TOTAL_HEADER = "x-api-units-cost-total"
+_UNITS_ROW_HEADER = "x-api-units-cost-row"
 
 
 class AhrefsHTTPError(RuntimeError):
@@ -63,6 +64,10 @@ class TransportResponse:
     payload: dict[str, Any]
     units_actual: int
     units_estimated: int
+    units_per_row: int | None = None
+    """Цена строки из `x-api-units-cost-row`. Нет заголовка — `None`: цену строки
+    журнал хранит как факт, и подставить сюда модель значило бы выдать догадку за факт."""
+
     headers: Mapping[str, str] = field(default_factory=dict)
     """Заголовки ответа целиком.
 
@@ -186,6 +191,7 @@ class AhrefsTransport:
             # покажет, когда `-total-actual` осмыслен.
             units_actual=actual or estimated,
             units_estimated=estimated,
+            units_per_row=_header_optional_int(response, _UNITS_ROW_HEADER),
             headers=dict(response.headers),
         )
 
@@ -215,6 +221,18 @@ def _retry_after_seconds(raw: str | None, *, now: datetime | None = None) -> flo
     if until.tzinfo is None:
         until = until.replace(tzinfo=UTC)
     return max(0.0, (until - (now or datetime.now(UTC))).total_seconds())
+
+
+def _header_optional_int(response: httpx.Response, name: str) -> int | None:
+    """Необязательный заголовок числом; нет его или он не число — `None`."""
+    raw = response.headers.get(name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("ahrefs_header_not_a_number", extra={"header": name, "value": raw})
+        return None
 
 
 def _header_int(response: httpx.Response, name: str) -> int:

@@ -12,7 +12,9 @@ E12 (окна точек у сметы и у задачи одни).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from io import BytesIO
 
@@ -785,3 +787,35 @@ def test_quota_source_follows_the_key_not_the_series_mode(
     monkeypatch.setattr(config.ahrefs, "api_key", "ключ")
     # Режим рядов остаётся фикстурным — источник остатка от него не зависит.
     assert isinstance(build_quota(), LiveQuota)
+
+
+def test_reading_a_sheet_does_not_stop_the_api(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Пока Google отдаёт таблицу, API отвечает другим: чтение идёт в отдельном потоке.
+
+    Прежде синхронный `httpx.get` шёл прямо в async-обработчике, и у единственного процесса
+    uvicorn стоял весь сервис до ответа Google — вход, журнал, карточки у всех (M102, Z52).
+    """
+    body = _csv(list(HEADER), [_row(0)])
+
+    def slow_google(_url: str) -> bytes:
+        time.sleep(1.0)
+        return body
+
+    from ahrefs_cases.intake import gsheet_source
+
+    monkeypatch.setattr(gsheet_source, "_http_fetch", slow_google)
+    headers = _headers(client)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        intake = pool.submit(client.post, "/api/intake/link", json={"url": SHEET}, headers=headers)
+        time.sleep(0.2)
+        started = time.perf_counter()
+        health = client.get("/api/health")
+        waited = time.perf_counter() - started
+        response = intake.result(timeout=30)
+
+    assert health.status_code == 200
+    assert waited < 0.5, f"health ждал {waited:.2f} с — цикл событий стоял на чтении таблицы"
+    assert (response.status_code, response.json()["accepted"]) == (200, 1)

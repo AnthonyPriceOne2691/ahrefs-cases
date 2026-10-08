@@ -5,9 +5,9 @@
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_sheet_off_the_loop.py::test_reading_a_sheet_does_not_stop_the_api
+- **repro_test:** tests/test_api_intake.py::test_reading_a_sheet_does_not_stop_the_api
 - **diagnosis:** n/a reason=причина названа в реестре (Z52): `api/routers/intake.intake_link` зовёт синхронный `read_gsheet` → `httpx.get` прямо в async-обработчике, и цикл событий единственного процесса uvicorn стоит, пока Google не ответит
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом четвёртым — «продолжаем работу»; примеры M102–M104 выведены агентом)

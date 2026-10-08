@@ -60,6 +60,7 @@ class AhrefsLive:
             units_estimated=response.units_estimated or spec.estimate_units(),
             units_actual=response.units_actual,
             source=self.source,
+            units_per_row=response.units_per_row,
         )
 
 
