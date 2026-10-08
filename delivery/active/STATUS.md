@@ -3,15 +3,15 @@
 - **slug:** rights-refresh
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** S
+- **class:** M
 - **kind:** bugfix
 - **repro_test:** web/src/auth/__tests__/rights-refresh.test.tsx
 - **diagnosis:** n/a reason=причина названа в реестре (Z44): права экрана — снимок `/api/auth/me` на входе и загрузке страницы (`auth/AuthProvider.tsx`), и отобранное право видно до перезагрузки; `403` клиент отдаёт экрану текстом, но «кто я» не перечитывает
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z44 шестым пунктом — «продолжаем работу»; примеры M110–M112 выведены агентом)
-- **human_ok_plan:** n/a reason=класс S
+- **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** n/a reason=артефакта нет: меняется слой входа экрана, его проверяют тесты vitest и прокликивание на стенде
