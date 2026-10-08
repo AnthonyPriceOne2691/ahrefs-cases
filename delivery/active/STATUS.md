@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** card-geo-note
+- **slug:** case-build-isolated
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
-- **kind:** feature
-- **repro_test:** n/a reason=не дефект: экранная часть Z53 и сжатие пустого брифа по слову владельца
-- **diagnosis:** n/a reason=не дефект кода
-- **phase:** verify
+- **kind:** bugfix
+- **repro_test:** tests/test_case_isolation.py::test_one_broken_verdict_does_not_drop_the_pack
+- **diagnosis:** n/a reason=причина названа в реестре (Z54): `builder._attempt` и `archive.pack` ловят только `ContentBlockedError`, и исключение одного проекта выходит из цикла по всем — пачка не собирается, прогон кейсов падает без журнала судеб
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-07 by=human:anthony (07.10: «при смене страны только предупреждать»; про пустой бриф одной строкой — «да, сделай заодно с долгами»; примеры M88–M90 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z54 первым пунктом — «продолжаем работу»; примеры M91–M95 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: экран — тесты экрана и прокликивание на стенде
+- **artifact_oracle:** n/a reason=PDF рисует прежний рендер; поставка решает, попадает ли он в пачку, — это проверяют тесты пачки и журнала
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=экран исполняется тестами vitest и прокликиванием на стенде
-- **irreversible_surfaces:** none reason=миграций нет; правка экрана откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=сборка и пачка исполняются тестами на настоящей базе, задача очереди — прокликиванием «Собрать кейсы» на стенде
+- **irreversible_surfaces:** none reason=миграций нет: исход `failed` у журнала уже есть; правка откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: карточка проекта со сменённой первой страной показывает предупреждение «Цифры не по первой стране»; карточка без брифа — одна строка вместо двадцати пяти
+- **observe_signal:** на проде после выкатки: «Пересобрать кейсы» при передаче команде собирает пачку, как прежде (журнал без `failed`); первый проект с упавшей сборкой — строка «упал — не собран: …», прогон `partial`, архив из остальных
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
