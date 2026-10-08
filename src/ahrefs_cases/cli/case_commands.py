@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
@@ -18,21 +19,39 @@ from typing import TextIO
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.cases.builder import build_cases
-from ahrefs_cases.cases.model import SUBJECT_LABELS, CaseData, CaseOutcome, CaseReport, Change
+from ahrefs_cases.cases.model import (
+    SUBJECT_LABELS,
+    CaseData,
+    CaseOutcome,
+    CaseReport,
+    Change,
+    crash_reason,
+)
 from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.cases.store import next_version, store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.cli.source import reading_source
-from ahrefs_cases.export.archive import EmptyArchiveError, Packed, SkippedCase, ToPack, pack
+from ahrefs_cases.export.archive import (
+    EmptyArchiveError,
+    Packed,
+    SkippedCase,
+    ToPack,
+    failed_lines,
+    pack,
+)
 from ahrefs_cases.export.pdf_renderer import render_pdf
 from ahrefs_cases.storage._enums import MetricSource, RunItemOutcome
 from ahrefs_cases.storage.session import get_sessionmaker
 
+logger = logging.getLogger(__name__)
+
 EXIT_BAD_SOURCE = 2
+EXIT_CASE_FAILED = 3
 EXIT_CONTENT_BLOCKED = 4
 """Коды возврата команд кейсов. У контент-запрета свой, потому что действие по
-нему другое: править входной файл, а не искать поломку в логах."""
+нему другое: править входной файл, а не искать поломку в логах. Упавшая сборка
+кейса — тот же 3, что упавший прогон: смотреть журнал и логи (Z54)."""
 
 
 async def show_cases(
@@ -69,15 +88,20 @@ async def show_cases(
     return 0
 
 
-def _print_refusals(report: CaseReport, *, stream: TextIO = sys.stdout) -> None:
-    """Домены, которым отказано из-за происхождения чисел, — с причиной.
+def _print_refusals(report: CaseReport, *, stream: TextIO | None = None) -> None:
+    """Домены, которым отказано из-за происхождения чисел, и упавшие — с причиной.
 
     Печатается всегда, когда такие есть: счётчик в отчёте говорит «сколько», а
     человеку нужно «кому и почему». Молчаливый отказ здесь читается как
-    поломка сборки, хотя это сработавшее правило.
+    поломка сборки, хотя это сработавшее правило. Поток по умолчанию берётся в
+    момент вызова: умолчание `sys.stdout` в подписи запомнило бы поток времени
+    импорта, и перенаправленный вывод его бы не увидел.
     """
+    out = stream or sys.stdout
     for attempt in report.by_outcome(CaseOutcome.VERDICT_MISMATCH):
-        print(f"{attempt.domain}: {attempt.detail}", file=stream)
+        print(f"{attempt.domain}: {attempt.detail}", file=out)
+    for attempt in report.by_outcome(CaseOutcome.FAILED):
+        print(f"не собран {attempt.domain}: {attempt.detail}", file=out)
 
 
 def _case_lines(domain: str, case: CaseData) -> list[str]:
@@ -114,12 +138,16 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
             print(f"проект не найден: {domain}", file=sys.stderr)
             return EXIT_BAD_SOURCE
         built = report.by_outcome(CaseOutcome.BUILT)
+        crashed = bool(report.by_outcome(CaseOutcome.FAILED))
         if not built:
             print(f"кейс не собран — {report.attempts[0].outcome.value}", file=sys.stderr)
             print("\n".join(report.as_lines()), file=sys.stderr)
             _print_refusals(report, stream=sys.stderr)
-            return EXIT_BAD_SOURCE
+            return EXIT_CASE_FAILED if crashed else EXIT_BAD_SOURCE
 
+        # Кампаний у сайта бывает две (Z39): упавшая или отказанная печатается и
+        # рядом с собранной, иначе молчание о ней читалось бы как «собрано всё».
+        _print_refusals(report, stream=sys.stderr)
         for attempt in built:
             if attempt.case is None or attempt.project_id is None or attempt.verdict_id is None:
                 continue
@@ -132,6 +160,15 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
             except ContentBlockedError as exc:
                 print(f"{attempt.domain}: {exc}", file=sys.stderr)
                 return EXIT_CONTENT_BLOCKED
+            except Exception as exc:
+                # Упавший рисунок одной кампании не отменяет вторую (Z54).
+                logger.exception(
+                    "case_render_failed",
+                    extra={"project_id": attempt.project_id, "domain": attempt.domain},
+                )
+                print(f"не собран {attempt.domain}: {crash_reason(exc)}", file=sys.stderr)
+                crashed = True
+                continue
             # Запись идёт после файла: кейса без артефакта в базе не бывает,
             # а артефакт без записи — просто файл, который можно пересобрать.
             case_row = await store_case(
@@ -146,7 +183,7 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
                 f"версия кейса {case_row.version}, sha256 {artifact.checksum[:12]}"
             )
         await session.commit()
-    return 0
+    return EXIT_CASE_FAILED if crashed else 0
 
 
 async def pack_cases(source: MetricSource | None = None) -> int:
@@ -164,9 +201,11 @@ async def pack_cases(source: MetricSource | None = None) -> int:
     print("\n".join(result.report.as_lines()))
     _print_refusals(result.report)
     if result.bundle is None:
-        print(result.empty, file=sys.stderr)
-        return EXIT_BAD_SOURCE
+        print("\n".join([result.empty, *failed_lines(result.failed)]), file=sys.stderr)
+        return EXIT_CASE_FAILED if result.crashed else EXIT_BAD_SOURCE
     print("\n".join(result.bundle.as_lines()))
+    if result.crashed:
+        return EXIT_CASE_FAILED
     return EXIT_CONTENT_BLOCKED if result.skipped else 0
 
 
@@ -187,12 +226,21 @@ class CasePack:
     skipped: tuple[SkippedCase, ...]
     """Не попали в архив по контент-запрету — и когда он собран, и когда нет."""
 
+    failed: tuple[SkippedCase, ...] = ()
+    """Упали при рисовании PDF (Z54) — и когда архив собран, и когда нет."""
+
     empty: str = ""
     """Почему архива нет; пусто — архив есть."""
 
+    @property
+    def crashed(self) -> bool:
+        """Упал ли хоть один кейс — при сборке или при рисовании PDF."""
+        return bool(self.failed or self.report.by_outcome(CaseOutcome.FAILED))
+
     def lines(self) -> list[str]:
         """Сводка для лога: исходы сборки, потом архив или почему его нет."""
-        return [*self.report.as_lines(), *(self.bundle.as_lines() if self.bundle else [self.empty])]
+        tail = self.bundle.as_lines() if self.bundle else [self.empty, *failed_lines(self.failed)]
+        return [*self.report.as_lines(), *tail]
 
 
 async def pack_built(
@@ -213,8 +261,10 @@ async def pack_built(
     try:
         bundle = await _pack_and_store(session, report, output_dir=output_dir, name=name)
     except EmptyArchiveError as exc:
-        return CasePack(report=report, bundle=None, skipped=exc.skipped, empty=str(exc))
-    return CasePack(report=report, bundle=bundle, skipped=bundle.skipped)
+        return CasePack(
+            report=report, bundle=None, skipped=exc.skipped, failed=exc.failed, empty=str(exc)
+        )
+    return CasePack(report=report, bundle=bundle, skipped=bundle.skipped, failed=bundle.failed)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,12 +296,21 @@ def case_fates(result: CasePack) -> list[CaseFate]:
     """Судьба каждого рассмотренного проекта — исход и причина словами.
 
     Собранный кейс — `ok` с именем файла в пачке, собранный и не отданный —
-    `case_blocked` с причиной запрета: оба ищутся по номеру проекта, домен у
-    двух кампаний одного сайта один (Z39). У «вердикт не про эти данные» —
-    объяснение и совет сборки (`builder._mismatch`).
+    `case_blocked` с причиной запрета, упавший при рисовании — `failed` с
+    причиной: все ищутся по номеру проекта, домен у двух кампаний одного сайта
+    один (Z39). У «вердикт не про эти данные» — объяснение и совет сборки
+    (`builder._mismatch`), у упавшей сборки — исключение и его текст.
+
+    Упавший кейс пишется общим `failed` («упал»), а не своим `case_…`: прогон с
+    ним закрывается `partial`, как с упавшим запросом, и экран зовёт смотреть
+    журнал (Z54). Память о пустом домене его не путает: у пустого домена нет
+    вердикта «хороший» или «средний», и до сборки он не доходит.
     """
     packed = {one.project_id: one.arcname for one in result.bundle.packed} if result.bundle else {}
-    blocked = {one.project_id: one.reason for one in result.skipped}
+    refused = {one.project_id: (RunItemOutcome.CASE_BLOCKED, one.reason) for one in result.skipped}
+    refused |= {
+        one.project_id: (RunItemOutcome.FAILED, f"не собран: {one.reason}") for one in result.failed
+    }
     version = result.report.ruleset_version
     fates: list[CaseFate] = []
     for attempt in result.report.attempts:
@@ -262,7 +321,7 @@ def case_fates(result: CasePack) -> list[CaseFate]:
             outcome, reason = (
                 (RunItemOutcome.OK, f"кейс собран: {packed[pid]}")
                 if pid in packed
-                else (RunItemOutcome.CASE_BLOCKED, blocked[pid])
+                else refused[pid]
             )
         elif attempt.outcome is CaseOutcome.NO_VERDICT:
             outcome = RunItemOutcome.CASE_NO_VERDICT
@@ -271,6 +330,8 @@ def case_fates(result: CasePack) -> list[CaseFate]:
             )
         elif attempt.outcome is CaseOutcome.VERDICT_MISMATCH:
             outcome, reason = RunItemOutcome.CASE_VERDICT_MISMATCH, attempt.detail
+        elif attempt.outcome is CaseOutcome.FAILED:
+            outcome, reason = RunItemOutcome.FAILED, f"не собран: {attempt.detail}"
         else:
             outcome, reason = _QUIET_FATES[attempt.outcome]
         fates.append(CaseFate(pid, attempt.domain, outcome, reason))

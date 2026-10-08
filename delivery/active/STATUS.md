@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_case_isolation.py::test_one_broken_verdict_does_not_drop_the_pack
 - **diagnosis:** n/a reason=причина названа в реестре (Z54): `builder._attempt` и `archive.pack` ловят только `ContentBlockedError`, и исключение одного проекта выходит из цикла по всем — пачка не собирается, прогон кейсов падает без журнала судеб
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z54 первым пунктом — «продолжаем работу»; примеры M91–M95 выведены агентом)
