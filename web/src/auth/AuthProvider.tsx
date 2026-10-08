@@ -19,6 +19,7 @@ import type { ReactNode } from 'react';
 import {
   ApiError,
   forgetToken,
+  onForbidden,
   onSessionEnded,
   rememberToken,
   request,
@@ -38,10 +39,39 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/**
+ * Права — снимок «кто я», а сервер мог их сменить, пока вкладка открыта (Z44): до
+ * перезагрузки кнопка «Удалить проект» оставалась видна, а сервер отвечал `403`.
+ * Перечитывается на отказе `403` и при возврате на вкладку; отказ самого «кто я»
+ * нового перечитывания не зовёт (`quietForbidden`), `401` заканчивает сессию, как прежде.
+ */
+function useRightsFollowServer(setUser: (me: WhoAmI) => void): void {
+  useEffect(() => {
+    const refresh = () => {
+      if (!storedToken()) return;
+      request<WhoAmI>('/api/auth/me', { quietForbidden: true })
+        .then(setUser)
+        .catch((error: unknown) => {
+          if (!(error instanceof ApiError)) console.error('me refresh failed', error);
+        });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    onForbidden(refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      onForbidden(null);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [setUser]);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<WhoAmI | null>(null);
   const [loading, setLoading] = useState(Boolean(storedToken()));
   const [expired, setExpired] = useState(false);
+  useRightsFollowServer(setUser);
 
   const logout = useCallback(() => {
     forgetToken();

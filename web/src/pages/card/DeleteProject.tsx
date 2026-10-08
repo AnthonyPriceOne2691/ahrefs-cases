@@ -28,14 +28,27 @@ interface Props {
   onDeleted: (result: ProjectDeletion) => void;
 }
 
-/** Кнопка — только тому, у кого есть право: итог из `/me` с личными решениями. */
+/**
+ * Кнопка — только тому, у кого есть право: итог из `/me` с личными решениями.
+ *
+ * Право могут отобрать, пока вкладка открыта: отказ сервера перечитывает «кто я»
+ * (Z44), и кнопка пропадает. Но если человек уже спросил «что уйдёт», блок
+ * остаётся до «Отмена» — иначе он исчез бы вместе с отказом, и нажавший не узнал
+ * бы, почему кнопки больше нет.
+ */
 export function DeleteProject(props: Props) {
   const { can } = useAuth();
-  return can('delete_projects') ? <AskAndDelete {...props} /> : null;
+  const [asked, setAsked] = useState(false);
+  if (!can('delete_projects') && !asked) return null;
+  return <AskAndDelete {...props} asked={asked} onAsked={setAsked} />;
 }
 
-function AskAndDelete({ projectId, domain, onDeleted }: Props) {
-  const [asked, setAsked] = useState(false);
+interface AskProps extends Props {
+  asked: boolean;
+  onAsked: (asked: boolean) => void;
+}
+
+function AskAndDelete({ projectId, domain, onDeleted, asked, onAsked }: AskProps) {
   const [error, setError] = useState<string | null>(null);
   const preview = useQuery({
     queryKey: ['project', projectId, 'deletion'],
@@ -54,7 +67,7 @@ function AskAndDelete({ projectId, domain, onDeleted }: Props) {
   if (!asked) {
     return (
       <Group>
-        <Button size="compact-sm" variant="light" color="red" onClick={() => setAsked(true)}>
+        <Button size="compact-sm" variant="light" color="red" onClick={() => onAsked(true)}>
           Удалить проект
         </Button>
       </Group>
@@ -75,7 +88,7 @@ function AskAndDelete({ projectId, domain, onDeleted }: Props) {
         busy={drop.isPending}
         disabled={!preview.data}
         onConfirm={() => drop.mutate()}
-        onCancel={() => setAsked(false)}
+        onCancel={() => onAsked(false)}
       />
       {error && (
         <Text size="sm" c="red" mt="xs">

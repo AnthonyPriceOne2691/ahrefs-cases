@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** web/src/auth/__tests__/rights-refresh.test.tsx
 - **diagnosis:** n/a reason=причина названа в реестре (Z44): права экрана — снимок `/api/auth/me` на входе и загрузке страницы (`auth/AuthProvider.tsx`), и отобранное право видно до перезагрузки; `403` клиент отдаёт экрану текстом, но «кто я» не перечитывает
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z44 шестым пунктом — «продолжаем работу»; примеры M110–M112 выведены агентом)
