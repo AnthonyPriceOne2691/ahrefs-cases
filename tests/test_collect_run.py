@@ -215,7 +215,7 @@ async def test_empty_memory_outlives_its_own_hits(db_session: AsyncSession, tmp_
     no_data, remembered = RunItemOutcome.SKIPPED_NO_DATA, RunItemOutcome.OK
     assert outcomes == [no_data, no_data, remembered, remembered, remembered]
 
-    project_id = (await db_session.execute(select(Project.id))).scalars().one()
+    project = (await db_session.execute(select(Project))).scalars().one()
     real_checks = (
         (
             await db_session.execute(
@@ -228,7 +228,7 @@ async def test_empty_memory_outlives_its_own_hits(db_session: AsyncSession, tmp_
         .scalars()
         .all()
     )
-    assert await empty_since(db_session, project_id) == real_checks[-1]
+    assert await empty_since(db_session, project) == real_checks[-1]
 
 
 async def test_cases_stage_does_not_break_empty_memory(
@@ -244,8 +244,8 @@ async def test_cases_stage_does_not_break_empty_memory(
     await _load(db_session, tmp_path, ["empty.example.com"])
     for _ in range(2):
         await collect_all(db_session, AhrefsFixture())
-    project_id = (await db_session.execute(select(Project.id))).scalars().one()
-    checked = await empty_since(db_session, project_id)
+    project = (await db_session.execute(select(Project))).scalars().one()
+    checked = await empty_since(db_session, project)
     assert checked is not None, "два пустых ответа подряд включают память"
 
     author = await system_user(db_session)
@@ -253,14 +253,14 @@ async def test_cases_stage_does_not_break_empty_memory(
     await add_item(
         db_session,
         run,
-        project_id=project_id,
+        project_id=project.id,
         raw_domain="empty.example.com",
         outcome=RunItemOutcome.CASE_NO_VERDICT,
         reason="нет вердикта по действующим порогам",
     )
     await finish_run(db_session, run)
 
-    assert await empty_since(db_session, project_id) == checked
+    assert await empty_since(db_session, project) == checked
     await collect_all(db_session, AhrefsFixture())
     last = (
         (await db_session.execute(select(RunItem).order_by(RunItem.id.desc()).limit(1)))

@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ahrefs_cases.collect.endpoints import ALL_SPECS
 from ahrefs_cases.storage._enums import LedgerKind, Metric
+from ahrefs_cases.storage.models.project import Project
+from ahrefs_cases.storage.models.run import RunItem
 from ahrefs_cases.storage.models.units_ledger import UnitsLedger
 
 _METRICS_BY_ENDPOINT = {spec.name: frozenset(spec.metrics.values()) for spec in ALL_SPECS}
@@ -27,21 +29,41 @@ _METRICS_BY_ENDPOINT = {spec.name: frozenset(spec.metrics.values()) for spec in 
 
 
 async def bought_metrics(session: AsyncSession, domain: str) -> frozenset[Metric] | None:
-    """Метрики, за которые по домену платили.
+    """Метрики, за которые по домену платили, — кроме покупок удалённых проектов.
 
     `None` — журнал про этот домен не знает ничего (ни одной строки расхода):
     так бывает у данных, собранных до появления журнала. Тогда честный ответ —
     «неизвестно», а не «не покупали»: пустое множество утверждало бы то, чего
     журнал не говорил.
+
+    Журнал расхода удаление переживает, и проект, загруженный заново, до своего
+    шага 2 получал подпись «нет у Ahrefs» по покупке удалённого (Z40). Покупка не
+    считается, если её прогон знал этот домен только у удалённых проектов; был в
+    прогоне живой проект домена — считается, как прежде. Домен журналу знаком, а
+    всё куплено удалёнными — пустое множество: «не собирали».
     """
-    rows = await session.execute(
-        select(UnitsLedger.endpoint)
-        .where(UnitsLedger.target == domain, UnitsLedger.kind == LedgerKind.SPENT)
-        .distinct()
+    dead = exists().where(
+        RunItem.run_id == UnitsLedger.run_id,
+        RunItem.project_id.is_(None),
+        RunItem.raw_domain == UnitsLedger.target,
     )
-    endpoints = {name for (name,) in rows if name}
-    if not endpoints:
+    live = exists().where(
+        RunItem.run_id == UnitsLedger.run_id,
+        RunItem.project_id == Project.id,
+        Project.domain == UnitsLedger.target,
+    )
+    rows = (
+        await session.execute(
+            select(UnitsLedger.endpoint, (live | ~dead).label("counts"))
+            .where(UnitsLedger.target == domain, UnitsLedger.kind == LedgerKind.SPENT)
+            .distinct()
+        )
+    ).all()
+    if not any(name for name, _ in rows):
         return None
     return frozenset(
-        metric for name in endpoints for metric in _METRICS_BY_ENDPOINT.get(name, frozenset())
+        metric
+        for name, counts in rows
+        if name and counts
+        for metric in _METRICS_BY_ENDPOINT.get(name, frozenset())
     )

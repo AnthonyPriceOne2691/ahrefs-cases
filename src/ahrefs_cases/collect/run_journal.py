@@ -305,15 +305,18 @@ async def fates(session: AsyncSession, run_id: int, *, limit: int) -> list[Proje
     return list(seen.values())[:limit]
 
 
-FateKey = int | str  # номер проекта, а у удалённого — домен строки журнала
+FateKey = int | str  # номер проекта; у строки старше `project_ref` — домен
 
 
 def _fate_key(item: RunItem) -> FateKey:
     """Удаление проекта обнуляет ссылку у строк журнала (`ON DELETE SET NULL`), и
     ключ по `project_id` сливал все удалённые проекты прогона в одну судьбу — с
-    доменом первого и суммой units всех. Домен их разводит; две удалённые
-    кампании одного сайта в одном прогоне развести нечем (граница, Z41)."""
-    return item.project_id if item.project_id is not None else item.raw_domain
+    доменом первого и суммой units всех. Номер проекта строка помнит и после
+    удаления (`project_ref`), и две удалённые кампании сайта остаются двумя
+    судьбами (Z41); домен — только у строк, удалённых до этой колонки."""
+    if item.project_id is not None:
+        return item.project_id
+    return item.project_ref if item.project_ref is not None else item.raw_domain
 
 
 def _fold_by_project(items: Sequence[RunItem]) -> dict[FateKey, RunItemOutcome]:

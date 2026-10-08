@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import func, literal, select
+from sqlalchemy import and_, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -190,7 +190,7 @@ REMEMBERED_EMPTY = "истории нет, проверено"
 прогон из памяти продлевал бы её бесконечно."""
 
 
-async def empty_since(session: AsyncSession, project_id: int) -> datetime | None:
+async def empty_since(session: AsyncSession, project: Project) -> datetime | None:
     """Когда по проекту последний раз получили пустую историю — если это
     по-прежнему его последний известный исход.
 
@@ -209,6 +209,11 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
     сборки кейсов (`CASE_OUTCOMES`) — тоже: Ahrefs она не спрашивает, а судьбу
     пишет каждому проекту, пустому домену тоже, и «вердикта нет» после двух
     «нет данных» рвало бы цепочку — следующий сбор покупал бы пустоту заново.
+
+    Строки удалённых проектов того же домена считаются тоже: удаление обнуляет
+    их `project_id`, и проект, загруженный заново, покупал бы пустоту и
+    подтверждал её дважды заново (Z40). Живые кампании сайта памятью не
+    делятся — у каждой она своя, как прежде.
     """
     needed = config.ahrefs.empty_confirmations
     from_memory = (RunItem.outcome == RunItemOutcome.OK) & RunItem.reason.startswith(
@@ -218,7 +223,10 @@ async def empty_since(session: AsyncSession, project_id: int) -> datetime | None
         select(RunItem.outcome, Run.finished_at)
         .join(Run, Run.id == RunItem.run_id)
         .where(
-            RunItem.project_id == project_id,
+            or_(
+                RunItem.project_id == project.id,
+                and_(RunItem.project_id.is_(None), RunItem.raw_domain == project.domain),
+            ),
             ~from_memory,
             RunItem.outcome.not_in(CASE_OUTCOMES),
         )

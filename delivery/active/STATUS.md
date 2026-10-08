@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_deleted_projects.py::test_empty_domain_memory_survives_deletion
 - **diagnosis:** n/a reason=причины названы в реестре (Z40, Z41): память о пустом домене (`cache.empty_since`) и судьба в журнале (`run_journal._fate_key`) держатся за `run_items.project_id`, а удаление проекта обнуляет его (`ON DELETE SET NULL`); «что покупали» (`purchases.bought_metrics`) читает журнал расхода по домену и не отличает покупки удалённого проекта от покупок живого
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z40 и Z41 пятым пунктом — «продолжаем работу»; примеры M105–M109 выведены агентом)

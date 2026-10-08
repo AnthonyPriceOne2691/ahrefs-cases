@@ -513,7 +513,8 @@ jobs:
       AHREFS_PROVIDER: fixture
       # База в CI одноразовая, поэтому разрушающий тест цикла миграций включён:
       # локально он выключен, чтобы не снести дев-базу разработчика.
-      MIGRATION_CYCLE_TEST: "1"
+      # Имя базы, которую цикл миграций разрешено разрушить (tests/test_migrations.py).
+      MIGRATION_CYCLE_TEST: "cases"
 
     steps:
       # Версии те же, что в соседних job'ах: на v4/v5 GitHub печатал
