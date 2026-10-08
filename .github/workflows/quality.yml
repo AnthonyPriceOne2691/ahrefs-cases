@@ -259,6 +259,13 @@ jobs:
         run: |
           .venv/bin/pre-commit run --all-files --show-diff-on-failure --verbose
 
+      # Тесты экрана: до 08.10.2026 vitest в CI не гонялся вовсе (Z52), и правка экрана,
+      # ломающая свой тест, проходила зелёной. Необработанная ошибка сьюта роняет прогон
+      # сам (vitest 5), пока `web/vitest.config.ts` её не глушит (Z24) — это проверяет
+      # tests/test_ci_gates_judge.py.
+      - name: Frontend tests (vitest)
+        run: npm test --prefix "${LINT_FE_DIR:-web}"
+
       - name: Gate coverage (все гейты подключены)
         if: always()
         run: bash scripts/lint/check_gate_coverage.sh

@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_ci_gates_judge.py::test_screen_tests_judge_in_ci
 - **diagnosis:** n/a reason=причины названы в реестре (Z52, Z24): в `.github/workflows/quality.yml` нет шага vitest — тесты экрана судят только локально; необработанные ошибки сьюта прежде печатались при нулевом коде возврата
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с этим пунктом седьмым — «продолжаем работу»; примеры M113–M114 выведены агентом)
