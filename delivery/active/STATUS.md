@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** vitest-in-ci
+- **slug:** sqlalchemy-2-1
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** S
 - **kind:** bugfix
-- **repro_test:** tests/test_ci_gates_judge.py::test_screen_tests_judge_in_ci
-- **diagnosis:** n/a reason=причины названы в реестре (Z52, Z24): в `.github/workflows/quality.yml` нет шага vitest — тесты экрана судят только локально; необработанные ошибки сьюта прежде печатались при нулевом коде возврата
-- **phase:** verify
+- **repro_test:** tests/test_collect_cache.py
+- **diagnosis:** n/a reason=причина названа в реестре (Z48): `collect/cache.share_twin_points` строит DISTINCT ON устаревшим `.distinct(expr)`, и на SQLAlchemy 2.1 предупреждение при `filterwarnings = error` роняет тесты переноса месяцев; граница `<2.1` в `pyproject.toml` держала проект на 2.0
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с этим пунктом седьмым — «продолжаем работу»; примеры M113–M114 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z48 в плане; 08.10: план с этим пунктом восьмым — «продолжаем работу»; примеры M115–M116 выведены агентом)
 - **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняется шаг CI, его проверяют тест над файлом workflow и сам прогон CI этой ветки
+- **artifact_oracle:** n/a reason=артефакта нет: меняются версия библиотеки и один запрос переноса месяцев, их проверяют тесты кэша и полный сьют
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
-- **new_dependency:** none
-- **runtime_paths:** none reason=шаг исполняется прогоном CI этой ветки — его зелёный и есть исполнение
-- **irreversible_surfaces:** none reason=миграций нет; шаг CI откатывается прежним коммитом
+- **new_dependency:** none reason=подъём версии существующей зависимости (SQLAlchemy 2.0.54 → 2.1.4), нового имени нет — это предмет deps-audit, а не этого поля
+- **runtime_paths:** none reason=перенос месяцев кампаний исполняется тестами кэша на настоящей базе, остальное — полным сьютом на новой версии
+- **irreversible_surfaces:** none reason=миграций нет; версия откатывается прежним lock-файлом; образ прода собирается из `uv.lock` — выкатка руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** CI на main после слияния: шаг «Frontend tests (vitest)» зелёный и в логе — число тестов экрана (сейчас 243)
+- **observe_signal:** на проде после выкатки: `pip freeze` в контейнере `api` — `SQLAlchemy==2.1.4`, здоровье и прогон сбора без ошибок в логах воркера
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
