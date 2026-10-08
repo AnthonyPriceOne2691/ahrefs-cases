@@ -108,8 +108,9 @@ def test_every_declared_dependency_is_pinned_in_the_lock() -> None:
 
     Манифест правят, а lock пересобрать забывают — тогда `--locked` уронит
     сборку в CI. Здесь та же забывчивость ловится раньше, на локальном pytest,
-    и с именем пакета. Граница проверяется, а не только имя: `sqlalchemy<2.1`
-    держит `.distinct(expr)` в `collect/cache.py`, и lock с 2.1 её бы обошёл.
+    и с именем пакета. Граница проверяется, а не только имя: `sqlalchemy<2.2`
+    держит проверенный минорный выпуск — 2.1 уже менял `.distinct(expr)` и
+    `Result.tuples()`, и lock со следующим её бы обошёл (M116).
     """
     locked = _locked()
     missing = [str(req) for req in _declared() if canonicalize_name(req.name) not in locked]
@@ -124,7 +125,7 @@ def test_every_declared_dependency_is_pinned_in_the_lock() -> None:
         if version not in req.specifier
     ]
     assert not conflicts, f"записанная версия нарушает границу манифеста: {conflicts}"
-    assert locked["sqlalchemy"] == [Version("2.0.54")], locked["sqlalchemy"]
+    assert locked["sqlalchemy"] == [Version("2.1.4")], locked["sqlalchemy"]
 
 
 def test_image_installs_only_from_the_lock() -> None:

@@ -1,47 +1,43 @@
-# Verify report: vitest-in-ci
+# Verify report: sqlalchemy-2-1
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M113 (repro) | `tests/test_ci_gates_judge.py::test_screen_tests_judge_in_ci` | **до шага** красный: «шага тестов экрана в CI нет»; после — зелёный |
-| M114 | `tests/test_ci_gates_judge.py::test_unhandled_screen_errors_fail_the_run` + замер | конфиг чист; временный тест с необработанным отказом промиса — «Tests 1 passed · Errors 1 error», код возврата 1; файл замера удалён |
-| Гейты CI | `tests/test_ci_gates_judge.py` | 10 passed |
-| Исполнение шага | `npm test --prefix web` из корня — команда шага | 25 файлов, 243 теста, код 0 |
-| Node 22 и 24 | весь сьют vitest под обеими версиями (`npx -p node@22`) | после правки миниатюр — 25 файлов, 243 passed на обеих; до неё на 22 красные M61, M62 |
-| Миниатюры в браузере | стенд, карточка `brief-ok.example.com`, Chrome по CDP | две картинки `data:image/png`, 1440×1000 |
+| M115 (repro) | `tests/test_collect_cache.py` на 2.1.4 | **до правки** — `SADeprecationWarning` `.distinct(expr)` роняет тесты переноса; после — 16 passed |
+| M116 | `tests/test_dependency_lock.py` (K1) и сверка lock-файла | в `uv.lock` сменилась только `sqlalchemy` 2.0.54 → 2.1.4; `scripts/lock_deps.sh --upgrade-package sqlalchemy` даёт тот же lock |
+| Полный сьют | `pytest` на 2.1.4 | первый прогон — 31 failed: `Result.tuples()` устарел, журнал прогонов отвечал 500; после — 897 passed, 12 skipped |
+| Типы | `mypy` на 2.1.4 | 140 файлов — чисто |
+| Живой вызов | журнал прогонов дев-базы через API на 2.1.4 (клиент с пробросом исключений) | `GET /api/runs` — 200 |
 
 ## Исполнение рисковых путей
 
-- Шаг CI — выполнил его команду `npm test --prefix "${LINT_FE_DIR:-web}"` из корня репозитория, увидел: 25 файлов,
-  243 passed, код 0; на прогоне CI этой ветки тот же шаг идёт после «Install web deps» и проверки инструментов.
-  at=2026-10-08
+- Журнал прогонов на новой версии — вызвал `GET /api/runs` приложения на SQLAlchemy 2.1.4 против дев-базы
+  (75 проектов, 66 прогонов), увидел: 200 и строки прогонов №2362, 2357…; до замены `Result.tuples()` тот же
+  запрос в тестах отвечал 500. at=2026-10-08
 
 ## Что нашла проверка
 
-- **Первый суд тестов экрана в CI нашёл расхождение среды (L246).** На Node 22 (CI) красные M61 и M62 карточки
-  скринов: `FileReader` jsdom не принимает Blob из ответа `fetch`; локально на Node 24 они зелёные, а у того же
-  Blob нет `arrayBuffer`. Миниатюра теперь строится из байтов ответа (`client.downloadBytes`) — одинаково в
-  браузере и под любым Node; в браузере стенда миниатюры рисуются.
+- **Устарело не одно место, а два.** Z48 называл `.distinct(expr)`; полный сьют на 2.1.4 нашёл и
+  `Result.tuples()` в `api/run_rows.py` — под `filterwarnings = error` журнал прогонов отвечал 500 в 30 тестах API.
+  Без полного сьюта на новой версии подъём уехал бы на прод с журналом, пишущим предупреждения.
 
 ## Ревью рисковых мест
 
-**CI.** Шаг — `run: npm test --prefix "${LINT_FE_DIR:-web}"` без `continue-on-error`: красный тест экрана роняет
-джобу `gates`. Минуты CI: сьют — 10 с, установка фронта уже есть в джобе.
+**Интеграция.** Запросы к базе прежние по смыслу: `.ext(distinct_on(MetricPoint.metric, MetricPoint.point_date))`
+компилируется в тот же `SELECT DISTINCT ON (…)`, а `for key, stage, units in (await session.execute(stmt)).all():`
+распаковывает те же строки.
 
-**Производительность.** Риска нет, потому что шаг прибавляет к джобе `gates` около 10 с (`vitest run`, 243 теста)
-при установке фронта, которая в джобе уже есть; лимит джобы — 20 минут.
+**Зависимости.** Риск — в самой смене версии: образ прода собирается из `uv.lock` (`uv export --locked`), и
+2.1.4 приедет с выкаткой. Проверено полным сьютом на 2.1.4 с `filterwarnings = error` и `mypy`; граница `<2.2`
+не пустит следующий минорный выпуск без поставки.
 
-**Ошибки.** Отказ скачивания картинки идёт прежним путём: `fetchWithToken` бросает `failure(response)` — `401`
-заканчивает сессию, `403` перечитывает права, как у `download`.
-
-**Безопасность.** Риска нет, потому что шаг гоняет только тесты экрана в той же джобе, где уже ставится фронт, —
-новых секретов и прав у CI нет; `.secrets.baseline` сдвинул только номера строк известных мест файла workflow.
+**Безопасность.** Риска нет, потому что новых пакетов нет: lock меняет одну версию существующей зависимости,
+хеши — из PyPI через тот же `uv` 0.12.19, что у образа и CI.
 
 ## Чего проверка НЕ доказывает
 
-- Что каждая будущая необработанная ошибка уронит прогон: проверен класс (необработанный отказ промиса) на vitest 5;
-  оракул держит условие — конфиг их не глушит.
+- Прод: версия в контейнере (`pip freeze`) — после выкатки; до неё прод работает на 2.0.54.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -54,17 +50,15 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **3**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **1**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M113	assert judging, "шага тестов экрана в CI нет"
-M113	assert [step.get("continue-on-error", False) for step in judging] == [False] * len(judging)
-M114	assert "dangerouslyIgnoreUnhandledErrors" not in _VITEST_CONFIG.read_text(encoding="utf-8")
+M116	assert locked["sqlalchemy"] == [Version("2.1.4")], locked["sqlalchemy"]
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M113 M114), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M116), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -77,11 +71,11 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 6 code (+14 process docs) / +83/-15 (net +68) |
-| commits | 4 |
+| files_touched / loc_diff | 6 code (+14 process docs) / +57/-34 (net +23) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — .github/workflows/quality.yml |
+| harness_hardened | no |
 | implement_retries | MANUAL — fills from session log |
 | verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
 | est_token_or_cost | MANUAL / n/a |

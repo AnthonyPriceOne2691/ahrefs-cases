@@ -36,7 +36,7 @@ async def offers_build(session: AsyncSession) -> int:
     """
     stage = Run.params_snapshot["stage"].astext
     stmt = select(stage, func.max(Run.id)).where(stage.in_((CASE_DATA, CASES))).group_by(stage)
-    last: dict[str, int] = dict((await session.execute(stmt)).tuples().all())
+    last = {str(name): int(number) for name, number in (await session.execute(stmt)).all()}
     data = last.get(CASE_DATA, 0)
     if not data or data < last.get(CASES, 0):
         return 0
@@ -84,7 +84,7 @@ async def journal_context(session: AsyncSession, runs: Sequence[Run]) -> Journal
             .where(job.in_(list(cycles)), Run.id.not_in(list(cycles.values())))
             .order_by(Run.id)
         )
-        for key, stage, units in (await session.execute(stmt)).tuples():
+        for key, stage, units in (await session.execute(stmt)).all():
             parent = cycles[str(key)]
             before = states.get(parent, CycleState())
             states[parent] = CycleState(stage=str(stage or ""), units=before.units + units)
