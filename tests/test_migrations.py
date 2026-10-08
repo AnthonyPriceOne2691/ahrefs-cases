@@ -17,9 +17,31 @@ from alembic.config import Config
 _ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("MIGRATION_CYCLE_TEST") != "1",
-    reason="разрушает базу; включается MIGRATION_CYCLE_TEST=1 (в CI база одноразовая)",
+    not os.environ.get("MIGRATION_CYCLE_TEST"),
+    reason="разрушает базу; включается MIGRATION_CYCLE_TEST=<имя базы> (в CI база одноразовая)",
 )
+
+
+@pytest.fixture(autouse=True)
+def destructible_database() -> None:
+    """Разрушать можно только базу, названную по имени: `MIGRATION_CYCLE_TEST=<имя базы>`.
+
+    Прежде хватало `MIGRATION_CYCLE_TEST=1`, и 08.10.2026 цикл «вверх, вниз до пустой схемы,
+    вверх» прошёл по дев-базе `cases`: её строки ушли вместе с таблицами, восстанавливали из
+    копии стенда. Имя вместо единицы — согласие на разрушение именно этой базы; не совпало —
+    отказ громко, а не тихий пропуск: тест, которого ждали, должен сказать, почему не шёл (L73).
+    """
+    from sqlalchemy.engine import make_url
+
+    from ahrefs_cases import config
+
+    named = os.environ.get("MIGRATION_CYCLE_TEST", "")
+    target = make_url(config.storage.database_url).database
+    if named != target:
+        pytest.fail(
+            f"цикл миграций разрушает базу «{target}», а MIGRATION_CYCLE_TEST называет «{named}»: "
+            "укажите имя базы, которую разрешаете разрушить, или направьте DATABASE_URL на временную"
+        )
 
 
 @pytest.fixture

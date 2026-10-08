@@ -395,3 +395,67 @@ def test_pack_with_a_deleted_case_waits_for_a_rebuild(
     _pack(out_dir / "кейсы-2026-09-25.zip", [files["twin"]], at=1_758_100_000)
 
     assert client.get("/api/cases/pack/download", headers=headers).status_code == 200
+
+
+def test_journal_keeps_two_deleted_campaigns_apart(client: TestClient, stand: Any) -> None:
+    """M108: две удалённые кампании одного сайта — две судьбы, у каждой свои units.
+
+    Удаление обнуляет ссылку строки журнала, и ключ по домену сливал кампании в одну судьбу с
+    суммой units: на копии дев-базы прогон 1088 показал `nordvpn.com` одной строкой «ok, 264»
+    вместо двух по 132 (M108, Z41). Строка помнит номер проекта (`project_ref`) и после удаления.
+    """
+    headers = _headers(client)
+    for project in (stand.gone, stand.twin):
+        assert client.delete(f"/api/projects/{project}", headers=headers).status_code == 200
+
+    card = client.get(f"/api/runs/{stand.run}", headers=headers).json()
+
+    fates = sorted(
+        (fate["domain"], fate["units_actual"], fate["project_deleted"])
+        for fate in card["fates"]
+        if fate["domain"] == GONE
+    )
+    assert fates == [(GONE, 10, True), (GONE, 40, True)]
+
+
+def test_deletion_waits_for_the_console_claim_and_refuses(
+    client: TestClient, stand: Any, writer: Write
+) -> None:
+    """M109: консоль взяла замок постановки — удаление ждёт её строки прогона и отказывает.
+
+    Окно «проекты загружены, прогон ещё не открыт» роняло консольный сбор (M109, Z41). С #58 консоль
+    спрашивает «прогон уже идёт» под тем же замком, что кнопка и удаление, и держит его до
+    коммита строки своего прогона.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from ahrefs_cases.collect.run_journal import STAGE1, claim_start, open_run
+
+    headers = _headers(client)
+    loop = asyncio.new_event_loop()
+    engine = create_async_engine(config.storage.database_url, poolclass=NullPool)
+    console = AsyncSession(engine)
+    try:
+        loop.run_until_complete(claim_start(console))
+        author = loop.run_until_complete(
+            console.scalar(select(db.User.id).where(db.User.email == ENGINEER))
+        )
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            deleting = pool.submit(client.delete, f"/api/projects/{stand.keeper}", headers=headers)
+            loop.run_until_complete(asyncio.sleep(0.5))
+            waited = not deleting.done()
+            run = loop.run_until_complete(
+                open_run(console, started_by=author, projects_total=1, stage=STAGE1)
+            )
+            run_id = run.id
+            loop.run_until_complete(console.commit())
+            refused = deleting.result(timeout=30)
+    finally:
+        loop.run_until_complete(console.close())
+        loop.run_until_complete(engine.dispose())
+        loop.close()
+
+    assert waited, "удаление прошло мимо замка, который держала консоль"
+    assert refused.status_code == 409
+    assert f"прогон {run_id}" in refused.json()["detail"]
+    assert writer(lambda s: _rows(s, stand.keeper))[0]["projects"] == 1

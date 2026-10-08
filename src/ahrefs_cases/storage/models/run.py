@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from ahrefs_cases.storage._enums import RunItemOutcome, RunStatus
 from ahrefs_cases.storage.models._base import Base, TimestampMixin
@@ -61,6 +61,11 @@ class RunItem(Base):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
     )
+    project_ref: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    """Номер проекта без внешнего ключа: удаление обнуляет `project_id`, а этот номер
+    остаётся — по нему журнал различает две удалённые кампании одного сайта (Z41).
+    Ставится сам, когда пишут `project_id` (`_remember_project`)."""
+
     raw_domain: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     """Строка как пришла из файла: нужна, чтобы объяснить забракованные строки."""
 
@@ -69,3 +74,11 @@ class RunItem(Base):
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
     units_actual: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    @validates("project_id")
+    def _remember_project(self, _key: str, value: int | None) -> int | None:
+        """Запомнить номер проекта и в `project_ref`: каждая строка журнала, кто бы её ни
+        создал, переживёт удаление проекта своим номером, а не только доменом."""
+        if value is not None:
+            self.project_ref = value
+        return value

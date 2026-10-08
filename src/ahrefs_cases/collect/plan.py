@@ -471,7 +471,7 @@ async def _skip_reason(session: AsyncSession, project: Project, *, refresh: bool
     """
     if refresh:
         return None
-    checked_at = await cache.empty_since(session, project.id)
+    checked_at = await cache.empty_since(session, project)
     if not cache.empty_is_remembered(checked_at):
         return None
     when = checked_at.date().isoformat() if checked_at else "?"
