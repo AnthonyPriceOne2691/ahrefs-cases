@@ -168,13 +168,37 @@ export interface DownloadedFile {
  * из памяти.
  */
 export async function download(path: string, fallbackName: string): Promise<DownloadedFile> {
+  const response = await fetchWithToken(path);
+  return { blob: await response.blob(), filename: nameFromHeaders(response) ?? fallbackName };
+}
+
+/** Файл байтами и его тип — для картинок, которые экран показывает `data:`-адресом. */
+export interface DownloadedBytes {
+  bytes: ArrayBuffer;
+  type: string;
+}
+
+/**
+ * Байты файла тем же токеном, что и `download`.
+ *
+ * Отдельно от `download`: Blob из ответа и `FileReader` бывают разных реализаций там,
+ * где их собирает не браузер, — в тестах на Node 22 `FileReader` jsdom не принимал Blob
+ * из `fetch`, а на Node 24 у Blob не было `arrayBuffer` (CI, 08.10.2026). Байты ответа
+ * одинаковы везде.
+ */
+export async function downloadBytes(path: string): Promise<DownloadedBytes> {
+  const response = await fetchWithToken(path);
+  return { bytes: await response.arrayBuffer(), type: response.headers.get('content-type') ?? '' };
+}
+
+/** GET с токеном; отказ — через `failure`, как у обычного запроса (сессия, право). */
+async function fetchWithToken(path: string): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = storedToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-
   const response = await fetch(path, { headers });
   if (!response.ok) throw await failure(response);
-  return { blob: await response.blob(), filename: nameFromHeaders(response) ?? fallbackName };
+  return response;
 }
 
 /**

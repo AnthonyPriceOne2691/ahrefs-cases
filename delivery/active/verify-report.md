@@ -1,47 +1,47 @@
-# Verify report: rights-refresh
+# Verify report: vitest-in-ci
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M110 (repro) | `web/src/auth/__tests__/rights-refresh.test.tsx` — пробник `can('delete_projects')`, сервер отвечает `403` | **до правки** красный: права не перечитаны, «можно удалять» осталось; после — «удалять нельзя», отказ показан |
-| M110 в карточке | `web/src/pages/__tests__/card-delete-rights.test.tsx` — настоящий `DeleteProject` | отказ виден в блоке, «Да, удалить» недоступна; после «Отмена» кнопки нет |
-| M111 | то же — `visibilitychange` | до правки красный; после — «кто я» спрошен второй раз, кнопка пропала |
-| M112 | то же — «кто я» сам отвечает `403` | до правки красный (нет перечитывания вовсе); после — два обращения, не цикл |
-| Фронт целиком | vitest, `tsc`, ESLint | 25 файлов, 243 passed; чисто |
-| Живой проход | стенд: Vite на коде ветки, API, Chrome по CDP | см. ниже |
+| M113 (repro) | `tests/test_ci_gates_judge.py::test_screen_tests_judge_in_ci` | **до шага** красный: «шага тестов экрана в CI нет»; после — зелёный |
+| M114 | `tests/test_ci_gates_judge.py::test_unhandled_screen_errors_fail_the_run` + замер | конфиг чист; временный тест с необработанным отказом промиса — «Tests 1 passed · Errors 1 error», код возврата 1; файл замера удалён |
+| Гейты CI | `tests/test_ci_gates_judge.py` | 10 passed |
+| Исполнение шага | `npm test --prefix web` из корня — команда шага | 25 файлов, 243 теста, код 0 |
+| Node 22 и 24 | весь сьют vitest под обеими версиями (`npx -p node@22`) | после правки миниатюр — 25 файлов, 243 passed на обеих; до неё на 22 красные M61, M62 |
+| Миниатюры в браузере | стенд, карточка `brief-ok.example.com`, Chrome по CDP | две картинки `data:image/png`, 1440×1000 |
 
 ## Исполнение рисковых путей
 
-- Право отобрано при открытой карточке — открыл на стенде карточку `ahrefs.com` под админом, отобрал право
-  `delete_projects` через `PATCH /api/users/{id}` (`personal_rights`), увидел: кнопка «Удалить проект» ещё видна;
-  нажал — в блоке «нет права delete_projects: группа admin», «Да, удалить» недоступна; «Отмена» — кнопки нет.
-  Вернул право, отобрал снова, послал странице `visibilitychange` — кнопка пропала без нажатий. Право вернул.
+- Шаг CI — выполнил его команду `npm test --prefix "${LINT_FE_DIR:-web}"` из корня репозитория, увидел: 25 файлов,
+  243 passed, код 0; на прогоне CI этой ветки тот же шаг идёт после «Install web deps» и проверки инструментов.
   at=2026-10-08
 
-## Что нашёл живой проход
+## Что нашла проверка
 
-- **Кнопка пропадала молча.** Первая версия убирала блок удаления сразу вместе с перечитанными правами — и с ним
-  отказ сервера: нажавший видел, как кнопка исчезла, и не знал почему. Блок остаётся до «Отмена», если человек
-  уже спросил «что уйдёт»; это проверяет тест на настоящем компоненте.
+- **Первый суд тестов экрана в CI нашёл расхождение среды (L246).** На Node 22 (CI) красные M61 и M62 карточки
+  скринов: `FileReader` jsdom не принимает Blob из ответа `fetch`; локально на Node 24 они зелёные, а у того же
+  Blob нет `arrayBuffer`. Миниатюра теперь строится из байтов ответа (`client.downloadBytes`) — одинаково в
+  браузере и под любым Node; в браузере стенда миниатюры рисуются.
 
 ## Ревью рисковых мест
 
-**Безопасность.** Риска нет, потому что защита по-прежнему на сервере: экран лишь догоняет её — права берутся
-из того же `/api/auth/me`, `request<WhoAmI>('/api/auth/me', { quietForbidden: true })`, и ни одно решение о праве
-экран сам не выносит.
+**CI.** Шаг — `run: npm test --prefix "${LINT_FE_DIR:-web}"` без `continue-on-error`: красный тест экрана роняет
+джобу `gates`. Минуты CI: сьют — 10 с, установка фронта уже есть в джобе.
 
-**Ошибки.** Отказ самого «кто я» не зовёт нового перечитывания: `if (error.forbidden && !anonymous &&
-!quietForbidden) forbidden?.();` — без флага `403` на «кто я» вызывал бы перечитывание по кругу (M112). `401`
-заканчивает сессию прежним путём (`onSessionEnded`).
+**Производительность.** Риска нет, потому что шаг прибавляет к джобе `gates` около 10 с (`vitest run`, 243 теста)
+при установке фронта, которая в джобе уже есть; лимит джобы — 20 минут.
 
-**Производительность.** Риска нет, потому что «кто я» спрашивается только на отказе `403` и при возврате на
-вкладку — без таймера; обычная работа запросов не прибавляет.
+**Ошибки.** Отказ скачивания картинки идёт прежним путём: `fetchWithToken` бросает `failure(response)` — `401`
+заканчивает сессию, `403` перечитывает права, как у `download`.
+
+**Безопасность.** Риска нет, потому что шаг гоняет только тесты экрана в той же джобе, где уже ставится фронт, —
+новых секретов и прав у CI нет; `.secrets.baseline` сдвинул только номера строк известных мест файла workflow.
 
 ## Чего проверка НЕ доказывает
 
-- Выданное право (не отобранное) появляется при возврате на вкладку тем же путём — проверено только отобранное.
-- Несколько вкладок одного человека: каждая перечитывает сама, при своём отказе или возврате.
+- Что каждая будущая необработанная ошибка уронит прогон: проверен класс (необработанный отказ промиса) на vitest 5;
+  оракул держит условие — конфиг их не глушит.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -54,24 +54,17 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **10**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **3**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M110	expect(await screen.findByText('можно удалять')).toBeInTheDocument();
-M110	expect(await screen.findByText('удалять нельзя')).toBeInTheDocument();
-M110	expect(screen.getByText(REFUSAL)).toBeInTheDocument();
-M111	expect(await screen.findByText('удалять нельзя')).toBeInTheDocument();
-M111	expect(asked(calls)).toBe(2);
-M112	await waitFor(() => expect(asked(calls)).toBe(2));
-M112	expect(asked(calls)).toBe(2);
-M110	expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
-M110	expect(screen.getByRole('button', { name: 'Да, удалить' })).toBeDisabled();
-M110	expect(screen.queryByRole('button', { name: 'Удалить проект' })).not.toBeInTheDocument(),
+M113	assert judging, "шага тестов экрана в CI нет"
+M113	assert [step.get("continue-on-error", False) for step in judging] == [False] * len(judging)
+M114	assert "dangerouslyIgnoreUnhandledErrors" not in _VITEST_CONFIG.read_text(encoding="utf-8")
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M110 M111 M112), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M113 M114), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -84,11 +77,11 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 6 code (+13 process docs) / +266/-9 (net +257) |
-| commits | 2 |
+| files_touched / loc_diff | 6 code (+14 process docs) / +83/-15 (net +68) |
+| commits | 4 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — web/src/auth/__tests__/rights-refresh.test.tsx (новый оракул), web/src/pages/__tests__/card-delete-rights.test.tsx (новый оракул) |
+| harness_hardened | yes — .github/workflows/quality.yml |
 | implement_retries | MANUAL — fills from session log |
 | verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
 | est_token_or_cost | MANUAL / n/a |

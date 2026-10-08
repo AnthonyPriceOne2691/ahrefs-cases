@@ -8,7 +8,7 @@
  * Правила и список проверяются формой при получении (урок L242): чужой ответ,
  * принятый за список, ронял бы карточку целиком, а не один блок скринов.
  */
-import { download, request } from './client';
+import { downloadBytes, request } from './client';
 import type { ScreenshotRules, ScreenshotView } from './types';
 
 export async function fetchScreenshotRules(): Promise<ScreenshotRules> {
@@ -50,11 +50,19 @@ export function deleteScreenshot(screenshotId: number): Promise<unknown> {
 }
 
 export async function fetchScreenshotImage(screenshotId: number): Promise<string> {
-  const { blob } = await download(`/api/screenshots/${screenshotId}/image`, 'скрин');
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error('картинку скрина не прочитать'));
-    reader.readAsDataURL(blob);
-  });
+  const { bytes, type } = await downloadBytes(`/api/screenshots/${screenshotId}/image`);
+  return dataUrl(new Uint8Array(bytes), type);
+}
+
+/** Сколько байт переводить в строку за раз: `String.fromCharCode` с сотнями тысяч
+ *  аргументов переполняет стек, а скрин бывает до 2,5 МБ. */
+const CHUNK = 0x8000;
+
+/** `data:`-адрес картинки из её байтов (почему не через `FileReader` — `downloadBytes`). */
+function dataUrl(bytes: Uint8Array, type: string): string {
+  let binary = '';
+  for (let start = 0; start < bytes.length; start += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(start, start + CHUNK));
+  }
+  return `data:${type || 'application/octet-stream'};base64,${btoa(binary)}`;
 }

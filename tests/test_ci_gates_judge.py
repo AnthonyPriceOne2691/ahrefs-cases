@@ -239,3 +239,32 @@ def test_a_manifest_without_dependencies_is_not_a_dependency_decision() -> None:
         "в корневом pyproject.toml не нашлось зависимостей — извлекатель сломан, "
         "и гейт новых зависимостей молча пропустит любую"
     )
+
+
+_VITEST_CONFIG = Path(__file__).resolve().parents[1] / "web" / "vitest.config.ts"
+
+
+def test_screen_tests_judge_in_ci() -> None:
+    """M113: тесты экрана гоняются в CI шагом, который роняет джобу (Z52).
+
+    До 08.10.2026 шага не было вовсе: 243 примера vitest судили только локально, и правка
+    экрана, ломающая свой тест, проходила CI зелёной.
+    """
+    judging = [
+        step
+        for job in _jobs().values()
+        for step in job.get("steps", [])
+        if re.search(r"\bnpm test\b|\bvitest run\b", str(step.get("run", "")))
+    ]
+
+    assert judging, "шага тестов экрана в CI нет"
+    assert [step.get("continue-on-error", False) for step in judging] == [False] * len(judging)
+
+
+def test_unhandled_screen_errors_fail_the_run() -> None:
+    """M114: конфиг vitest не глушит необработанные ошибки (Z24).
+
+    Сьют печатал «URL is not a constructor» и выходил нулём; vitest 5 роняет прогон на
+    необработанной ошибке сам — пока конфиг не скажет `dangerouslyIgnoreUnhandledErrors`.
+    """
+    assert "dangerouslyIgnoreUnhandledErrors" not in _VITEST_CONFIG.read_text(encoding="utf-8")
