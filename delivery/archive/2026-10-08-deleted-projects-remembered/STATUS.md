@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** deleted-projects-remembered
+- **stack:** delivery@2.00, cqg@2.55, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** bugfix
+- **repro_test:** tests/test_deleted_projects.py::test_empty_domain_memory_survives_deletion
+- **diagnosis:** n/a reason=причины названы в реестре (Z40, Z41): память о пустом домене (`cache.empty_since`) и судьба в журнале (`run_journal._fate_key`) держатся за `run_items.project_id`, а удаление проекта обнуляет его (`ON DELETE SET NULL`); «что покупали» (`purchases.bought_metrics`) читает журнал расхода по домену и не отличает покупки удалённого проекта от покупок живого
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z40 и Z41 пятым пунктом — «продолжаем работу»; примеры M105–M109 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** n/a reason=артефакта нет: меняются память сбора, подпись прочерка и судьбы журнала — их проверяют тесты сбора, карточки и журнала
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none
+- **runtime_paths:** none reason=миграция исполняется тестом на временной базе (вверх, вниз, вверх), сбор — фикстурным провайдером, удаление и консоль — тестами API и замка на настоящей базе
+- **irreversible_surfaces:** none reason=миграция добавляет колонку `run_items.project_ref` и откатывается её удалением; заполняется из `project_id` тех строк, где он ещё есть; выкатка — руками владельца по `docs/PROD.md`, бэкап до неё
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде после выкатки: у проекта, удалённого и загруженного заново, следующий сбор не покупает домен, дважды подтверждённый пустым (строка журнала «… из памяти»), а журнал прогона с удалёнными кампаниями одного сайта показывает строку на кампанию; до первого такого случая — не наблюдается
+- **observe_until:** 2026-10-28
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

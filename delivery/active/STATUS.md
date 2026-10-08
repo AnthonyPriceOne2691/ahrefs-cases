@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** deleted-projects-remembered
+- **slug:** rights-refresh
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_deleted_projects.py::test_empty_domain_memory_survives_deletion
-- **diagnosis:** n/a reason=причины названы в реестре (Z40, Z41): память о пустом домене (`cache.empty_since`) и судьба в журнале (`run_journal._fate_key`) держатся за `run_items.project_id`, а удаление проекта обнуляет его (`ON DELETE SET NULL`); «что покупали» (`purchases.bought_metrics`) читает журнал расхода по домену и не отличает покупки удалённого проекта от покупок живого
+- **repro_test:** web/src/auth/__tests__/rights-refresh.test.tsx
+- **diagnosis:** n/a reason=причина названа в реестре (Z44): права экрана — снимок `/api/auth/me` на входе и загрузке страницы (`auth/AuthProvider.tsx`), и отобранное право видно до перезагрузки; `403` клиент отдаёт экрану текстом, но «кто я» не перечитывает
 - **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z40 и Z41 пятым пунктом — «продолжаем работу»; примеры M105–M109 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z44 шестым пунктом — «продолжаем работу»; примеры M110–M112 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняются память сбора, подпись прочерка и судьбы журнала — их проверяют тесты сбора, карточки и журнала
+- **artifact_oracle:** n/a reason=артефакта нет: меняется слой входа экрана, его проверяют тесты vitest и прокликивание на стенде
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=миграция исполняется тестом на временной базе (вверх, вниз, вверх), сбор — фикстурным провайдером, удаление и консоль — тестами API и замка на настоящей базе
-- **irreversible_surfaces:** none reason=миграция добавляет колонку `run_items.project_ref` и откатывается её удалением; заполняется из `project_id` тех строк, где он ещё есть; выкатка — руками владельца по `docs/PROD.md`, бэкап до неё
+- **runtime_paths:** none reason=экран исполняется тестами vitest и прокликиванием на стенде
+- **irreversible_surfaces:** none reason=миграций нет; правка экрана откатывается прежним коммитом
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: у проекта, удалённого и загруженного заново, следующий сбор не покупает домен, дважды подтверждённый пустым (строка журнала «… из памяти»), а журнал прогона с удалёнными кампаниями одного сайта показывает строку на кампанию; до первого такого случая — не наблюдается
+- **observe_signal:** на проде после выкатки: человеку, у которого отобрали право при открытой вкладке, кнопка пропадает после первого отказа сервера или при возврате на вкладку — без перезагрузки; до первого такого случая — не наблюдается
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

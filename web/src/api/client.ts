@@ -57,6 +57,19 @@ export function onSessionEnded(handler: SessionEndedHandler | null): void {
   sessionEnded = handler;
 }
 
+type ForbiddenHandler = () => void;
+
+let forbidden: ForbiddenHandler | null = null;
+
+/**
+ * `403` после входа — право могли отобрать, пока вкладка открыта (Z44): меню и
+ * кнопки построены по снимку «кто я», и подписчик (`AuthProvider`) перечитает его.
+ * Отказ экрану отдаётся по-прежнему — текстом сервера.
+ */
+export function onForbidden(handler: ForbiddenHandler | null): void {
+  forbidden = handler;
+}
+
 /**
  * Сессия кончилась: токен выброшен, подписчик извещён.
  *
@@ -81,9 +94,14 @@ function sessionIsOver(): void {
  * `anonymous` — это вход, и там `401` означает «неверная почта или пароль»:
  * гасить сессию, которой ещё нет, нечего.
  */
-async function failure(response: Response, anonymous = false): Promise<ApiError> {
+async function failure(
+  response: Response,
+  anonymous = false,
+  quietForbidden = false,
+): Promise<ApiError> {
   const error = new ApiError(response.status, await readDetail(response));
   if (error.needsLogin && !anonymous) sessionIsOver();
+  if (error.forbidden && !anonymous && !quietForbidden) forbidden?.();
   return error;
 }
 
@@ -111,6 +129,11 @@ interface RequestOptions {
   raw?: Blob;
   /** Запрос без токена — только вход. */
   anonymous?: boolean;
+  /**
+   * `403` не зовёт подписчика `onForbidden`: так спрашивает «кто я» сам подписчик,
+   * и его отказ иначе вызывал бы новое перечитывание — по кругу.
+   */
+  quietForbidden?: boolean;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -126,7 +149,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   });
 
   if (response.status === 204) return undefined as T;
-  if (!response.ok) throw await failure(response, options.anonymous);
+  if (!response.ok) throw await failure(response, options.anonymous, options.quietForbidden);
   return (await response.json()) as T;
 }
 

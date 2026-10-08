@@ -1,66 +1,47 @@
-# Verify report: deleted-projects-remembered
+# Verify report: rights-refresh
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M105 (repro) | `tests/test_deleted_projects.py` — сбор фикстурой, удаление `delete_rows`, новая загрузка | **до правки** красный: пустой домен спрошен снова; после — не спрашивается |
-| M106 | то же, две живые кампании | вторую кампанию сбор спрашивает — и до, и после |
-| M107 | `tests/test_deleted_projects.py` — покупка удалённого проекта и живого другого сайта | до правки красный (`refdomains` у нового); после — пусто у нового, `refdomains` у живого |
-| M108 | `tests/test_api_projects_delete.py` — удаление обеих кампаний `gone` через API | до правки красный (одна судьба на 50); после — две по 40 и 10 |
-| M109 | то же — консоль держит `claim_start`, удаление из второго потока | удаление ждёт, затем 409 «прогон N»; проект цел — и до, и после (окно закрыто #58) |
-| Прежние тесты | `tests/test_collect_run.py` (память), `tests/test_purchases_explain_the_dash.py` (E1–E4) | после правки сигнатуры `empty_since` и уточнения правила покупок — зелёные |
-| Миграция | `tests/test_migrations.py` на временной базе `cases_migtest` | 3 passed: вверх, вниз, вверх; модели и миграции сходятся |
-| Полный сьют | `pytest` на восстановленной дев-базе | 895 passed, 12 skipped |
-| Живой проход | стенд: миграция на копии `cases_geo`, API и воркер на коде ветки, Chrome по CDP | см. ниже |
+| M110 (repro) | `web/src/auth/__tests__/rights-refresh.test.tsx` — пробник `can('delete_projects')`, сервер отвечает `403` | **до правки** красный: права не перечитаны, «можно удалять» осталось; после — «удалять нельзя», отказ показан |
+| M110 в карточке | `web/src/pages/__tests__/card-delete-rights.test.tsx` — настоящий `DeleteProject` | отказ виден в блоке, «Да, удалить» недоступна; после «Отмена» кнопки нет |
+| M111 | то же — `visibilitychange` | до правки красный; после — «кто я» спрошен второй раз, кнопка пропала |
+| M112 | то же — «кто я» сам отвечает `403` | до правки красный (нет перечитывания вовсе); после — два обращения, не цикл |
+| Фронт целиком | vitest, `tsc`, ESLint | 25 файлов, 243 passed; чисто |
+| Живой проход | стенд: Vite на коде ветки, API, Chrome по CDP | см. ниже |
 
 ## Исполнение рисковых путей
 
-- Миграция `f3a4b5c6d7e8` — накатил на копию стенда `cases_geo`, увидел: у всех 850 строк журнала `project_ref`
-  проставлен из `project_id`. at=2026-10-08
-- Удаление кампаний и журнал — на стенде открыл карточки обеих кампаний `nordvpn.com` (13039, 13040), нажал
-  «Удалить проект» → «Да, удалить»; открыл журнал с фильтром дат 15.09.2026, раскрыл прогон №1088 (тот, где
-  находка видела «ok, 264»), увидел: «без замечаний собрано: 57, из них проектов удалено: 2»; API — две судьбы
-  `nordvpn.com` «ok, 132», обе удалены. at=2026-10-08
+- Право отобрано при открытой карточке — открыл на стенде карточку `ahrefs.com` под админом, отобрал право
+  `delete_projects` через `PATCH /api/users/{id}` (`personal_rights`), увидел: кнопка «Удалить проект» ещё видна;
+  нажал — в блоке «нет права delete_projects: группа admin», «Да, удалить» недоступна; «Отмена» — кнопки нет.
+  Вернул право, отобрал снова, послал странице `visibilitychange` — кнопка пропала без нажатий. Право вернул.
+  at=2026-10-08
 
-## Что нашла проверка
+## Что нашёл живой проход
 
-- **Инцидент: тест цикла миграций стёр дев-базу.** `MIGRATION_CYCLE_TEST=1` без своего `DATABASE_URL` прогнал
-  цикл «вверх, вниз до пустой схемы, вверх» по дев-базе `cases`. Восстановлена копией стенда `cases_geo`
-  (75 проектов); стёртая отложена как `cases_wiped_20261008`. Потеряны две кампании `nordvpn.com` — их час назад
-  удалил проход M108 на стенде. С этой поставки цикл требует имя разрушаемой базы
-  (`MIGRATION_CYCLE_TEST=<имя>`) и на чужой базе отказывает громко; в CI — `cases`.
-- **«Только покупки живых» — слишком широко:** строки расхода без строк журнала (тесты E2, E3, пробы) перестали
-  считаться. Правило сужено: не считается покупка, чей прогон знал домен только у удалённых проектов.
+- **Кнопка пропадала молча.** Первая версия убирала блок удаления сразу вместе с перечитанными правами — и с ним
+  отказ сервера: нажавший видел, как кнопка исчезла, и не знал почему. Блок остаётся до «Отмена», если человек
+  уже спросил «что уйдёт»; это проверяет тест на настоящем компоненте.
 
 ## Ревью рисковых мест
 
-**Миграция.** `op.add_column("run_items", sa.Column("project_ref", sa.Integer(), nullable=True))` и
-`UPDATE run_items SET project_ref = project_id WHERE project_id IS NOT NULL`; откат —
-`op.drop_column("run_items", "project_ref")`. Колонка без внешнего ключа и без индекса: читается только в
-свёртке судеб одного прогона.
+**Безопасность.** Риска нет, потому что защита по-прежнему на сервере: экран лишь догоняет её — права берутся
+из того же `/api/auth/me`, `request<WhoAmI>('/api/auth/me', { quietForbidden: true })`, и ни одно решение о праве
+экран сам не выносит.
 
-**Деньги.** Память о пустом домене расширена только на строки удалённых проектов того же домена:
-`and_(RunItem.project_id.is_(None), RunItem.raw_domain == project.domain)` — пустота не покупается заново после
-удаления; живые кампании ею не делятся (M106), так что лишних пропусков у кампании с данными нет.
+**Ошибки.** Отказ самого «кто я» не зовёт нового перечитывания: `if (error.forbidden && !anonymous &&
+!quietForbidden) forbidden?.();` — без флага `403` на «кто я» вызывал бы перечитывание по кругу (M112). `401`
+заканчивает сессию прежним путём (`onSessionEnded`).
 
-**Транзакция БД.** Риска нет, потому что удаление по-прежнему берёт `hold_start` до проверки идущей работы, а
-консоль держит тот же замок до коммита строки прогона — M109 проверяет это двумя соединениями.
-
-**Безопасность.** Риска нет, потому что новых входов и прав нет: удаление — под прежним `delete_projects`,
-`project_ref` — номер строки, которой больше нет, без данных проекта.
-
-**Ошибки.** Риска нет, потому что у строк журнала старше колонки `project_ref` пуст, и ключ судьбы падает на
-домен, как прежде (`item.project_ref if item.project_ref is not None else item.raw_domain`).
-
-**Производительность.** Риска нет, потому что память о пустом домене — тот же запрос последних строк проекта
-с условием `or_(…)` (строк журнала у проекта единицы, `limit` — число подтверждений), а «что покупали» — два
-коррелированных `EXISTS` на строку расхода одного домена, у карточки одного проекта.
+**Производительность.** Риска нет, потому что «кто я» спрашивается только на отказе `403` и при возврате на
+вкладку — без таймера; обычная работа запросов не прибавляет.
 
 ## Чего проверка НЕ доказывает
 
-- Прод: строк журнала удалённых проектов с номером там нет, пока кто-то не удалит проект после выкатки.
-- Кампании `nordvpn.com` дев-базы не вернуть: в обеих базах их больше нет.
+- Выданное право (не отобранное) появляется при возврате на вкладку тем же путём — проверено только отобранное.
+- Несколько вкладок одного человека: каждая перечитывает сама, при своём отказе или возврате.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -69,34 +50,28 @@
 
 asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)
 
-Два утверждения `tests/test_collect_run.py` (`empty_since(db_session, project)`) — прежние, пример Y5 той
-поставки: изменён только аргумент под новую подпись; дайджест привязал их к M109, перенеся номер из соседнего
-файла — в этом файле изменённых строк с номером нет.
-
 ## Assertion digest (ревью ожиданий, не кода)
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **12**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **10**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M108	assert client.delete(f"/api/projects/{project}", headers=headers).status_code == 200
-M108	assert fates == [(GONE, 10, True), (GONE, 40, True)]
-M109	assert waited, "удаление прошло мимо замка, который держала консоль"
-M109	assert refused.status_code == 409
-M109	assert f"прогон {run_id}" in refused.json()["detail"]
-M109	assert writer(lambda s: _rows(s, stand.keeper))[0]["projects"] == 1
-M109	assert await empty_since(db_session, project) == real_checks[-1]
-M109	assert await empty_since(db_session, project) == checked
-M105	assert again.calls == []
-M106	assert again.calls == [EMPTY]
-M107	assert await bought_metrics(db_session, "rebought.example.com") == frozenset()
-M107	assert Metric.REFDOMAINS in (await bought_metrics(db_session, "alive.example.com") or ())
+M110	expect(await screen.findByText('можно удалять')).toBeInTheDocument();
+M110	expect(await screen.findByText('удалять нельзя')).toBeInTheDocument();
+M110	expect(screen.getByText(REFUSAL)).toBeInTheDocument();
+M111	expect(await screen.findByText('удалять нельзя')).toBeInTheDocument();
+M111	expect(asked(calls)).toBe(2);
+M112	await waitFor(() => expect(asked(calls)).toBe(2));
+M112	expect(asked(calls)).toBe(2);
+M110	expect(await screen.findByText(REFUSAL)).toBeInTheDocument();
+M110	expect(screen.getByRole('button', { name: 'Да, удалить' })).toBeDisabled();
+M110	expect(screen.queryByRole('button', { name: 'Удалить проект' })).not.toBeInTheDocument(),
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M105 M106 M107 M108 M109), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M110 M111 M112), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -109,11 +84,11 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 12 code (+18 process docs) / +335/-29 (net +306) |
-| commits | 3 |
+| files_touched / loc_diff | 6 code (+13 process docs) / +266/-9 (net +257) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — .github/workflows/quality.yml, tests/test_deleted_projects.py (новый оракул) |
+| harness_hardened | yes — web/src/auth/__tests__/rights-refresh.test.tsx (новый оракул), web/src/pages/__tests__/card-delete-rights.test.tsx (новый оракул) |
 | implement_retries | MANUAL — fills from session log |
 | verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
 | est_token_or_cost | MANUAL / n/a |
