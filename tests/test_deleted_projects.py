@@ -66,7 +66,7 @@ async def test_empty_domain_memory_survives_deletion(db_session: AsyncSession) -
     """M105: дважды пустой домен после удаления и новой загрузки не покупается снова.
 
     Прежде память держалась за номер проекта, а удаление его обнуляло: вживую это от 50 units
-    за запрос и два подтверждения заново на каждый домен (Z40).
+    за запрос и два подтверждения заново на каждый домен (M105, Z40).
     """
     gone = await _load(db_session, EMPTY)
     await _confirm_empty(db_session)
