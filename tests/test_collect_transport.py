@@ -356,7 +356,7 @@ async def test_lost_response_is_not_bought_twice(monkeypatch: pytest.MonkeyPatch
     """M99: таймаут чтения — запрос ушёл, ответ потерян; повтор мог бы оплатить его дважды.
 
     Запрос, который Ahrefs считает дольше нашего таймаута, прежде оплачивался на каждой из трёх
-    попыток и не доходил ни разу (Z52) — M99.
+    попыток и не доходил ни разу — M99 (Z52).
     """
     monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _no_sleep)
     handler, calls = _failing_first(httpx.ReadTimeout)
