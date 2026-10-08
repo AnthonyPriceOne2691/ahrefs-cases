@@ -2,8 +2,8 @@
 
 ## Шаги
 
-1. `src/ahrefs_cases/cases/model.py` — исход `CaseOutcome.FAILED` и `crash_reason(exc)`: «<исключение>: <текст>»;
-   строка «сборка упала: N» в отчёте.
+1. `src/ahrefs_cases/cases/model.py` — исход `CaseOutcome.FAILED`; строка «сборка упала: N» в отчёте. Причина —
+   `collect.run_journal.failure_reason(exc)`: исключение, текст и первопричина, не длиннее 400 знаков.
 2. `src/ahrefs_cases/cases/builder.py` — `build_cases`: исключение `_attempt` одного проекта — его попытка `FAILED`
    с причиной и стек в лог; `SQLAlchemyError` пробрасывается. Файл — 492 строки из 500: проверка стоит в цикле,
    а не отдельной функцией.

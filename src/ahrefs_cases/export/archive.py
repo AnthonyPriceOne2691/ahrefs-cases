@@ -25,8 +25,9 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from ahrefs_cases import config
-from ahrefs_cases.cases.model import CaseData, crash_reason
+from ahrefs_cases.cases.model import CaseData
 from ahrefs_cases.cases.stoplist import ContentBlockedError
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.export.pdf_renderer import filename, render_pdf, unique_name
 
 logger = logging.getLogger(__name__)
@@ -101,7 +102,7 @@ class Packed:
     packed: tuple[PackedCase, ...]
     skipped: tuple[SkippedCase, ...]
     failed: tuple[SkippedCase, ...] = ()
-    """Упали при рисовании PDF (Z54): причина — имя исключения и его текст."""
+    """Упали при рисовании PDF (Z54): причина — исключение с первопричиной (`failure_reason`)."""
 
     def as_lines(self) -> list[str]:
         lines = [f"архив: {self.path}", f"кейсов внутри: {len(self.packed)}"]
@@ -148,7 +149,7 @@ def pack(
                 "case_render_failed",
                 extra={"project_id": wanted.project_id, "domain": wanted.domain},
             )
-            failed.append(SkippedCase(wanted.project_id, wanted.domain, reason=crash_reason(exc)))
+            failed.append(SkippedCase(wanted.project_id, wanted.domain, reason=failure_reason(exc)))
             continue
         packed.append(
             PackedCase(

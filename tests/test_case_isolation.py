@@ -56,7 +56,10 @@ SECOND = "iso-second.example"
 BROKEN = "iso-broken.example"
 BLOCKED = "iso-blocked.example"
 DOMAINS = (FIRST, SECOND, BROKEN, BLOCKED)
-BROKEN_POINT = "не собран: VerdictFormatError: точка вердикта не той формы: 'derived'"
+BROKEN_POINT = (
+    "не собран: VerdictFormatError: точка вердикта не той формы: 'derived' "
+    "(первопричина — KeyError: 'derived')"
+)
 
 Write = Callable[[Callable[..., Any]], None]
 

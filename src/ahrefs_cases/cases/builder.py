@@ -43,7 +43,6 @@ from ahrefs_cases.cases.model import (
     CaseSeries,
     Change,
     Period,
-    crash_reason,
 )
 from ahrefs_cases.cases.screens import load_screens
 from ahrefs_cases.classify import points as points_module
@@ -54,6 +53,7 @@ from ahrefs_cases.classify.recalc import ruleset_by_version
 from ahrefs_cases.classify.rulesets import active_ruleset, thresholds_of
 from ahrefs_cases.classify.series import MetricSeries, bought_countries, load_series
 from ahrefs_cases.classify.thresholds import Windows
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.intake.normalize import to_unicode
 from ahrefs_cases.storage._enums import Group, Metric, MetricSource, TargetMode
 from ahrefs_cases.storage.geo import rows_note
@@ -381,7 +381,10 @@ async def build_cases(
                 "case_build_failed", extra={"project_id": project.id, "domain": project.domain}
             )
             attempt = CaseAttempt(
-                project.domain, CaseOutcome.FAILED, project_id=project.id, detail=crash_reason(exc)
+                project.domain,
+                CaseOutcome.FAILED,
+                project_id=project.id,
+                detail=failure_reason(exc),
             )
         attempts.append(attempt)
     return CaseReport(ruleset_version=ruleset.version, attempts=tuple(attempts))

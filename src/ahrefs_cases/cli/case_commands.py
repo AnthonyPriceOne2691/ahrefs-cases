@@ -25,13 +25,13 @@ from ahrefs_cases.cases.model import (
     CaseOutcome,
     CaseReport,
     Change,
-    crash_reason,
 )
 from ahrefs_cases.cases.stoplist import ContentBlockedError
 from ahrefs_cases.cases.store import next_version, store_artifact, store_case
 from ahrefs_cases.classify.rulesets import seed_thresholds
 from ahrefs_cases.classify.thresholds import ThresholdsError
 from ahrefs_cases.cli.source import reading_source
+from ahrefs_cases.collect.run_journal import failure_reason
 from ahrefs_cases.export.archive import (
     EmptyArchiveError,
     Packed,
@@ -166,7 +166,7 @@ async def render_case(domain: str, source: MetricSource | None = None) -> int:
                     "case_render_failed",
                     extra={"project_id": attempt.project_id, "domain": attempt.domain},
                 )
-                print(f"не собран {attempt.domain}: {crash_reason(exc)}", file=sys.stderr)
+                print(f"не собран {attempt.domain}: {failure_reason(exc)}", file=sys.stderr)
                 crashed = True
                 continue
             # Запись идёт после файла: кейса без артефакта в базе не бывает,
