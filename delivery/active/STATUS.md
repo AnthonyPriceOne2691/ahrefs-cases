@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** rights-refresh
+- **slug:** vitest-in-ci
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** M
+- **class:** S
 - **kind:** bugfix
-- **repro_test:** web/src/auth/__tests__/rights-refresh.test.tsx
-- **diagnosis:** n/a reason=причина названа в реестре (Z44): права экрана — снимок `/api/auth/me` на входе и загрузке страницы (`auth/AuthProvider.tsx`), и отобранное право видно до перезагрузки; `403` клиент отдаёт экрану текстом, но «кто я» не перечитывает
-- **phase:** verify
+- **repro_test:** tests/test_ci_gates_judge.py::test_screen_tests_judge_in_ci
+- **diagnosis:** n/a reason=причины названы в реестре (Z52, Z24): в `.github/workflows/quality.yml` нет шага vitest — тесты экрана судят только локально; необработанные ошибки сьюта прежде печатались при нулевом коде возврата
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z44 шестым пунктом — «продолжаем работу»; примеры M110–M112 выведены агентом)
-- **human_ok_plan:** n/a reason=класс M
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с этим пунктом седьмым — «продолжаем работу»; примеры M113–M114 выведены агентом)
+- **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняется слой входа экрана, его проверяют тесты vitest и прокликивание на стенде
+- **artifact_oracle:** n/a reason=артефакта нет: меняется шаг CI, его проверяют тест над файлом workflow и сам прогон CI этой ветки
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=экран исполняется тестами vitest и прокликиванием на стенде
-- **irreversible_surfaces:** none reason=миграций нет; правка экрана откатывается прежним коммитом
+- **runtime_paths:** none reason=шаг исполняется прогоном CI этой ветки — его зелёный и есть исполнение
+- **irreversible_surfaces:** none reason=миграций нет; шаг CI откатывается прежним коммитом
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: человеку, у которого отобрали право при открытой вкладке, кнопка пропадает после первого отказа сервера или при возврате на вкладку — без перезагрузки; до первого такого случая — не наблюдается
+- **observe_signal:** CI на main после слияния: шаг «Frontend tests (vitest)» зелёный и в логе — число тестов экрана (сейчас 243)
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
