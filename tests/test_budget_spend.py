@@ -223,3 +223,31 @@ def test_spend_is_summed_in_one_place() -> None:
     )
     # Сторож смотрит туда, куда думает: правило на месте и находится сканом.
     assert "collect/budget.py" in readers
+
+
+async def test_spend_row_keeps_the_row_price(db_session: AsyncSession) -> None:
+    """M104: строка расхода несёт цену строки; у фикстуры — по той же модели, что её units."""
+    from sqlalchemy import select
+
+    from ahrefs_cases.collect.budget import record_spend
+    from ahrefs_cases.collect.endpoints import METRICS_HISTORY
+    from ahrefs_cases.collect.fixtures.provider import AhrefsFixture
+    from ahrefs_cases.collect.provider import HistoryRequest
+    from ahrefs_cases.storage._enums import TargetMode
+
+    request = HistoryRequest(
+        target="row-price.example.com",
+        mode=TargetMode.SUBDOMAINS,
+        country="US",
+        date_from=date(2025, 1, 1),
+    )
+    result = await AhrefsFixture().fetch_history(METRICS_HISTORY, request)
+    run = await _run(db_session, FIXTURE, {})
+
+    await record_spend(db_session, run.id, result)
+
+    row = (
+        await db_session.execute(select(UnitsLedger).where(UnitsLedger.run_id == run.id))
+    ).scalar_one()
+    assert result.units_per_row == METRICS_HISTORY.row_units()
+    assert row.units_per_row == result.units_per_row

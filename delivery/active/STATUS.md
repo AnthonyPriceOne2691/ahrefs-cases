@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** retry-only-unsent
+- **slug:** sheet-off-the-loop
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** S
+- **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_collect_transport.py::test_lost_response_is_not_bought_twice
-- **diagnosis:** n/a reason=причина названа в реестре (Z52): `ahrefs_transport._get_with_retries` повторяет любой `httpx.TimeoutException` и `TransportError` — и запрос, который не ушёл, и запрос, ответ на который потерян после отправки; второй Ahrefs мог выполнить и оплатить
+- **repro_test:** tests/test_api_intake.py::test_reading_a_sheet_does_not_stop_the_api
+- **diagnosis:** n/a reason=причина названа в реестре (Z52): `api/routers/intake.intake_link` зовёт синхронный `read_gsheet` → `httpx.get` прямо в async-обработчике, и цикл событий единственного процесса uvicorn стоит, пока Google не ответит
 - **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом третьим — «продолжаем работу»; примеры M99–M101 выведены агентом)
-- **human_ok_plan:** n/a reason=класс S
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом четвёртым — «продолжаем работу»; примеры M102–M104 выведены агентом)
+- **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняется решение транспорта о повторе, его проверяют тесты транспорта на подменённой сети
+- **artifact_oracle:** n/a reason=артефакта нет: меняются обработчик приёма и строка журнала расхода, их проверяют тесты API и журнала
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=транспорт исполняется тестами с `httpx.MockTransport`; живой ключ в тестах не участвует и участвовать не может
-- **irreversible_surfaces:** none reason=миграций нет; правка транспорта откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=приём таблицы исполняется тестом API с подменённым чтением Google, журнал расхода — тестами провайдеров и записи
+- **irreversible_surfaces:** none reason=миграций нет: колонка `units_ledger.units_per_row` есть с первой схемы, она начинает заполняться; правка откатывается прежним коммитом
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: строка журнала «ответ Ahrefs … потерян после отправки — units могли списаться» встречается у домена не больше одного раза за прогон, и повторной строки расхода за тот же запрос в прогоне нет; до первого случая — не наблюдается
+- **observe_signal:** на проде после выкатки: у строк журнала расхода живых прогонов `units_per_row` заполнен ценой строки из заголовка Ahrefs (`select endpoint, units_per_row, count(*) from units_ledger where kind = 'SPENT' and created_at > <выкатка> group by 1, 2`)
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4

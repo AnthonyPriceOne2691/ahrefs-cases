@@ -1,49 +1,53 @@
-# Verify report: retry-only-unsent
+# Verify report: sheet-off-the-loop
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M99 (repro) | `tests/test_collect_transport.py` (`httpx.MockTransport`: первая попытка — `ReadTimeout`, вторая — 200) | **до правки** красный: транспорт повторил и получил ответ — запрос оплачен бы дважды; после — одна попытка, отказ с причиной и подсказкой `AHREFS_TIMEOUT_SEC (сейчас 60 с)` |
-| M100 | то же, первая попытка — `ConnectError`, `ConnectTimeout`, `PoolTimeout` | две попытки, ответ получен — и до, и после правки |
-| M101 | то же, `RemoteProtocolError` | до правки красный, после — одна попытка, причина M99 |
-| Мутант | `PoolTimeout` вне `_NOT_SENT` | M100[PoolTimeout] красный; код возвращён |
-| Транспорт и сбор | `tests/test_collect_transport.py`, `tests/test_collect_resilience.py`, `tests/test_collect_stop.py` | 36 passed |
-| Полный сьют | `pytest` | 886 passed, 12 skipped |
+| M102 (repro) | `tests/test_api_intake.py` — чтение Google подменено секундной паузой, `health` из второго потока | **до правки** красный: `health` ждал 0,86 с — цикл событий стоял на `httpx.get`; после — быстрее 0,5 с, приём «принято 1» |
+| M103 | `tests/test_collect_transport.py` — живой ответ с `x-api-units-cost-row: 11` и без него | до правки — нет поля; после — 11 и `None` |
+| M104 | `tests/test_budget_spend.py` — фикстурный ответ и `record_spend` | до правки — нет поля; после — цена строки модели в результате и в строке журнала |
+| Приём, транспорт, расход, фикстуры | `tests/test_api_intake.py`, `test_collect_transport.py`, `test_budget_spend.py`, `test_collect_fixtures.py` | 86 passed |
+| Полный сьют | `pytest` | 890 passed, 12 skipped |
+| Живой проход | стенд: API и воркер на коде ветки, Chrome по CDP, копия базы `cases_geo` | см. ниже |
 
 ## Исполнение рисковых путей
 
-- Транспорт исполняется тестами на подменённой сети (`httpx.MockTransport`) — живой ключ в тестах не участвует и
-  участвовать не может (докстрока модуля тестов); на стенде провайдер `fixture` транспорт не зовёт вовсе, поэтому
-  прокликивать здесь нечего — путь до журнала прежний: `AhrefsUnavailableError` → `fetch_one` → судьба `failed`
-  с текстом причины (C12, `tests/test_collect_resilience.py`). at=2026-10-08
+- Приём файла в потоке — загрузил на стенде кнопкой «Загрузить файл» список из двух новых доменов
+  (`z52-row-a`, `-b`), «Весь цикл по этому списку» → «Запустить», увидел: прогон №2362 «цикл по файлу — готов»,
+  «2 из 2», «Собрано 2 кейса». at=2026-10-08
+- Цена строки в журнале расхода — после цикла прочитал строки `units_ledger` этих доменов, увидел:
+  `metrics-history` 132 units за 12 строк — `units_per_row` 11; `keywords-history` и `refdomains-history` — 6;
+  `domain-rating-history` — 2; `keywords-graph` без строк — пусто. at=2026-10-08
 
 ## Ревью рисковых мест
 
-**Деньги.** Повтор остался только там, где запрос точно не ушёл: `_NOT_SENT = (httpx.ConnectError,
-httpx.ConnectTimeout, httpx.PoolTimeout)`. Запрос, ушедший в сеть, больше не повторяется:
-`raise AhrefsUnavailableError(_lost(path, exc)) from exc` — запрос дольше `AHREFS_TIMEOUT_SEC` прежде платился на
-каждой из трёх попыток. Цена правила — домен `failed` в этом прогоне вместо повтора; следующий прогон купит его
-заново по решению человека, и причина в журнале называет таймаут.
+**Производительность.** Поток вместо цикла: `await asyncio.to_thread(read_gsheet, link.url)` и
+`await asyncio.to_thread(read_upload, filename, data)` — цикл событий отвечает другим запросам, пока Google
+думает или книга разбирается; пул потоков по умолчанию, один поток на запрос приёма.
 
-**Интеграция.** Запросы к Ahrefs не меняются: тот же `client.get(path, params=params)`; 429 и 5xx повторяются по
-прежней лесенке и `Retry-After` (Z14) — ответ пришёл, строк в нём нет.
+**Ошибки.** Риска нет, потому что исключения из потока приходят в тот же `try`: `SheetLinkError`,
+`SheetAccessError`, `UnknownSourceError`, `UnfitSourceError` ловятся прежними обработчиками и дают прежние отказы
+(тесты приёма — 86 passed).
 
-**Ошибки.** Тип отказа прежний — `AhrefsUnavailableError`, его ловит `fetch_one` и пишет судьбу `failed`, прогон
-идёт дальше; исходное исключение сохранено цепочкой (`from exc`) и в логе `ahrefs_response_lost`.
+**Транзакция БД.** Риска нет, потому что в потоке нет сессии: читатель возвращает сырую таблицу, а `_accept`
+пишет её в базу в цикле событий, как прежде.
 
-**Безопасность.** Риска нет, потому что в причину попадают путь endpoint'а и текст исключения `httpx` — без
-параметров запроса и без заголовка `Authorization` с ключом.
+**Деньги.** Риска нет, потому что покупка не меняется: `record_spend` пишет ту же строку расхода с ещё одним
+полем — `units_per_row=result.units_per_row`, — а смета, вычет из остатка и «потрачено» считают по
+`units_actual` и `units_estimated`, как прежде.
 
-**Производительность.** Риска нет, потому что попыток стало не больше, а меньше: потерянный ответ больше не ждёт
-лесенки пауз до 30 с и двух новых таймаутов по 60 с.
+**Безопасность.** Риска нет, потому что новых входов и прав нет: обработчики под прежними `require_right`, ссылка
+и файл проверяются тем же читателем; `units_per_row` — число из заголовка ответа, без данных клиента.
+
+**Интеграция.** Запросы к Ahrefs не меняются; читается ещё один заголовок ответа — `x-api-units-cost-row`
+(`_header_optional_int`: нет его или не число — `None` и строка в логе `ahrefs_header_not_a_number`).
 
 ## Чего проверка НЕ доказывает
 
-- Что Ahrefs тарифицирует запрос, ответ на который потерян: без живого ключа не проверить — правило держится на
-  том, что исключить это нельзя.
-- `WriteTimeout` и `WriteError` отнесены к «могло дойти» осознанно (решения): проверен класс «ушло», а не каждое
-  исключение по отдельности.
+- Живой ключ: что Ahrefs присылает `x-api-units-cost-row` у каждого endpoint'а — замер разведки 12.09.2026 видел
+  его у истории; у других endpoint'ов колонка останется пустой, если заголовка нет, — это и будет ответом.
+- Нагрузку: шесть одновременных приёмов — шесть потоков пула; проверен один.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -61,15 +65,15 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 значение — из спеки или придумано под реализацию?**
 
 ```
-M99	assert calls["n"] == 1
-M99	assert "потерян после отправки" in reason
-M99	assert "units могли списаться" in reason
-M99	assert f"AHREFS_TIMEOUT_SEC (сейчас {config.ahrefs.timeout_sec:.0f} с)" in reason
-M100	assert (calls["n"], response.units_actual) == (2, 50)
-M101	assert calls["n"] == 1
+M102	assert health.status_code == 200
+M102	assert waited < 0.5, f"health ждал {waited:.2f} с — цикл событий стоял на чтении таблицы"
+M102	assert (response.status_code, response.json()["accepted"]) == (200, 1)
+M104	assert result.units_per_row == METRICS_HISTORY.row_units()
+M104	assert row.units_per_row == result.units_per_row
+M103	assert result.units_per_row == expected
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M100 M101 M99), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M102 M103 M104), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -82,8 +86,8 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 3 code (+15 process docs) / +90/-5 (net +85) |
-| commits | 4 |
+| files_touched / loc_diff | 12 code (+15 process docs) / +125/-12 (net +113) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | no |

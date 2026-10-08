@@ -144,6 +144,7 @@ async def record_spend(session: AsyncSession, run_id: int, result: HistoryResult
             target=result.target,
             units_estimated=result.units_estimated,
             units_actual=result.units_actual,
+            units_per_row=result.units_per_row,
             rows=len(result.points),
         )
     )

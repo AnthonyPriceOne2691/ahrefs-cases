@@ -396,3 +396,20 @@ async def test_broken_response_is_not_retried(monkeypatch: pytest.MonkeyPatch) -
             await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
 
     assert calls["n"] == 1
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"), [({"x-api-units-cost-row": "11"}, 11), ({}, None)]
+)
+async def test_live_result_carries_the_row_price(
+    headers: dict[str, str], expected: int | None
+) -> None:
+    """M103: цена строки — заголовок Ahrefs, факт; нет заголовка — пусто, а не догадка."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=PAYLOAD, headers=headers)
+
+    async with _client(handler) as client:
+        result = await AhrefsLive(AhrefsTransport(client)).fetch_history(METRICS_HISTORY, REQUEST)
+
+    assert result.units_per_row == expected
