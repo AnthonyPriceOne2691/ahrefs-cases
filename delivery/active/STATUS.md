@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** sheet-off-the-loop
+- **slug:** deleted-projects-remembered
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_api_intake.py::test_reading_a_sheet_does_not_stop_the_api
-- **diagnosis:** n/a reason=причина названа в реестре (Z52): `api/routers/intake.intake_link` зовёт синхронный `read_gsheet` → `httpx.get` прямо в async-обработчике, и цикл событий единственного процесса uvicorn стоит, пока Google не ответит
-- **phase:** verify
+- **repro_test:** tests/test_deleted_projects.py::test_empty_domain_memory_survives_deletion
+- **diagnosis:** n/a reason=причины названы в реестре (Z40, Z41): память о пустом домене (`cache.empty_since`) и судьба в журнале (`run_journal._fate_key`) держатся за `run_items.project_id`, а удаление проекта обнуляет его (`ON DELETE SET NULL`); «что покупали» (`purchases.bought_metrics`) читает журнал расхода по домену и не отличает покупки удалённого проекта от покупок живого
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом четвёртым — «продолжаем работу»; примеры M102–M104 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z40 и Z41 пятым пунктом — «продолжаем работу»; примеры M105–M109 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняются обработчик приёма и строка журнала расхода, их проверяют тесты API и журнала
+- **artifact_oracle:** n/a reason=артефакта нет: меняются память сбора, подпись прочерка и судьбы журнала — их проверяют тесты сбора, карточки и журнала
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=приём таблицы исполняется тестом API с подменённым чтением Google, журнал расхода — тестами провайдеров и записи
-- **irreversible_surfaces:** none reason=миграций нет: колонка `units_ledger.units_per_row` есть с первой схемы, она начинает заполняться; правка откатывается прежним коммитом
+- **runtime_paths:** none reason=миграция исполняется тестом на временной базе (вверх, вниз, вверх), сбор — фикстурным провайдером, удаление и консоль — тестами API и замка на настоящей базе
+- **irreversible_surfaces:** none reason=миграция добавляет колонку `run_items.project_ref` и откатывается её удалением; заполняется из `project_id` тех строк, где он ещё есть; выкатка — руками владельца по `docs/PROD.md`, бэкап до неё
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: у строк журнала расхода живых прогонов `units_per_row` заполнен ценой строки из заголовка Ahrefs (`select endpoint, units_per_row, count(*) from units_ledger where kind = 'SPENT' and created_at > <выкатка> group by 1, 2`)
+- **observe_signal:** на проде после выкатки: у проекта, удалённого и загруженного заново, следующий сбор не покупает домен, дважды подтверждённый пустым (строка журнала «… из памяти»), а журнал прогона с удалёнными кампаниями одного сайта показывает строку на кампанию; до первого такого случая — не наблюдается
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
