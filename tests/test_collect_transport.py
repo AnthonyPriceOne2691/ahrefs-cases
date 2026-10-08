@@ -336,3 +336,63 @@ async def test_wait_longer_than_the_ceiling_is_refused_not_slept(
 
     assert slept == [], "уснули вместо того, чтобы отказать"
     assert calls["n"] == 1, "повторили запрос, зная, что окно запрета не истекло"
+
+
+def _failing_first(error: type[httpx.TransportError]) -> tuple[object, dict[str, int]]:
+    """Сеть, у которой первая попытка падает `error`, а следующие отвечают 200."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            message = "сеть подменена тестом"
+            raise error(message, request=request)
+        return httpx.Response(200, json=PAYLOAD, headers={"x-api-units-cost-total-actual": "50"})
+
+    return handler, calls
+
+
+async def test_lost_response_is_not_bought_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M99: таймаут чтения — запрос ушёл, ответ потерян; повтор мог бы оплатить его дважды.
+
+    Запрос, который Ahrefs считает дольше нашего таймаута, прежде оплачивался на каждой из трёх
+    попыток и не доходил ни разу — M99 (Z52).
+    """
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _no_sleep)
+    handler, calls = _failing_first(httpx.ReadTimeout)
+
+    async with _client(handler) as client:
+        with pytest.raises(AhrefsUnavailableError) as caught:
+            await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    reason = str(caught.value)
+    assert calls["n"] == 1
+    assert "потерян после отправки" in reason
+    assert "units могли списаться" in reason
+    assert f"AHREFS_TIMEOUT_SEC (сейчас {config.ahrefs.timeout_sec:.0f} с)" in reason
+
+
+@pytest.mark.parametrize("error", [httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout])
+async def test_unsent_request_is_retried(
+    error: type[httpx.TransportError], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """M100: соединение не открылось — запрос не ушёл, и повтор бесплатен."""
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _no_sleep)
+    handler, calls = _failing_first(error)
+
+    async with _client(handler) as client:
+        response = await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    assert (calls["n"], response.units_actual) == (2, 50)
+
+
+async def test_broken_response_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M101: сервер оборвал ответ — запрос дошёл, повтора нет, причина та же, что у M99."""
+    monkeypatch.setattr("ahrefs_cases.collect.ahrefs_transport.asyncio.sleep", _no_sleep)
+    handler, calls = _failing_first(httpx.RemoteProtocolError)
+
+    async with _client(handler) as client:
+        with pytest.raises(AhrefsUnavailableError, match="потерян после отправки"):
+            await AhrefsTransport(client).get(METRICS_HISTORY.path, {})
+
+    assert calls["n"] == 1

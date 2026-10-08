@@ -4,9 +4,11 @@
 транспорт — про сеть: таймаут, повторы, коды ответа, `x-api-units-cost-*`.
 Слепи их — и разбор ответа стало бы невозможно проверить без сети.
 
-Повторяем только то, что осмысленно повторять: таймаут, обрыв соединения, 429 и
-5xx. На 400 и 401 повтор бессмысленен и вреден — три попытки с неверным ключом
-это три записи в журнале Ahrefs и ноль пользы.
+Повторяем только то, что осмысленно повторять: запрос, который не ушёл
+(соединение не открылось), 429 и 5xx. На 400 и 401 повтор бессмысленен и вреден —
+три попытки с неверным ключом это три записи в журнале Ahrefs и ноль пользы.
+Ответ, потерянный **после** отправки (таймаут чтения, обрыв), не повторяется:
+Ahrefs мог выполнить запрос и списать units, и повтор оплатил бы его дважды (Z52).
 
 **Когда повторять, решает Ahrefs, а не мы.** Если в ответе есть `Retry-After`,
 пауза берётся оттуда: наша лесенка — догадка, а заголовок — условие, на котором
@@ -32,6 +34,9 @@ from ahrefs_cases import config
 logger = logging.getLogger(__name__)
 
 _RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+_NOT_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+"""Запрос не ушёл: соединение не открылось или пул не дал соединения — повтор
+бесплатен. Остальные ошибки транспорта случаются, когда запрос уже мог дойти."""
 _RETRY_AFTER_HEADER = "Retry-After"
 _UNITS_ACTUAL_HEADER = "x-api-units-cost-total-actual"
 _UNITS_TOTAL_HEADER = "x-api-units-cost-total"
@@ -102,12 +107,18 @@ class AhrefsTransport:
             asked: float | None = None
             try:
                 response = await client.get(path, params=params)
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
+            except _NOT_SENT as exc:
                 last_reason = f"{type(exc).__name__}: {exc}"
                 logger.warning(
                     "ahrefs_request_failed",
                     extra={"path": path, "attempt": attempt + 1, "reason": last_reason},
                 )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                logger.warning(
+                    "ahrefs_response_lost",
+                    extra={"path": path, "attempt": attempt + 1, "reason": repr(exc)},
+                )
+                raise AhrefsUnavailableError(_lost(path, exc)) from exc
             else:
                 if response.status_code not in _RETRY_STATUSES:
                     return self._to_result(response, path)
@@ -221,3 +232,17 @@ def _header_int(response: httpx.Response, name: str) -> int:
     except ValueError:
         logger.warning("ahrefs_units_header_broken", extra={"header": name, "value": raw})
         return 0
+
+
+def _lost(path: str, exc: Exception) -> str:
+    """Почему домен не собран, когда запрос ушёл, а ответ потерян (Z52).
+
+    Сколько units списано, неизвестно — заголовков нет, — поэтому причина говорит «могли»
+    и называет настройку: запрос, который Ahrefs считает дольше таймаута, будет теряться
+    при каждой попытке.
+    """
+    return (
+        f"ответ Ahrefs на {path} потерян после отправки ({type(exc).__name__}: {exc}) — "
+        "units могли списаться; повтор не делается, чтобы не оплатить его дважды. Если "
+        f"повторяется — поднять AHREFS_TIMEOUT_SEC (сейчас {config.ahrefs.timeout_sec:.0f} с)"
+    )
