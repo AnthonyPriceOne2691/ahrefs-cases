@@ -8,12 +8,21 @@
 | M114 | `tests/test_ci_gates_judge.py::test_unhandled_screen_errors_fail_the_run` + замер | конфиг чист; временный тест с необработанным отказом промиса — «Tests 1 passed · Errors 1 error», код возврата 1; файл замера удалён |
 | Гейты CI | `tests/test_ci_gates_judge.py` | 10 passed |
 | Исполнение шага | `npm test --prefix web` из корня — команда шага | 25 файлов, 243 теста, код 0 |
+| Node 22 и 24 | весь сьют vitest под обеими версиями (`npx -p node@22`) | после правки миниатюр — 25 файлов, 243 passed на обеих; до неё на 22 красные M61, M62 |
+| Миниатюры в браузере | стенд, карточка `brief-ok.example.com`, Chrome по CDP | две картинки `data:image/png`, 1440×1000 |
 
 ## Исполнение рисковых путей
 
 - Шаг CI — выполнил его команду `npm test --prefix "${LINT_FE_DIR:-web}"` из корня репозитория, увидел: 25 файлов,
   243 passed, код 0; на прогоне CI этой ветки тот же шаг идёт после «Install web deps» и проверки инструментов.
   at=2026-10-08
+
+## Что нашла проверка
+
+- **Первый суд тестов экрана в CI нашёл расхождение среды (L246).** На Node 22 (CI) красные M61 и M62 карточки
+  скринов: `FileReader` jsdom не принимает Blob из ответа `fetch`; локально на Node 24 они зелёные, а у того же
+  Blob нет `arrayBuffer`. Миниатюра теперь строится из байтов ответа (`client.downloadBytes`) — одинаково в
+  браузере и под любым Node; в браузере стенда миниатюры рисуются.
 
 ## Ревью рисковых мест
 
@@ -22,6 +31,9 @@
 
 **Производительность.** Риска нет, потому что шаг прибавляет к джобе `gates` около 10 с (`vitest run`, 243 теста)
 при установке фронта, которая в джобе уже есть; лимит джобы — 20 минут.
+
+**Ошибки.** Отказ скачивания картинки идёт прежним путём: `fetchWithToken` бросает `failure(response)` — `401`
+заканчивает сессию, `403` перечитывает права, как у `download`.
 
 **Безопасность.** Риска нет, потому что шаг гоняет только тесты экрана в той же джобе, где уже ставится фронт, —
 новых секретов и прав у CI нет; `.secrets.baseline` сдвинул только номера строк известных мест файла workflow.
@@ -65,8 +77,8 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 4 code (+13 process docs) / +41/-5 (net +36) |
-| commits | 2 |
+| files_touched / loc_diff | 6 code (+14 process docs) / +83/-15 (net +68) |
+| commits | 4 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | yes — .github/workflows/quality.yml |
