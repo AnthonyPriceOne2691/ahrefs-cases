@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** collect-stops-on-failure
+- **slug:** retry-only-unsent
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** M
+- **class:** S
 - **kind:** bugfix
-- **repro_test:** tests/test_collect_stop.py::test_failed_run_starts_no_new_purchases
-- **diagnosis:** n/a reason=причина названа в реестре (Z52): `asyncio.as_completed` (`collect/runner.py`) создаёт задачи на весь список сразу, и сбой записи выходит из цикла, не отменив их — задачи продолжают брать семафор и покупать ряды, которые никто уже не запишет
-- **phase:** verify
+- **repro_test:** tests/test_collect_transport.py::test_lost_response_is_not_bought_twice
+- **diagnosis:** n/a reason=причина названа в реестре (Z52): `ahrefs_transport._get_with_retries` повторяет любой `httpx.TimeoutException` и `TransportError` — и запрос, который не ушёл, и запрос, ответ на который потерян после отправки; второй Ahrefs мог выполнить и оплатить
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом вторым — «продолжаем работу»; примеры M96–M98 выведены агентом)
-- **human_ok_plan:** n/a reason=класс M
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом третьим — «продолжаем работу»; примеры M99–M101 выведены агентом)
+- **human_ok_plan:** n/a reason=класс S
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=артефакта нет: меняется только остановка задач сбора, её проверяют тесты сбора и смерть процесса
+- **artifact_oracle:** n/a reason=артефакта нет: меняется решение транспорта о повторе, его проверяют тесты транспорта на подменённой сети
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=сбор исполняется фикстурным провайдером в тестах, смерть процесса — настоящим SIGKILL дочернего процесса сбора
-- **irreversible_surfaces:** none reason=миграций нет; правка цикла сбора откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=транспорт исполняется тестами с `httpx.MockTransport`; живой ключ в тестах не участвует и участвовать не может
+- **irreversible_surfaces:** none reason=миграций нет; правка транспорта откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: у прогона, упавшего посреди сбора, в журнале расхода нет строк позже времени его падения (`units_ledger.created_at` ≤ `runs.finished_at`); до первого такого случая — не наблюдается
+- **observe_signal:** на проде после выкатки: строка журнала «ответ Ahrefs … потерян после отправки — units могли списаться» встречается у домена не больше одного раза за прогон, и повторной строки расхода за тот же запрос в прогоне нет; до первого случая — не наблюдается
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
