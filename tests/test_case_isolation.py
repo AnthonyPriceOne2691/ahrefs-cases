@@ -334,9 +334,15 @@ CONSOLE_RULESET = "0.0.0-case-isolation"
 
 
 async def test_console_names_the_failed_case_and_exits_3(
-    migrated_db: None, out_dir: Path, capsys: pytest.CaptureFixture[str]
+    migrated_db: None,
+    out_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """M95: `show`, `pack` и `render` называют упавший кейс; `pack` и `render` — код 3."""
+    """M95: `show`, `pack` и `render` называют упавший кейс; `pack` и `render` — код 3.
+
+    `render` — и упавшей сборкой, и упавшим рисунком: у второго своя ветка в команде.
+    """
     async with own_world(ruleset=CONSOLE_RULESET, domains=DOMAINS):
         async with get_sessionmaker()() as session:
             await _seed(session, CONSOLE_RULESET, Seed(FIRST), Seed(BROKEN, broken=True))
@@ -352,3 +358,12 @@ async def test_console_names_the_failed_case_and_exits_3(
 
         rendered = await case_commands.render_case(BROKEN, MetricSource.FIXTURE)
         assert (rendered, line in capsys.readouterr().err) == (3, True)
+
+        def broken_render(*_: object, **__: object) -> None:
+            message = "рисунок упал на тесте"
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(case_commands, "render_pdf", broken_render)
+        drawn = await case_commands.render_case(FIRST, MetricSource.FIXTURE)
+        failed = f"не собран {FIRST}: RuntimeError: рисунок упал на тесте"
+        assert (drawn, failed in capsys.readouterr().err) == (3, True)
