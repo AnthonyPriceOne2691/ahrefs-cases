@@ -1,59 +1,58 @@
-# Verify report: case-build-isolated
+# Verify report: collect-stops-on-failure
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M91 (repro) | `tests/test_case_isolation.py` (кнопка «Собрать кейсы», очередь `inline`) | **до правки** красный: сборка падала на `VerdictFormatError` целиком, без пачки и судеб; после — два PDF в пачке, у третьего `failed` «не собран: VerdictFormatError: точка вердикта не той формы: 'derived' (первопричина — KeyError: 'derived')», прогон `partial` |
-| M92, M93, M95 | `tests/test_case_isolation.py` | до правки красные, после — зелёные; M95 — `show`, `pack`, `render` с упавшей сборкой и `render` с упавшим рисунком: строка «не собран <домен>: …», коды 0, 3, 3, 3 |
-| M94 | `tests/test_case_isolation.py` | зелёный и до, и после: сбой базы роняет сборку, как прежде — пример сохраняет поведение и держит мутанта A |
-| Мутанты | A — без проброса `SQLAlchemyError`; B — без изоляции рисунка в пачке; C — без судьбы `failed` в `case_fates` | A: M94 красный; B: M92, M93 красные; C: M91, M93 красные (`KeyError` в задаче пачки); код возвращён |
-| Полный сьют | `pytest` | 877 passed, 12 skipped — на коде 9f0bf6b; после переноса причины на `failure_reason` и шага M95 с рисунком — тесты кейсов и консоли 42 passed, `test_case_isolation.py` 5 passed; полный сьют с покрытием — CI |
-| Слои | `lint-imports` | 2 контракта соблюдены: `cases` и `export` берут `failure_reason` из нижнего слоя `collect` |
-| Живой проход | стенд: копия базы `cases_geo`, API и воркер на коде ветки, Chrome по CDP | см. ниже |
+| M96 (repro) | `tests/test_collect_stop.py` (12 доменов, параллель 3, запись падает на третьем) | **до правки** красный: к сбою 6 запросов, после — 12, остаток списка докуплен; после — 6 и 6 |
+| M97 | `tests/test_collect_stop.py` — задачи сбора на входе в `_fail_run` | после правки зелёный; опора фильтра по имени задачи — `test_task_name_is_real` |
+| M98 | `tests/test_collect_stop.py` + `tests/collect_child.py` — SIGKILL дочернего сбора, пока третий запрос «в сети» | два домена записаны, висящего среди них нет; прогон `running` → реапер `failed`; повтор спрашивает только два остальных |
+| Мутанты | A — без `cancel()`; C — без ожидания отменённых | A: M96 красный; C: M97 красный — после того, как фильтр задач перестал искать прежнее имя `_execute_tasks` (см. ниже); код возвращён |
+| Сбор и консоль | `tests/test_collect_*`, `tests/test_cli_*` | 47 passed |
+| Полный сьют | `pytest` | 881 passed, 12 skipped |
+| Живой проход | стенд: копия базы `cases_geo`, воркер на коде ветки, Chrome по CDP | см. ниже |
 
 ## Исполнение рисковых путей
 
-- Сборка пачки кнопкой с упавшим кейсом — на стенде убрал `derived` из точки Б вердикта `bellroy.com`, нажал
-  «Пересобрать кейсы» на экране «Кейсы», увидел: прогон №2356 «частично», в строке «62 из 77 · упало 1 ·
-  пропущено 14» и «Скачать 62 кейса»; «Что дальше» — «частично. Что не собралось и почему — в журнале ниже.
-  Собрано 62 кейса»; в раскрытии — «bellroy.com · упал · не собран: VerdictFormatError: точка вердикта не той
-  формы: 'derived' (первопричина — KeyError: 'derived')», контент-запреты — по-прежнему «не отдан»; в пачке дня
-  после прогона №2355 — 62 PDF, `bellroy.com` среди них нет. Точку вернул. at=2026-10-08
+- Сбор через новый модуль в настоящем воркере — загрузил на стенде кнопкой «Загрузить файл» список из трёх новых
+  доменов (`z52-alpha`, `-beta`, `-gamma`), «Весь цикл по этому списку» → «Запустить», увидел: прогон №2357
+  «цикл по файлу — готов», «3 из 3», условные units 1 428 → 1 278, «Собрано 3 кейса», «Скачать 3 кейса». at=2026-10-08
 
 ## Что нашла проверка
 
-- **Строка «не собран» шла мимо перенаправленного вывода:** у `_print_refusals` умолчание `stream=sys.stdout`
-  связывалось при импорте модуля, и `capsys` (как и любое перенаправление) её не видел — M95 был красным при
-  напечатанной строке. Поток теперь берётся в момент вызова.
-- **Своя функция причины повторяла журнал хуже:** `run_journal.failure_reason` уже пишет последнюю ошибку с
-  первопричиной и режет строку до 400 знаков — упавший кейс берёт её, а не свою.
+- **Проверка «задач не осталось» была зелёной по построению.** Фильтр искал задачи по имени `_execute_tasks`, а
+  после выноса цикла в `collect/execute.py` корутина зовётся `execute_tasks.<locals>.one`: фильтр не находил
+  ничего и проходил при любом коде — мутант «отмена без ожидания» прошёл M97. Имя задачи — константа теста, а
+  что задачи с ним вообще бывают, проверяет отдельный тест посреди живого сбора.
+- **Проверка после `collect_all` не отличала «дождался» от «повезло»:** откат сессии в `_fail_run` уступает циклу
+  событий, и отменённые задачи успевали закончиться сами. M97 смотрит на входе в `_fail_run`.
 
 ## Ревью рисковых мест
 
-**Ошибки.** Изоляция ловит `Exception`, а не `BaseException`: отмена задачи остаётся отменой. Каждый обработчик
-оставляет след — `"case_build_failed", extra={"project_id": project.id, "domain": project.domain}` в сборке и
-`"case_render_failed",` в пачке и консоли (`logger.exception`, стек целиком), причина уходит в журнал строкой
-`outcome, reason = RunItemOutcome.FAILED, f"не собран: {attempt.detail}"`. Консоль не молчит:
-`return EXIT_CASE_FAILED if crashed else 0`.
+**Деньги.** Сбой цикла больше не оставляет покупателей: `for pending in running:` и `pending.cancel()` отменяют
+и ждущие семафор, и ушедшие в сеть задачи, `await asyncio.gather(*running, return_exceptions=True)` дожидается
+их до того, как ошибка пойдёт в `_fail_run`. Ушедший в сеть запрос (до `COLLECT_MAX_PARALLEL` = 3) на живом
+ключе мог быть оплачен и теряется — та же граница, что у смерти процесса, она названа в Z52 и в
+`ops/first-live-run.md`.
 
-**Транзакция БД.** Сбой базы не изолируется: `except SQLAlchemyError:` пробрасывает его до задачи, и прогон
-падает, как прежде (M94), — иначе упавший запрос оставил бы сессию в прерванной транзакции, и следующие
-проекты получили бы «не собран» с чужой причиной. Запись кейсов и судеб — прежняя: одна транзакция задачи
-(`pack_built` без коммита, `_close_build` и `session.commit()` в `workers/jobs._pack`).
+**Ошибки.** Обработчик `except BaseException:` всегда пробрасывает исходное исключение (`raise`), поэтому тип не
+меняется: `_fail_run` пишет причину, как прежде, тесты C13 и C16 ловят `RuntimeError`. Отмена прогона снаружи
+(`CancelledError`) проходит тем же путём и тоже не оставляет задач.
 
-**Безопасность.** Риска нет, потому что новых входов и прав нет: причина видна в журнале прогонов тем же, кто
-видел его раньше (`require_right("read")`), а в неё попадает текст исключения сборки или рендера — без ошибок
-базы, которые пробрасываются. Длина — не больше 400 знаков (`failure_reason`).
+**Транзакция БД.** Риска нет, потому что задачи сбора сессию не трогают — пишет только цикл потребления
+(`store_outcome`), и к `_fail_run` с его `session.rollback()` ни одна задача уже не жива.
 
-**Производительность.** Риска нет, потому что сборка не делает новых запросов: `try` вокруг прежнего
-`_attempt` и прежнего `render_pdf`, судьбы пишутся тем же `add_item`.
+**Безопасность.** Риска нет, потому что новых входов, прав и данных нет: меняется только остановка задач внутри
+процесса сбора; дочерний процесс теста получает адрес той же дев-базы, что и сьют (`DATABASE_URL`).
+
+**Производительность.** Риска нет, потому что задач столько же, сколько было: `as_completed` и прежде
+создавал задачу на каждую корутину сразу, а теперь их создаёт `asyncio.create_task(one(task))` списком —
+чтобы было что отменить; отмена и ожидание идут только на пути сбоя.
 
 ## Чего проверка НЕ доказывает
 
-- Прод: живой проект с упавшей сборкой на проде пока не встречался — наблюдение ждёт первого случая; до него
-  «Пересобрать кейсы» при передаче команде покажет, что пачка собирается, как прежде.
-- Ошибку WeasyPrint настоящую, а не подменённую: M92 и M93 роняют рисунок подменой `render_pdf`.
+- Живой ключ: что Ahrefs не тарифицирует отменённый на лету запрос — не проверить без него; граница названа.
+- Прод: упавший посреди сбора прогон на проде пока не встречался — наблюдение ждёт первого случая.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -66,30 +65,25 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **16**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **11**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-Z12	assert ruleset_id is not None
-M91	assert _fates(card) == {
-M91	assert (card["status"], card["projects_failed"], card["error"]) == ("partial", 1, "")
-M91	assert _packed(out_dir) == {f"{FIRST} — Кейс v1.pdf", f"{SECOND} — Кейс v1.pdf"}
-M92	assert {domain: outcome for domain, (outcome, _) in fates.items()} == {
-M92	assert fates[SECOND][1] == "не собран: RuntimeError: рисунок упал на тесте"
-M92	assert "контент-запрет: гео: «BY»" in fates[BLOCKED][1]
-M92	assert card["status"] == "partial"
-M92	assert _packed(out_dir) == {f"{FIRST} — Кейс v1.pdf"}
-M93	assert _fates(card) == {
-M93	assert (card["status"], card["error"], card["pack"]) == ("partial", "", False)
-M93	assert not list(out_dir.glob("*.zip"))
-M95	assert (shown, line in capsys.readouterr().out) == (0, True)
-M95	assert (packed, line in out, "кейсов внутри: 1" in out) == (3, True, True)
-M95	assert (rendered, line in capsys.readouterr().err) == (3, True)
-M95	assert (drawn, failed in capsys.readouterr().err) == (3, True)
+M96	assert len(failure.provider.calls) == failure.calls_at_failure
+M97	assert left == [[]]
+M97	assert seen and min(seen) >= 1
+M98	assert child.stdout is not None
+M98	assert line.startswith(IN_FLIGHT), f"дочерний сбор не дошёл до третьего запроса: {line!r}"
+M98	assert child.returncode is None, "дочерний сбор кончился сам, до SIGKILL"
+M98	assert (len(stored), hanging in stored) == (2, False)
+M98	assert killed.status is RunStatus.RUNNING
+M98	assert killed.id in await reap_stale_runs(session)
+M98	assert killed.status is RunStatus.FAILED
+M98	assert set(again.calls) == set(CRASH_DOMAINS) - stored
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M91 M92 M93 M95 Z12), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M96 M97 M98), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -102,11 +96,11 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 7 code (+17 process docs) / +526/-42 (net +484) |
-| commits | 4 |
+| files_touched / loc_diff | 5 code (+16 process docs) / +427/-79 (net +348) |
+| commits | 3 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — tests/test_case_isolation.py (новый оракул) |
+| harness_hardened | yes — tests/collect_child.py (новый оракул), tests/test_collect_stop.py (новый оракул) |
 | implement_retries | MANUAL — fills from session log |
 | verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
 | est_token_or_cost | MANUAL / n/a |

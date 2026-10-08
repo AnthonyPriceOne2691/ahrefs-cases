@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
@@ -22,8 +21,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ahrefs_cases import config
-from ahrefs_cases.collect.breaker import ConsecutiveFailureBreaker
 from ahrefs_cases.collect.budget import (
     record_cached,
     reserve,
@@ -33,10 +30,9 @@ from ahrefs_cases.collect.budget import (
     uncounted_spend,
 )
 from ahrefs_cases.collect.cache import share_twin_points
+from ahrefs_cases.collect.execute import execute_tasks
 from ahrefs_cases.collect.factory import build_provider, build_quota
-from ahrefs_cases.collect.fetch import TaskOutcome, fetch_one
 from ahrefs_cases.collect.plan import (
-    CollectTask,
     build_case_plan,
     build_stage1_plan,
     build_stage2_plan,
@@ -54,7 +50,6 @@ from ahrefs_cases.collect.run_journal import (
     open_run,
     reject_run,
     start_run,
-    store_outcome,
     system_user,
 )
 from ahrefs_cases.collect.run_reaper import reap_stale_runs
@@ -230,7 +225,7 @@ async def _execute_run(
         )
     await session.commit()
 
-    points = await _execute_tasks(session, engine, run, plan.tasks)
+    points = await execute_tasks(session, engine, run, plan.tasks)
     await finish_run(session, run)
     await session.commit()
 
@@ -263,77 +258,6 @@ async def _execute_run(
         requests_saved=await run_saved(session, run.id),
         points_shared=shared + spread,
     )
-
-
-async def _execute_tasks(
-    session: AsyncSession,
-    engine: AhrefsProvider,
-    run: Run,
-    tasks: Sequence[CollectTask],
-) -> int:
-    """Выполнить задачи, записывая результат **по мере готовности**.
-
-    Ф2а писала всё после `gather`: прогон, убитый на семидесятом домене, терял
-    данные шестидесяти девяти, за которые units уже списаны. Здесь каждая
-    завершённая задача попадает в базу сразу, а каждые
-    `COLLECT_CHECKPOINT_EVERY` задач фиксируются коммитом.
-
-    Возобновления как отдельного механизма не нужно: следующий прогон увидит
-    собранное через кэш и докупит только остаток.
-    """
-    semaphore = asyncio.Semaphore(config.ahrefs.max_parallel)
-    breaker = ConsecutiveFailureBreaker(limit=config.ahrefs.breaker_max_failures)
-    deadline = asyncio.get_running_loop().time() + config.ahrefs.run_timeout_sec
-    """Прогон обязан закончиться до дедлайна.
-
-    Не для красоты: реапер судит о смерти прогона по возрасту, и это верно
-    только пока живой прогон физически не может идти дольше своего лимита. В
-    CRM гарантию давал таймаут RQ-джобы, у нас до Ф5 очереди нет — значит
-    лимит держит сам прогон (Z1 в docs/FINDINGS.md).
-    """
-
-    async def one(task: CollectTask) -> TaskOutcome:
-        """Одна задача под семафором.
-
-        Предохранитель проверяется и обновляется **внутри** семафора, а не в
-        цикле потребления результатов. Снаружи это не работает: `as_completed`
-        стартует все корутины сразу, проверка успевает пройти до первой
-        неудачи, и предохранитель не срабатывает вообще — поймано тестом C14,
-        который до этой правки видел 10 запросов вместо 3.
-
-        Перелёт на величину `max_parallel` остаётся: задачи, уже ушедшие в
-        сеть, не отзываются. Это цена параллельности, а не дефект.
-        """
-        async with semaphore:
-            if breaker.tripped:
-                return TaskOutcome(
-                    task=task, outcome=RunItemOutcome.SKIPPED_ABORTED, reason=breaker.reason()
-                )
-            if asyncio.get_running_loop().time() >= deadline:
-                return TaskOutcome(
-                    task=task,
-                    outcome=RunItemOutcome.SKIPPED_ABORTED,
-                    reason=(
-                        f"прогон превысил лимит {config.ahrefs.run_timeout_sec} с и остановлен. "
-                        "Запрос по этому домену не делался; собранное сохранено, "
-                        "повторный запуск догрузит остаток."
-                    ),
-                )
-            outcome = await fetch_one(engine, task)
-            breaker.record(ok=outcome.outcome is not RunItemOutcome.FAILED)
-            return outcome
-
-    points = 0
-    for done, future in enumerate(asyncio.as_completed([one(task) for task in tasks]), start=1):
-        item = await future
-        points += await store_outcome(session, run, item)
-        if done % config.ahrefs.checkpoint_every == 0:
-            # Чекпойнт: прогон, убитый после этой точки, теряет не больше
-            # `checkpoint_every` доменов — за них уже заплачено.
-            await session.commit()
-
-    await session.commit()
-    return points
 
 
 class StageArgs(TypedDict, total=False):

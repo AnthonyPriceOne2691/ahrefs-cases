@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** case-build-isolated
+- **slug:** collect-stops-on-failure
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
-- **repro_test:** tests/test_case_isolation.py::test_one_broken_verdict_does_not_drop_the_pack
-- **diagnosis:** n/a reason=причина названа в реестре (Z54): `builder._attempt` и `archive.pack` ловят только `ContentBlockedError`, и исключение одного проекта выходит из цикла по всем — пачка не собирается, прогон кейсов падает без журнала судеб
+- **repro_test:** tests/test_collect_stop.py::test_failed_run_starts_no_new_purchases
+- **diagnosis:** n/a reason=причина названа в реестре (Z52): `asyncio.as_completed` (`collect/runner.py`) создаёт задачи на весь список сразу, и сбой записи выходит из цикла, не отменив их — задачи продолжают брать семафор и покупать ряды, которые никто уже не запишет
 - **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно»; 08.10: план с Z54 первым пунктом — «продолжаем работу»; примеры M91–M95 выведены агентом)
+- **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z52 включён: «да»; 08.10: план с этим пунктом вторым — «продолжаем работу»; примеры M96–M98 выведены агентом)
 - **human_ok_plan:** n/a reason=класс M
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** n/a reason=PDF рисует прежний рендер; поставка решает, попадает ли он в пачку, — это проверяют тесты пачки и журнала
+- **artifact_oracle:** n/a reason=артефакта нет: меняется только остановка задач сбора, её проверяют тесты сбора и смерть процесса
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** none reason=сборка и пачка исполняются тестами на настоящей базе, задача очереди — прокликиванием «Собрать кейсы» на стенде
-- **irreversible_surfaces:** none reason=миграций нет: исход `failed` у журнала уже есть; правка откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
+- **runtime_paths:** none reason=сбор исполняется фикстурным провайдером в тестах, смерть процесса — настоящим SIGKILL дочернего процесса сбора
+- **irreversible_surfaces:** none reason=миграций нет; правка цикла сбора откатывается прежним коммитом; выкатка — руками владельца по `docs/PROD.md`
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки: «Пересобрать кейсы» при передаче команде собирает пачку, как прежде (журнал без `failed`); первый проект с упавшей сборкой — строка «упал — не собран: …», прогон `partial`, архив из остальных
+- **observe_signal:** на проде после выкатки: у прогона, упавшего посреди сбора, в журнале расхода нет строк позже времени его падения (`units_ledger.created_at` ≤ `runs.finished_at`); до первого такого случая — не наблюдается
 - **observe_until:** 2026-10-28
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
