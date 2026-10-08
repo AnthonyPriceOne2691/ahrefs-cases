@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_collect_cache.py
 - **diagnosis:** n/a reason=причина названа в реестре (Z48): `collect/cache.share_twin_points` строит DISTINCT ON устаревшим `.distinct(expr)`, и на SQLAlchemy 2.1 предупреждение при `filterwarnings = error` роняет тесты переноса месяцев; граница `<2.1` в `pyproject.toml` держала проект на 2.0
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-08 by=human:anthony (07.10: «остальные зетки все можно» — Z48 в плане; 08.10: план с этим пунктом восьмым — «продолжаем работу»; примеры M115–M116 выведены агентом)

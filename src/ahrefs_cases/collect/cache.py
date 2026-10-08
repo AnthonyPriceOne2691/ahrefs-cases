@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import and_, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -120,7 +121,7 @@ async def share_twin_points(
                 MetricPoint.point_date >= span.date_from,
                 MetricPoint.point_date <= span.date_to,
             )
-            .distinct(MetricPoint.metric, MetricPoint.point_date)
+            .ext(distinct_on(MetricPoint.metric, MetricPoint.point_date))
             .order_by(
                 MetricPoint.metric,
                 MetricPoint.point_date,

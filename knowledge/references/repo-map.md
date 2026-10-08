@@ -72,9 +72,10 @@ implementation:
 Поэтому правка зависимостей — это правка `pyproject.toml` плюс `scripts/lock_deps.sh` и коммит
 `uv.lock`; подъём версий — тем же скриптом с `--upgrade-package` и отдельной поставкой. Версия
 uv прибита одна на манифест, образ и CI (`[tool.uv] required-version`), lock — только для
-Linux и macOS. Граница `sqlalchemy[asyncio]<2.1` остаётся: 2.1.0 объявил устаревшим
-`.distinct(expr)` для DISTINCT ON в `collect/cache.py`, и `filterwarnings = error` уронил 47
-тестов CI (24.09.2026). Снимать её — только вместе с переходом на `postgresql.distinct_on`.
+Linux и macOS. SQLAlchemy — 2.1 (`>=2.1,<2.2`, с 08.10.2026): DISTINCT ON строится расширением
+`postgresql.distinct_on` (`collect/cache.py`); прежний `.distinct(expr)` 2.1 объявил устаревшим, и
+`filterwarnings = error` уронил 47 тестов CI (24.09.2026), пока стояла граница `<2.1`. Устарел и
+`Result.tuples()`: строки 2.1 — уже кортежи (`api/run_rows.py` распаковывает `.all()`).
 
 **Pillow — прямая зависимость с 07.10.2026** (решение владельца): скриншоты брифа проверяются,
 ужимаются и перекодируются без метаданных (`storage/screenshots.py`). Пакет и раньше стоял —
