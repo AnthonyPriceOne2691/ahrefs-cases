@@ -185,3 +185,33 @@ def test_edit_right_is_everyones_and_personal(client: TestClient, project_id: in
     assert "edit_briefs" in rights.json()["rights"]
     assert _patch(client, project_id, {"nda": True}, email=REVOKED).status_code == 403
     assert _patch(client, 10**9, {"nda": True}).status_code == 404
+
+
+def test_other_closes_service_and_project_kinds(client: TestClient, project_id: int) -> None:
+    """M120: «Другое» — последний пункт «Тип услуги» и «Вид проекта»; пишется ключом `other`."""
+    catalog = client.get("/api/brief-fields", headers=_headers(client)).json()
+    by_key = {field["key"]: field for field in catalog["fields"]}
+    other = {"service_kind": "Другое", "project_kind": "Другое"}
+    response = _patch(client, project_id, {"fields": other})
+
+    for key in other:
+        assert by_key[key]["choices"][-1] == {"key": "other", "label": "Другое"}
+    assert response.status_code == 200
+    assert response.json()["fields"] == {"service_kind": "other", "project_kind": "other"}
+
+
+def test_card_shows_what_the_file_knows(
+    client: TestClient, project_id: int, writer: Callable[[Ask], Any]
+) -> None:
+    """M121: карточка отдаёт то, что лист берёт из файла у пустых пунктов, — нишу и объём работ."""
+
+    async def _volume(session: AsyncSession) -> None:
+        project = await session.get(db.Project, project_id)
+        assert project is not None
+        project.work_volume = 120
+
+    assert _card(client, project_id)["brief_known"] == {"topic": "travel"}
+    writer(_volume)
+
+    known = _card(client, project_id)["brief_known"]
+    assert known == {"topic": "travel", "budget": "120 (объём работ из файла)"}

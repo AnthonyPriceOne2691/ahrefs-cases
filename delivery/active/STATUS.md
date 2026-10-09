@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_brief_sheet.py
 - **diagnosis:** n/a reason=причины названы при находке на проде 09.10 и перебора гипотез не требовали: Z58 — подстановка `_fallback` есть только в `export/brief_sheet.py`, карточка её не получает; Z59 — обычный пробел перед «$» в `cases.model.SUBJECT_LABELS`
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-09 by=human:anthony (09.10: «давай эти, сделаем и на прод» — на «в „Тип услуги“ и „Вид проекта“ нет пункта „Другое“» и «две мелочи, найденные при проходе»; списки утверждены владельцем «давай так и оставим»; примеры M120–M122 выведены агентом)

@@ -152,18 +152,29 @@ def _row(case: CaseData, key: str) -> BriefRow:
     field = FIELDS_BY_KEY[key]
     value = case.brief.get(key, "")
     if not value:
-        value = _fallback(case, key)
+        value = file_knows(key, niche=case.niche, work_volume=case.work_volume)
     shown = label_of(field, value) if value else ""
     return BriefRow(field.label, shown, link=field.kind is FieldKind.LINK and bool(shown))
 
 
-def _fallback(case: CaseData, key: str) -> str:
+def file_knows(key: str, *, niche: str, work_volume: int | None) -> str:
     """То, что файл знает о пункте, пока специалист его не заполнил."""
     if key == "topic":
-        return case.niche
-    if key == "budget" and case.work_volume is not None:
-        return f"{number(float(case.work_volume))} (объём работ из файла)"
+        return niche
+    if key == "budget" and work_volume is not None:
+        return f"{number(float(work_volume))} (объём работ из файла)"
     return ""
+
+
+def known_for(niche: str, work_volume: int | None) -> dict[str, str]:
+    """Подстановка из файла для карточки — пункт брифа → то, что лист печатает у пустого пункта.
+
+    Правило одно на лист и экран: карточка получает его значения с сервера, а не
+    повторяет (L78) — до 09.10.2026 экран писал «заполняет специалист» там, где лист
+    печатал нишу и объём работ из файла (Z58).
+    """
+    known = {key: file_knows(key, niche=niche, work_volume=work_volume) for key in printed_fields()}
+    return {key: value for key, value in known.items() if value}
 
 
 def printed_fields() -> frozenset[str]:

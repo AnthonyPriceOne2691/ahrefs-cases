@@ -20,7 +20,7 @@ from ahrefs_cases.cases.stoplist import ContentBlockedError, check
 from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.export import pdf_renderer
 from ahrefs_cases.export.ahrefs_links import report_links
-from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections, printed_fields
+from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections, known_for, printed_fields
 from ahrefs_cases.export.html_renderer import render_html
 from ahrefs_cases.storage._enums import Group
 from ahrefs_cases.storage.brief import FIELDS, SECTIONS
@@ -115,6 +115,25 @@ def test_sheet_fills_what_the_service_knows_and_marks_the_rest() -> None:
     assert rows["Поставленные цели"] == "топ-10 по турам"
     assert rows["Трудности, которые возникли"] == ""
     assert EMPTY in render_html(_case())
+
+
+def test_sheet_and_card_take_the_file_from_one_place() -> None:
+    """M121: что лист берёт из файла у пустых пунктов — то же, что карточка получает с сервера."""
+    rows = _rows(_case())
+    known = known_for("путешествия", 120)
+
+    assert known == {"topic": "путешествия", "budget": "120 (объём работ из файла)"}
+    assert rows["Тематика"] == known["topic"]
+    assert rows["Бюджет проекта / объём работ"] == known["budget"]
+
+
+def test_dollar_stays_with_its_metric() -> None:
+    """M122: перед «$» неразрывный пробел — строка роста не отрывает знак от подписи (Z59)."""
+    cost = Change("org_cost", Delta(before=100.0, after=502.0, absolute=402.0, pct=402.0))
+    growth = _rows(_case(changes=(cost,)))["Процент роста показателей"]
+
+    assert growth == "стоимость трафика,\u00a0$ +402\u00a0%"
+    assert ", $" not in growth
 
 
 def test_links_carry_domain_mode_country_and_period() -> None:
