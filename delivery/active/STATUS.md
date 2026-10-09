@@ -3,15 +3,15 @@
 - **slug:** brief-print-polish
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
-- **class:** S
+- **class:** M
 - **kind:** bugfix
 - **repro_test:** tests/test_brief_sheet.py
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-09 by=human:anthony (09.10: «Давай, хорошо, небольшую поставку» — ответ на отчёт о пересборке на проде с тремя мелочами и «исправлю небольшой поставкой»; примеры M117–M119 выведены агентом)
-- **human_ok_plan:** n/a reason=класс S
+- **human_ok_plan:** n/a reason=подпись плана требуется классу L (§2.2); класс M — по объёму: три слоя, 11 файлов с тестами (§2.2b), разрез назван в одобренной спеке
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
 - **artifact_oracle:** PDF — артефакт: лист брифа меряется в вёрстке WeasyPrint (вычисленный отступ подписи и зазор до значения широким шрифтом, M117); на стенде PDF скачан кнопкой карточки, страницы растеризованы и просмотрены
