@@ -1,45 +1,44 @@
-# Verify report: brief-print-polish
+# Verify report: brief-card-and-lists
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M117 (repro) | `tests/test_brief_sheet.py::test_label_keeps_its_distance_from_the_value` — вёрстка WeasyPrint широким шрифтом | **до правки** — `assert 0 == 15.118…`: отступ подписи 0 px у всех 32 строк; после — зелёный. Замер тем же способом: наименьший зазор у «Период для кейса 1 — какие услуги делали в этот момент» — 5 px → 56 px |
-| M118 | `tests/test_cases_pdf.py::test_percent_sign_stays_with_its_number`, `tests/test_cases_narrative.py` | «+640 %», «+1,2 %» с неразрывным пробелом; в HTML листа и в тексте кейса обычного пробела перед «%» нет |
-| M119 | `web/src/pages/__tests__/cases.test.tsx` — три размера | «396 КБ», «1,5 МБ», «3 МБ» |
-| Одностраничность «Динамики» (L243) | разность страниц в `tests/test_cases_pdf.py` | зелёная с новым пробелом |
-| Сервер рядом | тесты кейса, листа, CLI, рисунков, изоляции сборки — 12 файлов | 144 passed |
-| Полный сьют | `pytest` | 899 passed, 12 skipped (было 897 — плюс M117 и M118) |
-| Фронт | `vitest`, `tsc --noEmit`, ESLint | 246 passed; чисто |
+| M122 (repro) | `tests/test_brief_sheet.py::test_dollar_stays_with_its_metric` | **до правки** — `'стоимость трафика, $ +402 %'`: перед «$» обычный пробел; после — зелёный |
+| M121 | `tests/test_brief_sheet.py::test_sheet_and_card_take_the_file_from_one_place`, `tests/test_api_project_brief.py::test_card_shows_what_the_file_knows`, `web/src/pages/__tests__/card-brief.test.tsx` (два примера) | лист и карточка берут подстановку одной функцией: тематика — ниша, бюджет — «120 (объём работ из файла)»; экран показывает их у пустых пунктов частичного брифа, пустой бриф — одна строка |
+| M120 | `tests/test_api_project_brief.py::test_other_closes_service_and_project_kinds` | «Другое» (`other`) — последний пункт обоих списков; запись словом «Другое» хранится ключом |
+| Тесты брифа рядом | лист, API брифа, описание брифа, приём файла — 4 файла | 35 passed |
+| Полный сьют | `pytest` | 903 passed, 12 skipped (было 899 — плюс M120, M121 ×2, M122) |
+| Фронт | `vitest`, `tsc --noEmit`, ESLint | 248 passed; чисто, новых предупреждений нет |
 
 ## Исполнение рисковых путей
 
-- `templates/case.html.j2` — на стенде (база `cases_geo`, провайдер fixture) нажал «Пересобрать кейсы» на «Кейсах»:
-  прогон №2367, пачка «3,9 МБ» (до пересборки — «3,7 МБ», прежняя подпись дала бы «4 МБ»); кнопкой «Скачать PDF»
-  скачал `zooplus.de — Кейс v13.pdf`, растеризовал три страницы (PDFKit) и посмотрел: подписи «Период для кейса N —
-  какие услуги делали в этот момент» переносятся внутри своей колонки, до «заполняет специалист» виден зазор; строка
-  роста переносится перед «+52 %» и «+37 %», знак «%» остаётся при числе. at=2026-10-09
+- `src/ahrefs_cases/cases/model.py` — на стенде (база `cases_geo`, провайдер fixture, API и воркер перезапущены на
+  новом коде): форма брифа zooplus.de — у «Тип услуги» и «Вид проекта» последним пунктом «Другое»; записал один
+  пункт («Кто подготовил информацию по кейсу») — карточка показала «Тематика: зоотовары» и «Бюджет проекта / объём
+  работ: 95 (объём работ из файла)»; «Пересобрать кейсы», `zooplus.de — Кейс v14.pdf` растеризован: «стоимость
+  трафика, $ +52 %» одной строкой. Перенос «$», виденный на проде, — шрифтом DejaVu Sans: смотреть после выкатки и
+  пересборки. at=2026-10-09
 
 ## Что нашла проверка
 
-- **Дефект виден только шрифтом прода.** Шаблон просит `-apple-system, "Helvetica Neue", Arial`; на Mac это узкий
-  системный шрифт, и длинная подпись до значения не дотягивала — зазор 24 px при нулевом отступе. В контейнере этих
-  шрифтов нет, печатает DejaVu Sans — с широким Verdana зазор 5 px. Поэтому M117 вёрстает лист широким шрифтом и
-  проверяет вычисленный отступ: он от шрифта не зависит.
+- **Функция карточки упёрлась в предел длины.** Четыре свойства `Brief` Prettier разложил на шесть строк, и
+  `ProjectCard` вырос до 85 строк при пределе 80 — ESLint дал новое предупреждение, рост которых запрещён.
+  `Brief` получает карточку целиком, как `CardHeader`: вызов — одна строка.
+- `api/schemas.py` после поля `brief_known` — ровно 500 строк при пределе 500: следующее поле карточки потребует
+  разреза модуля схем.
 
 ## Ревью рисковых мест
 
-**Вёрстка листа.** Правка стиля — одно правило: селектор подписи стал специфичнее (`.brief-table
-.brief-table__label`), свойства те же. Затрагивает обе таблицы листа брифа — пункты и ссылки Ahrefs (32 строки в
-M117); лист «Динамика» этих классов не использует.
+**Данные.** Новых колонок и миграций нет: «Другое» — ещё один ключ в JSONB брифа, записанные значения не
+меняются; подстановка не пишется в бриф — она считается при каждом чтении карточки и листа.
 
-**Безопасность.** Риска нет, потому что право и вход не менялись: `'/api/auth/me'` в новом тесте экрана — та же
-заглушка «кто я», что у соседних тестов пачки (`me(['read'])`), а правка экрана — подпись размера.
+**Интеграция.** Ответ карточки получил поле `brief_known` (по умолчанию пустое); экран читает его с `?? {}` —
+старый ответ без поля показывает бриф как прежде.
 
 ## Чего проверка НЕ доказывает
 
-- Прод: PDF печатается там DejaVu Sans — зазор и перенос «%» в настоящем шрифте видны после выкатки и «Пересобрать
-  кейсы»; до неё на проде старые PDF пачки 09.10.
+- Прод: перенос «$» шрифтом контейнера — после выкатки и «Пересобрать кейсы»; карточка и форма — после выкатки.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -52,24 +51,30 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **10**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **16**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M117	assert len(pairs) == len(FIELDS) + 7 + 3  # пункты брифа, семь своих сервиса, три ссылки Ahrefs
-M117	assert label.padding_right == pytest.approx(gap, abs=0.01), label.element.text
-M117	assert value.content_box_x() - _text_right(label) >= gap - 0.01, label.element.text
-M118	assert rows["Процент роста показателей"] == "органический трафик +160\u00a0%"  # M118
-M118	assert "139\u00a0%" in text  # M118
-M118	assert " %" not in text
-M118	assert percent(640.2) == "+640\u00a0%"
-M118	assert percent(1.2) == "+1,2\u00a0%"
-M118	assert " %" not in render_html(_case())
-M119	expect(await screen.findByText(new RegExp(` · ${shown} · `))).toBeInTheDocument();
+M120	assert by_key[key]["choices"][-1] == {"key": "other", "label": "Другое"}
+M120	assert response.status_code == 200
+M120	assert response.json()["fields"] == {"service_kind": "other", "project_kind": "other"}
+M121	assert project is not None
+M121	assert _card(client, project_id)["brief_known"] == {"topic": "travel"}
+M121	assert known == {"topic": "travel", "budget": "120 (объём работ из файла)"}
+M121	assert known == {"topic": "путешествия", "budget": "120 (объём работ из файла)"}
+M121	assert rows["Тематика"] == known["topic"]
+M121	assert rows["Бюджет проекта / объём работ"] == known["budget"]
+M122	assert growth == "стоимость трафика,\u00a0$ +402\u00a0%"
+M122	assert ", $" not in growth
+M121	expect(await screen.findByText('Путешествия')).toBeInTheDocument();
+M121	expect(screen.getByText('120 (объём работ из файла)')).toBeInTheDocument();
+M121	expect(screen.getAllByText('заполняет специалист')).toHaveLength(3);
+M121	expect(await screen.findByText(/Бриф ещё не заполнен/)).toBeInTheDocument();
+M121	expect(screen.queryByText('Путешествия')).not.toBeInTheDocument();
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M117 M118 M119), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M120 M121 M122), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -82,8 +87,8 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 11 code (+19 process docs) / +108/-12 (net +96) |
-| commits | 3 |
+| files_touched / loc_diff | 12 code (+19 process docs) / +162/-22 (net +140) |
+| commits | 2 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
 | harness_hardened | no |
@@ -92,4 +97,3 @@ asserts_without_example: 0
 | est_token_or_cost | MANUAL / n/a |
 
 MANUAL-поля заполняет агент/человек на handoff. Если `verify_fails_before_green >= 2` при `harness_hardened: no` — по §9.2 добавь oracle/breaker/hook в этой же поставке.
-

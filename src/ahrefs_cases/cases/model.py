@@ -42,7 +42,9 @@ SUBJECT_LABELS: Mapping[str, str] = MappingProxyType(
         Metric.KW_TOP3.value: "ключи в топ-3",
         KW_TOTAL: "число ключей (сумма корзин)",
         Metric.REFDOMAINS.value: "ссылающиеся домены",
-        Metric.ORG_COST.value: "стоимость трафика, $",
+        # Перед «$» неразрывный пробел: перенос оставлял «стоимость трафика,» в конце
+        # строки листа, а «$» уносил на следующую (Z59).
+        Metric.ORG_COST.value: "стоимость трафика,\u00a0$",
         Metric.DR.value: "Domain Rating",
     }
 )

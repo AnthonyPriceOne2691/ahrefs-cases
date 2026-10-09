@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { fetchBriefFields } from '../../api/brief';
-import type { BriefCatalog, BriefField } from '../../api/types';
+import type { BriefCatalog, BriefField, ProjectCard } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { failureText } from '../cases/failure';
 
@@ -24,11 +24,14 @@ import { Screens } from './Screens';
 
 interface Props {
   projectId: number;
-  brief: Record<string, string>;
-  nda: boolean;
+  /** Карточка целиком, как у шапки: бриф, подстановка из файла (Z58) и NDA — её части. */
+  card: ProjectCard;
 }
 
-export function Brief({ projectId, brief, nda }: Props) {
+export function Brief({ projectId, card }: Props) {
+  const brief = card.brief ?? {};
+  const known = card.brief_known ?? {};
+  const nda = !card.project.publishable;
   const { can } = useAuth();
   const [editing, setEditing] = useState(false);
   const catalog = useQuery({
@@ -66,7 +69,7 @@ export function Brief({ projectId, brief, nda }: Props) {
                 onDone={() => setEditing(false)}
               />
             ) : (
-              <BriefRead catalog={catalog.data} brief={brief} />
+              <BriefRead catalog={catalog.data} brief={brief} known={known} />
             ))}
         </Stack>
       </Paper>
@@ -92,7 +95,13 @@ function NdaLine({ nda }: { nda: boolean }) {
   );
 }
 
-function BriefRead({ catalog, brief }: { catalog: BriefCatalog; brief: Record<string, string> }) {
+interface ReadProps {
+  catalog: BriefCatalog;
+  brief: Record<string, string>;
+  known: Record<string, string>;
+}
+
+function BriefRead({ catalog, brief, known }: ReadProps) {
   // Пустой бриф — одна строка, а не двадцать пять «заполняет специалист»: иначе цифры и
   // «Почему эта группа» уезжают далеко вниз (решение владельца 07.10.2026). Частично
   // заполненный показывает пробелы, как прежде.
@@ -120,7 +129,9 @@ function BriefRead({ catalog, brief }: { catalog: BriefCatalog; brief: Record<st
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Value field={field} value={brief[field.key]} />
+                    {/* Пустой пункт — то, что знает файл, как на листе PDF; пустой бриф
+                        целиком по-прежнему одна строка: в нём специалист ещё ничего не писал. */}
+                    <Value field={field} value={brief[field.key] || known[field.key]} />
                   </Table.Td>
                 </Table.Tr>
               ))}

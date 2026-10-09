@@ -92,7 +92,7 @@ function ProjectCard({ id, onDeleted }: { id: number; onDeleted: (r: ProjectDele
 
         <CasePdf projectId={id} />
 
-        <Brief projectId={id} brief={card.data.brief ?? {}} nda={!card.data.project.publishable} />
+        <Brief projectId={id} card={card.data} />
 
         <SourceMismatch reason={card.data.source_mismatch} />
 

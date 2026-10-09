@@ -104,10 +104,10 @@ function server(routes: Record<string, Reply>): { sent: unknown[] } {
   return { sent };
 }
 
-function card(brief: Record<string, string>, publishable = true): Reply {
+function card(brief: Record<string, string>, publishable = true, known = {}): Reply {
   const project = { ...PROJECT, publishable };
   const body = { project, verdict: null, series: [], series_source: 'fixture', brief };
-  return { status: 200, body: { ...body, source_mismatch: null } };
+  return { status: 200, body: { ...body, brief_known: known, source_mismatch: null } };
 }
 
 function renderCard(rights: string[]) {
@@ -211,6 +211,59 @@ describe('бриф на карточке: пустой и частичный', (
     expect(await screen.findByText('рост заявок')).toBeInTheDocument();
     expect(screen.getAllByText('заполняет специалист')).toHaveLength(3);
     expect(screen.queryByText(/Бриф ещё не заполнен/)).not.toBeInTheDocument();
+  });
+});
+
+const TOPIC = {
+  key: 'topic',
+  label: 'Тематика',
+  section: 'Проект',
+  kind: 'choice',
+  choices: [{ key: 'travel', label: 'Путешествия' }],
+  column: 'topic',
+  max_len: 60,
+};
+const BUDGET = {
+  key: 'budget',
+  label: 'Бюджет проекта / объём работ',
+  section: 'Проект',
+  kind: 'text',
+  choices: [],
+  column: '',
+  max_len: 300,
+};
+
+describe('бриф на карточке: то, что знает файл', () => {
+  it('M121: пустой пункт показывает то же, что лист PDF, — подписью пункта', async () => {
+    const known = { topic: 'travel', budget: '120 (объём работ из файла)' };
+    const fields = [TOPIC, BUDGET, ...CATALOG.fields];
+    server({
+      'GET /api/projects/7': card({ client_request: 'рост заявок' }, true, known),
+      'GET /api/projects/7/charts': { status: 200, body: [] },
+      'GET /api/brief-fields': { status: 200, body: { ...CATALOG, fields } },
+    });
+
+    renderCard(['read']);
+
+    expect(await screen.findByText('Путешествия')).toBeInTheDocument();
+    expect(screen.getByText('120 (объём работ из файла)')).toBeInTheDocument();
+    expect(screen.getAllByText('заполняет специалист')).toHaveLength(3);
+  });
+
+  it('M121: пустой бриф — по-прежнему одна строка, подстановка его не заполняет', async () => {
+    server({
+      'GET /api/projects/7': card({}, true, { topic: 'travel' }),
+      'GET /api/projects/7/charts': { status: 200, body: [] },
+      'GET /api/brief-fields': {
+        status: 200,
+        body: { ...CATALOG, fields: [TOPIC, ...CATALOG.fields] },
+      },
+    });
+
+    renderCard(['read']);
+
+    expect(await screen.findByText(/Бриф ещё не заполнен/)).toBeInTheDocument();
+    expect(screen.queryByText('Путешествия')).not.toBeInTheDocument();
   });
 });
 

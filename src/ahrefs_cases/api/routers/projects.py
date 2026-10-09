@@ -42,6 +42,7 @@ from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
 from ahrefs_cases.export import removal
 from ahrefs_cases.export.archive import newest_pack
+from ahrefs_cases.export.brief_sheet import known_for
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.export.html_renderer import POINTS_NOTE
@@ -155,6 +156,7 @@ async def project_card(
         # вердикта, а не пишется здесь второй раз.
         source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
         brief=dict(project.brief or {}),
+        brief_known=known_for(project.niche, project.work_volume),
         geo_note=rows_note(project.geo, await bought_countries(session, project.id, shown)),
     )
 
