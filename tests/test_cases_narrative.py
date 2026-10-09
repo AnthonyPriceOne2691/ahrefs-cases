@@ -67,7 +67,7 @@ def test_text_names_the_main_result() -> None:
     text = _case().narrative
 
     assert "органический трафик" in text.lower()
-    assert "139\u00a0%" in text
+    assert "139\u00a0%" in text  # M118
     assert f"с {number(47326.0)} до {number(113312.0)}" in text
     # M118: перед «%» неразрывный пробел, обычного там не осталось
     assert " %" not in text
