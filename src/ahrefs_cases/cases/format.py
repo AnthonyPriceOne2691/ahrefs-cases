@@ -11,6 +11,10 @@ from __future__ import annotations
 THOUSANDS = " "
 """Неразрывный пробел: «47 326» не должно разрываться переносом строки."""
 
+PERCENT = "\u00a0%"
+"""Знак процента — через неразрывный пробел, по той же причине: перенос оставлял
+«+640» в конце строки листа, а «%» уносил на следующую (Z56)."""
+
 
 def number(value: float) -> str:
     """Число как в отчёте.
@@ -32,4 +36,4 @@ def percent(value: float | None) -> str:
     if value is None:
         return "с нуля"
     digits = 0 if abs(value) >= 10 else 1
-    return f"{value:+.{digits}f} %".replace(".", ",")
+    return f"{value:+.{digits}f}{PERCENT}".replace(".", ",")

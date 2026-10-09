@@ -7,6 +7,8 @@
  * длинная сторона до его предела, JPEG; прозрачное — на белом, иначе JPEG
  * зальёт его чёрным. Оба числа — из правил сервера, своих копий здесь нет.
  */
+import { megabytes } from '../format';
+
 const QUALITY = 0.88;
 
 /** Пределы из правил сервера (`/api/screenshot-rules`). */
@@ -33,10 +35,6 @@ export async function fitForUpload(
     );
   }
   return smaller;
-}
-
-export function megabytes(bytes: number): string {
-  return (bytes / 1_048_576).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 }
 
 async function inBrowser(image: Blob, maxSide: number): Promise<Blob> {

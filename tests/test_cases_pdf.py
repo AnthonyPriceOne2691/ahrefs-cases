@@ -27,6 +27,7 @@ from ahrefs_cases.export.html_renderer import (
     DATA_FOOTNOTE,
     NDA_WARNING,
     number,
+    percent,
     render_html,
 )
 from ahrefs_cases.storage._enums import Group
@@ -160,6 +161,13 @@ def test_numbers_in_html_are_the_numbers_of_the_case() -> None:
         assert number(change.before) in html
         assert number(change.after) in html
     assert number(47326.0) == "47\u00a0326"  # неразрывный пробел в тысячах
+
+
+def test_percent_sign_stays_with_its_number() -> None:
+    """M118: перед «%» неразрывный пробел — перенос строки не отрывает знак от числа (Z56)."""
+    assert percent(640.2) == "+640\u00a0%"
+    assert percent(1.2) == "+1,2\u00a0%"
+    assert " %" not in render_html(_case())
 
 
 def test_render_is_deterministic() -> None:

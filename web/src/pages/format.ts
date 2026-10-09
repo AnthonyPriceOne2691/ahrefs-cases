@@ -46,3 +46,21 @@ export function casesCount(count: number): string {
   }
   return `${num(count)} ${word}`;
 }
+
+const MEGABYTE = 1_048_576;
+
+/** Мегабайты с десятой: «2,5». Предел скринов в подписях и размер файла. */
+export function megabytes(bytes: number): string {
+  return (bytes / MEGABYTE).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+}
+
+/**
+ * Размер файла: до мегабайта — килобайты, дальше — мегабайты с десятой.
+ *
+ * Целые мегабайты, но не меньше одного, подписали пачку в 405 944 байт как «1 МБ»
+ * (Z57): округление, которое на малых величинах ошибается вдвое, — не округление.
+ */
+export function fileSize(bytes: number): string {
+  if (bytes < MEGABYTE) return `${num(Math.max(1, Math.round(bytes / 1024)))} КБ`;
+  return `${megabytes(bytes)} МБ`;
+}

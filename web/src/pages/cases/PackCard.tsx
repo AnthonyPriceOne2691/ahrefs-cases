@@ -10,12 +10,12 @@ import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core';
 import { Link } from 'react-router-dom';
 
 import type { PackView } from '../../api/types';
-import { num } from '../format';
+import { fileSize } from '../format';
 
-/** Размер в мегабайтах: байты в пачке PDF — это число, которое никто не читает. */
+/** Размер пачки словами — КБ или МБ: байты в пачке PDF — число, которое никто не читает. */
 function size(bytes: number | null): string {
   if (bytes === null) return '—';
-  return `${num(Math.max(1, Math.round(bytes / 1024 / 1024)))} МБ`;
+  return fileSize(bytes);
 }
 
 function moment(iso: string | null): string {
