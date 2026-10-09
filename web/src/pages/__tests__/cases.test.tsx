@@ -270,6 +270,22 @@ describe('пачка', () => {
     expect(screen.getByRole('link', { name: /журнале прогонов/ })).toHaveAttribute('href', '/runs');
   });
 
+  it.each([
+    [405_944, '396 КБ'],
+    [1_572_864, '1,5 МБ'],
+    [3_145_728, '3 МБ'],
+  ])('M119: пачка в %i байт подписана «%s», а не целыми мегабайтами', async (bytes, shown) => {
+    server({
+      '/api/auth/me': me(['read']),
+      '/api/cases': { status: 200, body: [caseRow(1)] },
+      '/api/cases/pack': { status: 200, body: { ...PACK, size_bytes: bytes } },
+    });
+
+    show();
+
+    expect(await screen.findByText(new RegExp(` · ${shown} · `))).toBeInTheDocument();
+  });
+
   it('пачки нет — сказано словами сервера, а скачивать нечего', async () => {
     server({
       '/api/auth/me': me(['read', 'run']),

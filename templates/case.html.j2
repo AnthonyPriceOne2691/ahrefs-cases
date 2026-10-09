@@ -196,7 +196,9 @@
   .brief-table tr { break-inside: avoid; }
   .brief-table tr:first-child td { border-top: 0; }
   .brief-table td { text-align: left; vertical-align: top; padding: 1.2mm 0; }
-  .brief-table__label { width: 42%; color: var(--ink-2); padding-right: 4mm; }
+  /* Два класса, а не один: `.brief-table td` специфичнее одного класса, и его `padding`
+     обнулял отступ подписи — длинная подпись упиралась в значение (Z55). */
+  .brief-table .brief-table__label { width: 42%; color: var(--ink-2); padding-right: 4mm; }
   .brief-table__value { white-space: pre-wrap; }
   .empty { color: var(--muted); font-style: italic; }
   .links-note { color: var(--ink-2); font-size: 8pt; margin: 0 0 1.5mm; }

@@ -39,8 +39,9 @@ import type { ScreenshotRules, ScreenshotView } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { ConfirmDelete } from '../../components/ConfirmDelete';
 import { failureText } from '../cases/failure';
+import { megabytes } from '../format';
 
-import { fitForUpload, megabytes } from './shrink';
+import { fitForUpload } from './shrink';
 
 const ACCEPT = 'image/png,image/jpeg,image/webp';
 

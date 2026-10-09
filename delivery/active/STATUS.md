@@ -7,7 +7,7 @@
 - **kind:** bugfix
 - **repro_test:** tests/test_brief_sheet.py
 - **diagnosis:** delivery/active/diagnosis.md
-- **phase:** specify
+- **phase:** implement
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-09 by=human:anthony (09.10: «Давай, хорошо, небольшую поставку» — ответ на отчёт о пересборке на проде с тремя мелочами и «исправлю небольшой поставкой»; примеры M117–M119 выведены агентом)

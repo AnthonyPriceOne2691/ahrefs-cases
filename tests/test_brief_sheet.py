@@ -12,6 +12,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+from weasyprint import CSS, HTML
+from weasyprint.formatting_structure import boxes
 
 from ahrefs_cases.cases.model import CaseData, Change, Period
 from ahrefs_cases.cases.stoplist import ContentBlockedError, check
@@ -49,6 +51,48 @@ def _rows(case: CaseData) -> dict[str, str]:
     return {row.label: row.value for section in brief_sections(case) for row in section.rows}
 
 
+PX_PER_MM = 96 / 25.4
+WIDE_FONT = CSS(string='body { font-family: Verdana, "DejaVu Sans", sans-serif !important; }')
+"""Широкий шрифт — как DejaVu Sans, которым лист печатается в контейнере прода (Z55).
+
+Шаблон просит системные шрифты; на Mac они узкие, и длинная подпись до значения не
+дотягивала — дефект был виден только на проде. Verdana — на Mac, DejaVu Sans — в CI."""
+
+
+def _label_cells(html: str) -> list[tuple[boxes.TableCellBox, boxes.TableCellBox]]:
+    """Пары «подпись — значение» таблиц листа брифа в вёрстке WeasyPrint (L45: мерить)."""
+    document = HTML(string=html).render(stylesheets=[WIDE_FONT])
+    pairs = []
+    for page in document.pages:
+        for row in page._page_box.descendants():  # вёрстку страницы WeasyPrint отдаёт только так
+            if not isinstance(row, boxes.TableRowBox):
+                continue
+            cells = [cell for cell in row.children if isinstance(cell, boxes.TableCellBox)]
+            if len(cells) == 2 and "brief-table__label" in (cells[0].element.get("class") or ""):
+                pairs.append((cells[0], cells[1]))
+    return pairs
+
+
+def _text_right(cell: boxes.TableCellBox) -> float:
+    return max(
+        text.position_x + text.width
+        for text in cell.descendants()
+        if isinstance(text, boxes.TextBox)
+    )
+
+
+def test_label_keeps_its_distance_from_the_value() -> None:
+    """M117: подпись не упирается в значение — «…какие услуги делали» и «заполняет специалист»."""
+    pairs = _label_cells(render_html(_case()))
+
+    assert len(pairs) == len(FIELDS) + 7 + 3  # пункты брифа, семь своих сервиса, три ссылки Ahrefs
+    gap = 4 * PX_PER_MM
+    for label, value in pairs:
+        # M117: отступ подписи 4 мм доходит до вёрстки, а текст кончается не ближе 4 мм к значению
+        assert label.padding_right == pytest.approx(gap, abs=0.01), label.element.text
+        assert value.content_box_x() - _text_right(label) >= gap - 0.01, label.element.text
+
+
 def test_every_brief_field_is_on_the_sheet_in_template_order() -> None:
     """M33: пункта брифа, которого нет на листе, не бывает; разделы — в порядке шаблона."""
     assert printed_fields() == {field.key for field in FIELDS}
@@ -64,7 +108,7 @@ def test_sheet_fills_what_the_service_knows_and_marks_the_rest() -> None:
     assert rows["Услуга (по которой пишем кейс)"] == "SEO-продвижение"
     assert rows["Период сотрудничества"] == "10.2024 — 09.2025 (12 мес.)"
     assert rows["ГЕО"] == "Германия (DE)"
-    assert rows["Процент роста показателей"] == "органический трафик +160 %"
+    assert rows["Процент роста показателей"] == "органический трафик +160\u00a0%"
     assert rows["Тематика"] == "путешествия"
     assert rows["Бюджет проекта / объём работ"] == "120 (объём работ из файла)"
     assert rows["Тип сайта"] == "Маркетплейс"
