@@ -1,33 +1,33 @@
 # Active delivery status
 
-- **slug:** brief-print-polish
+- **slug:** brief-card-and-lists
 - **stack:** delivery@2.00, cqg@2.55, okf@1.19
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** bugfix
 - **repro_test:** tests/test_brief_sheet.py
-- **diagnosis:** delivery/active/diagnosis.md
-- **phase:** verify
+- **diagnosis:** n/a reason=причины названы при находке на проде 09.10 и перебора гипотез не требовали: Z58 — подстановка `_fallback` есть только в `export/brief_sheet.py`, карточка её не получает; Z59 — обычный пробел перед «$» в `cases.model.SUBJECT_LABELS`
+- **phase:** specify
 - **builder:** agent:claude
 - **verifier:** human:anthony
-- **human_ok_spec:** yes at=2026-10-09 by=human:anthony (09.10: «Давай, хорошо, небольшую поставку» — ответ на отчёт о пересборке на проде с тремя мелочами и «исправлю небольшой поставкой»; примеры M117–M119 выведены агентом)
-- **human_ok_plan:** n/a reason=подпись плана требуется классу L (§2.2); класс M — по объёму: три слоя, 11 файлов с тестами (§2.2b), разрез назван в одобренной спеке
+- **human_ok_spec:** yes at=2026-10-09 by=human:anthony (09.10: «давай эти, сделаем и на прод» — на «в „Тип услуги“ и „Вид проекта“ нет пункта „Другое“» и «две мелочи, найденные при проходе»; списки утверждены владельцем «давай так и оставим»; примеры M120–M122 выведены агентом)
+- **human_ok_plan:** n/a reason=подпись плана требуется классу L (§2.2); класс M — по объёму: сервер, лист, карточка и тесты
 - **shape-oracles:** cqg-deployed
 - **behavior-oracles:** tests-present
-- **artifact_oracle:** PDF — артефакт: лист брифа меряется в вёрстке WeasyPrint (вычисленный отступ подписи и зазор до значения широким шрифтом, M117); на стенде PDF скачан кнопкой карточки, страницы растеризованы и просмотрены
+- **artifact_oracle:** PDF — артефакт: строка роста листа проверяется тестом (M122), на стенде PDF после пересборки растеризован и просмотрен; карточка — тестами экрана и прокликиванием
 - **ci-oracles:** tooling
 - **worktree:** none reason=единственный исполнитель ветки
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** templates/case.html.j2 <!-- зазор подписи зависит от шрифта: тест меряет вёрстку, а глазами просмотрены страницы PDF со стенда; шрифт контейнера прода (DejaVu Sans) — после выкатки -->
-- **irreversible_surfaces:** none reason=миграций нет; шаблон, форматтер и экран откатываются кодом, пачка пересобирается кнопкой «Пересобрать кейсы»
+- **runtime_paths:** src/ahrefs_cases/cases/model.py <!-- подпись метрики в строке роста листа видна только растеризацией PDF: тест проверяет текст, глазами — страницы со стенда и с прода -->
+- **irreversible_surfaces:** none reason=миграций нет; новый пункт списка — значение ключом в JSONB брифа, старые значения не трогаются; откат кодом
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
 - **canon_drift_waiver:** no
 - **baseline_growth_waiver:** no
 - **waivers:** none
 - **observability:** 1
-- **observe_signal:** на проде после выкатки и «Пересобрать кейсы»: в PDF-брифе подписи отстоят от значений, «%» стоит в одной строке с числом; «Кейсы» пишут размер пачки в КБ
+- **observe_signal:** на проде после выкатки: в форме брифа у «Тип услуги» и «Вид проекта» есть «Другое»; карточка частично заполненного брифа пишет нишу в «Тематика»; после «Пересобрать кейсы» в строке роста PDF «$» стоит при «стоимость трафика,»
 - **observe_until:** 2026-10-23
 - **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
