@@ -6,6 +6,8 @@
 это `publishable` наоборот), M23 (право `edit_briefs`: у всех групп, лично
 отбирается). Поставки `brief-autofill`: M131, M133 (карточка знает по вердикту), M135
 («Кто подготовил» — сохранивший бриф), M136 (карточка и лист подставляют одно).
+Поставки `brief-known-more`: M137 (кто подготовил — кто вёл), M139 (параллельные
+услуги по базе), M143 (карточка и лист — одно и по новым пунктам).
 
 Строки свои — проект `card.brief.example` и люди `*@brief.test.local`: дев-база
 общая, тест убирает только созданное им (L80, L148).
@@ -16,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterator
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
@@ -29,9 +32,11 @@ from ahrefs_cases import config
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
 from ahrefs_cases.cases.builder import VerdictView, build_case
+from ahrefs_cases.cases.parallel import parallel_services
 from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.classify.series import load_series
 from ahrefs_cases.export.brief_sheet import brief_sections
-from ahrefs_cases.storage import Group, MetricSource, UserGroup
+from ahrefs_cases.storage import Group, Metric, MetricSource, UserGroup
 from ahrefs_cases.storage import models as db
 from ahrefs_cases.storage.brief import FIELDS
 
@@ -260,6 +265,7 @@ def test_card_shows_what_the_file_knows(
 
     from_file = {
         "department": "SEO (по услуге из файла)",
+        "prepared_by": "i.p (вёл проект, из файла)",  # M137
         "service_kind": "Ежемесячное продвижение (период 12 мес.)",
         "topic": "Путешествия (по нише «travel»)",
         "dynamics_slice": "Весь период работ (по умолчанию)",
@@ -341,3 +347,119 @@ def test_prepared_by_is_whoever_saved_the_brief(
     assert "prepared_by" not in nda_only.json()["fields"]
     clears_only = _patch(client, project_id, {"fields": {"goals": ""}}, email=ANNA)
     assert "prepared_by" not in clears_only.json()["fields"]
+
+
+async def _twins(session: AsyncSession) -> None:
+    """Тот же домен ещё трижды: линкбилдинг внахлёст, SEO внахлёст, PR после периода."""
+    for service, start, end in (
+        ("linkbuilding", date(2025, 6, 1), date(2026, 5, 1)),
+        ("SEO ", date(2025, 3, 1), date(2025, 9, 1)),
+        ("pr", date(2026, 2, 1), date(2026, 6, 1)),
+    ):
+        session.add(
+            db.Project(
+                domain=DOMAIN,
+                period_start=start,
+                period_end=end,
+                niche="travel",
+                geo="DE",
+                service_type=service,
+                client="Acme",
+                owner="i.p",
+                publishable=True,
+            )
+        )
+
+
+def test_card_names_parallel_services_of_the_domain(
+    client: TestClient, project_id: int, writer: Callable[[Ask], Any]
+) -> None:
+    """M139: проект того же домена с другой услугой внахлёст — в «Параллельно»; та же
+    услуга («SEO » — тот же `seo`) и период без пересечения — нет."""
+    assert "parallel_services" not in _card(client, project_id)["brief_known"]
+    writer(_twins)
+
+    known = _card(client, project_id)["brief_known"]
+
+    assert known["parallel_services"] == "Линкбилдинг, 06.2025 — 05.2026 (тот же домен в базе)"
+
+
+def _dated(at: str, traffic: float, rating: float) -> dict[str, Any]:
+    return {
+        "at": at,
+        "months_used": 3,
+        "values": {"org_traffic": traffic, "dr": rating},
+        "derived": {},
+    }
+
+
+TRAFFIC_2025 = (1000, 1100, 1200, 900, 1000, 1100, 1200, 1300, 1400, 1450, 1500, 1500)
+"""Ряд периода 01–12.2025: в 04.2025 трафик −25 % к марту, остальные месяцы — рост."""
+
+
+def test_card_and_sheet_agree_on_the_new_items(
+    client: TestClient, project_id: int, writer: Callable[[Ask], Any]
+) -> None:
+    """M143: просадка, падение DR, параллельный проект, YMYL и «вёл проект» — карточка
+    (`brief_known`) и лист PDF печатают одно и то же по всем пунктам."""
+
+    async def _setup(session: AsyncSession) -> None:
+        project = await session.get(db.Project, project_id)
+        assert project is not None
+        project.niche = "финансы"
+        ruleset = await active_ruleset(session)
+        session.add(
+            db.Verdict(
+                project_id=project_id,
+                ruleset_id=ruleset.id,
+                group=Group.GOOD,
+                score=1500.0,
+                reasons={"checks": []},
+                point_a=_dated("2025-01-01", 1000.0, 32.0),
+                point_b=_dated("2025-12-01", 1500.0, 29.0),
+                source=MetricSource.FIXTURE,
+            )
+        )
+        session.add_all(
+            db.MetricPoint(
+                project_id=project_id,
+                metric=Metric.ORG_TRAFFIC,
+                point_date=date(2025, month, 1),
+                value=float(value),
+                source=MetricSource.FIXTURE,
+                country="DE",
+            )
+            for month, value in enumerate(TRAFFIC_2025, start=1)
+        )
+
+    async def _sheet(session: AsyncSession) -> dict[str, str]:
+        """Лист — тем же путём, что сборка (`builder._attempt`): ряды источника и пары домена."""
+        project = await session.get(db.Project, project_id)
+        stmt = select(db.Verdict).where(db.Verdict.project_id == project_id)
+        found = (await session.execute(stmt)).scalars().one()
+        assert project is not None
+        series = await load_series(session, project_id, MetricSource.FIXTURE)
+        case = replace(
+            build_case(project, VerdictView.of(found, "проверка"), series),
+            parallel=await parallel_services(session, project),
+        )
+        return {row.label: row.value for section in brief_sections(case) for row in section.rows}
+
+    writer(_twins)
+    writer(_setup)
+    known = _card(client, project_id)["brief_known"]
+    rows = writer(_sheet)
+
+    printed = {field.key: rows[field.label] for field in FIELDS if rows[field.label]}
+    assert printed == known
+    assert known["difficulties"] == (  # M138
+        "Просадка органического трафика в 04.2025: -25\u00a0% к 03.2025; "
+        "Domain Rating снизился: 32 → 29 (по динамике Ahrefs — уточните причину)"
+    )
+    parallel = "Линкбилдинг, 06.2025 — 05.2026 (тот же домен в базе)"  # M139
+    assert known["parallel_services"] == parallel
+    assert known["features"] == (  # M140
+        "YMYL-тематика: Google строже оценивает экспертность и надёжность сайта "
+        "(по тематике «Финансы»)"
+    )
+    assert known["prepared_by"] == "i.p (вёл проект, из файла)"  # M137

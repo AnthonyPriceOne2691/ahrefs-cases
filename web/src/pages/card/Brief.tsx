@@ -17,6 +17,7 @@ import { fetchBriefFields } from '../../api/brief';
 import type { BriefCatalog, BriefField, ProjectCard } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { failureText } from '../cases/failure';
+import { plural } from '../format';
 
 import { BriefForm } from './BriefForm';
 import { EMPTY, bySection, shown } from './briefValues';
@@ -108,6 +109,34 @@ function BriefRead({ catalog, brief, known }: ReadProps) {
   const sections = bySection(catalog);
   const listed = sections.flatMap(([, fields]) => fields);
   if (!listed.some((field) => brief[field.key])) {
+    return <EmptyBrief listed={listed} known={known} />;
+  }
+  return (
+    <Stack gap="md">
+      {sections.map(([section, fields]) => (
+        <Stack gap={4} key={section}>
+          <Title order={5}>{section}</Title>
+          {/* Пустой пункт — то, что знает сервис, как на листе PDF. */}
+          <FieldRows fields={fields} value={(key) => brief[key] || known[key]} />
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
+const POINTS = ['пункт', 'пункта', 'пунктов'] as const;
+
+/**
+ * Пустой бриф: одна строка. С 13.10.2026 часть пунктов сервис подставляет сам, и строка
+ * называет, сколько подставлено и сколько осталось специалисту, — по `brief_known`, а
+ * не по длине каталога: «пунктов для специалиста: 22» при семи подставленных читалось
+ * как «ничего не изменилось» (Z64, L260). Подставленное — по кнопке: развёрнутый список
+ * снова увёл бы цифры вниз.
+ */
+function EmptyBrief({ listed, known }: { listed: BriefField[]; known: Record<string, string> }) {
+  const [open, setOpen] = useState(false);
+  const substituted = listed.filter((field) => known[field.key]);
+  if (substituted.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-brief-empty>
         Бриф ещё не заполнен — пунктов для специалиста: {listed.length}
@@ -115,31 +144,48 @@ function BriefRead({ catalog, brief, known }: ReadProps) {
     );
   }
   return (
-    <Stack gap="md">
-      {sections.map(([section, fields]) => (
-        <Stack gap={4} key={section}>
-          <Title order={5}>{section}</Title>
-          <Table withRowBorders={false} verticalSpacing={4}>
-            <Table.Tbody>
-              {fields.map((field) => (
-                <Table.Tr key={field.key}>
-                  <Table.Td w="40%">
-                    <Text size="sm" c="dimmed">
-                      {field.label}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {/* Пустой пункт — то, что знает файл, как на листе PDF; пустой бриф
-                        целиком по-прежнему одна строка: в нём специалист ещё ничего не писал. */}
-                    <Value field={field} value={brief[field.key] || known[field.key]} />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Stack>
-      ))}
+    <Stack gap={4} align="flex-start">
+      <Text size="sm" c="dimmed" data-brief-empty>
+        Бриф ещё не заполнен: сервис подставил {plural(substituted.length, POINTS)} из{' '}
+        {listed.length}, специалисту осталось {listed.length - substituted.length}
+      </Text>
+      <Button
+        variant="subtle"
+        size="compact-sm"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? 'Скрыть подставленное' : 'Показать подставленное'}
+      </Button>
+      {open && <FieldRows fields={substituted} value={(key) => known[key]} />}
     </Stack>
+  );
+}
+
+function FieldRows({
+  fields,
+  value,
+}: {
+  fields: BriefField[];
+  value: (key: string) => string | undefined;
+}) {
+  return (
+    <Table withRowBorders={false} verticalSpacing={4}>
+      <Table.Tbody>
+        {fields.map((field) => (
+          <Table.Tr key={field.key}>
+            <Table.Td w="40%">
+              <Text size="sm" c="dimmed">
+                {field.label}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Value field={field} value={value(field.key)} />
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
   );
 }
 

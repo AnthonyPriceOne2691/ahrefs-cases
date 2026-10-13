@@ -145,10 +145,13 @@ def brief_sections(case: CaseData) -> tuple[BriefSection, ...]:
 def _facts(case: CaseData) -> BriefFacts:
     """Факты кейса для подстановки — те же, что карточка берёт из проекта и вердикта.
 
-    Трафик на старте — «было» строки трафика в таблице А → Б листа: вид проекта
-    судится по точке А вердикта, тем числом, что копирайтер видит рядом (L41).
+    Трафик на старте и Domain Rating — «было» и «стало» таблицы А → Б листа: вид
+    проекта и падение DR судятся по точкам вердикта, теми числами, что копирайтер
+    видит рядом (L41); просадки — по ряду кривой трафика этого же листа.
     """
     traffic = case.change(Metric.ORG_TRAFFIC.value)
+    rating = case.change(Metric.DR.value)
+    curve = next((row.points for row in case.series if row.subject == Metric.ORG_TRAFFIC.value), ())
     return BriefFacts(
         niche=case.niche,
         work_volume=case.work_volume,
@@ -156,6 +159,10 @@ def _facts(case: CaseData) -> BriefFacts:
         period=case.period,
         group=case.group,
         traffic_start=traffic.before if traffic is not None else None,
+        owner=case.owner,
+        traffic=curve,
+        rating=(rating.before, rating.after) if rating is not None else None,
+        parallel=case.parallel,
     )
 
 

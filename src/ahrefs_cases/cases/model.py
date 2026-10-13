@@ -188,6 +188,17 @@ class Period:
 
 
 @dataclass(frozen=True, slots=True)
+class ParallelService:
+    """Другой проект того же домена в базе — услуга и период для пункта брифа
+    «Какие услуги проводились параллельно» (`cases.parallel`)."""
+
+    service: str
+    """`service_type` того проекта: ключ файла или своё слово — словами его называет бриф."""
+
+    period: Period
+
+
+@dataclass(frozen=True, slots=True)
 class CaseData:
     """Кейс как данные: блоки ТЗ, изменения А → Б, подсветка и кривые."""
 
@@ -270,6 +281,11 @@ class CaseData:
 
     geo_note: str | None = None
     """Оговорка, когда ряды куплены не по первой стране проекта (`storage.geo.rows_note`, Z53)."""
+
+    parallel: tuple[ParallelService, ...] = ()
+    """Проекты того же домена с другой услугой в пересекающийся период — их читает
+    сборка (`builder._attempt`), а подставляет бриф. Пусто — законное состояние: пары
+    нет или кейс собран без базы (предпросмотр)."""
 
     @property
     def geo_label(self) -> str:

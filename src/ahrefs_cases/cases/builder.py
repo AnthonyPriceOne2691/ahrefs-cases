@@ -44,6 +44,7 @@ from ahrefs_cases.cases.model import (
     Change,
     Period,
 )
+from ahrefs_cases.cases.parallel import parallel_services
 from ahrefs_cases.cases.screens import load_screens
 from ahrefs_cases.classify import points as points_module
 from ahrefs_cases.classify import verdicts as verdicts_module
@@ -429,6 +430,7 @@ async def _attempt(
     case = replace(
         build_case(project, view, series, geo_note=note),
         screenshots=await load_screens(session, project.id),
+        parallel=await parallel_services(session, project),
     )
     return CaseAttempt(
         domain=project.domain,
