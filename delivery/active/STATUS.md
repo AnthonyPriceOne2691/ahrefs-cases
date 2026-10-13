@@ -5,7 +5,7 @@
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-13 by=human:anthony (13.10: «еще нужно сделать, чтобы автоматически заполнялись часть полей… в PDF, давай еще вот это делай» — на предложение 12.10 «8 из 22 пунктов сервис может заполнять сам без units, 3 — подсказкой»; «если я нажму пересобрать кейсы… данные должны заполниться»; находки Z62 и Z63 — «что там еще за находки… давай»; примеры M127–M136 выведены агентом, правила «Комплекс» и порог 3 мес. — умолчания агента, ответа команды нет)
@@ -18,7 +18,7 @@
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** src/ahrefs_cases/export/brief_sheet.py <!-- подстановка видна на листе PDF: тест проверяет строки листа, глазами — PDF со стенда после пересборки --> templates/case.html.j2 <!-- шапка «Динамики» — растеризованный PDF -->
+- **runtime_paths:** src/ahrefs_cases/export/brief_sheet.py, templates/case.html.j2 <!-- подстановка и шапка «Динамики» видны на листе PDF: тесты проверяют текст листа, глазами — PDF со стенда после «Пересобрать кейсы» -->
 - **irreversible_surfaces:** none reason=миграций нет; подстановка не пишется в бриф, а считается при чтении; «Кто подготовил» пишется в JSONB брифа тем же путём, что правка специалиста, и правится им же
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
