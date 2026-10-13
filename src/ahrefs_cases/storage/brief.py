@@ -224,6 +224,20 @@ def label_of(field: BriefField, value: str) -> str:
     return value
 
 
+def service_label(service: str) -> str:
+    """Подпись услуги кейса (`service_type` файла): `linkbuilding` → «Линкбилдинг».
+
+    Ключ узнаётся без учёта регистра — в файле его пишут как придётся; услуга не
+    из списка — как записана. Одна на строку «Услуга» листа и подстановку брифа:
+    две копии уже разошлись однажды — ключом в одном месте, подписью в другом (Z62).
+    """
+    wanted = service.strip().lower()
+    for choice in SERVICES:
+        if choice.key == wanted:
+            return choice.label
+    return service
+
+
 def _choice(field: BriefField, value: str) -> str | BriefRejected:
     wanted = value.casefold()
     for choice in field.choices:

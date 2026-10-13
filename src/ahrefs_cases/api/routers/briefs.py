@@ -6,18 +6,20 @@
 лично): бриф заполняет специалист, который вёл проект, а не только инженер.
 
 Флажок «непубличный проект / NDA» правится здесь же и пишет `publishable`
-наоборот — второго поля под тот же смысл нет.
+наоборот — второго поля под тот же смысл нет. «Кто подготовил информацию по
+кейсу» сервис пишет сам — именем сохранившего бриф (решение владельца 13.10.2026).
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from ahrefs_cases.api.deps import SessionDep, require_right
+from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
 from ahrefs_cases.storage.brief import (
     FIELDS,
     FIELDS_BY_KEY,
@@ -26,11 +28,13 @@ from ahrefs_cases.storage.brief import (
     normalize,
 )
 from ahrefs_cases.storage.models.project import Project
+from ahrefs_cases.storage.models.user import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["briefs"])
 
 EditDep = Annotated[object, Depends(require_right("edit_briefs"))]
+PREPARED_BY = "prepared_by"
 
 
 class ChoiceView(BaseModel):
@@ -96,12 +100,14 @@ async def brief_fields() -> BriefCatalog:
 
 @router.patch("/projects/{project_id}/brief", response_model=BriefView)
 async def edit_brief(
-    project_id: int, patch: BriefPatch, session: SessionDep, _: EditDep = None
+    project_id: int, patch: BriefPatch, session: SessionDep, user: UserDep, _: EditDep = None
 ) -> BriefView:
     """Записать поля брифа и флажок NDA. Не годится хоть одно — не пишется ничего.
 
     Отказ называет каждое негодное поле его подписью: человек правит форму по
-    тексту, а не по коду ответа (уроки L32, L34).
+    тексту, а не по коду ответа (уроки L32, L34). Право проверяет `EditDep`;
+    `user` — тот же пользователь запроса (FastAPI кэширует зависимость), нужен
+    подписи «Кто подготовил».
     """
     project = await session.get(Project, project_id)
     if project is None:
@@ -113,13 +119,19 @@ async def edit_brief(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="; ".join(problems)
         )
+    signed = _sign(brief, patch.fields, user)
     # Новый словарь, а не правка на месте: изменение внутри JSONB ORM не видит.
     project.brief = brief
     if patch.nda is not None:
         project.publishable = not patch.nda
     logger.info(
         "brief_updated",
-        extra={"project_id": project_id, "fields": sorted(patch.fields), "nda": patch.nda},
+        extra={
+            "project_id": project_id,
+            "fields": sorted(patch.fields),
+            "signed": signed,
+            "nda": patch.nda,
+        },
     )
     return BriefView(project_id=project_id, nda=not project.publishable, fields=brief)
 
@@ -140,3 +152,16 @@ def _merged(brief: dict[str, str], changes: dict[str, str]) -> tuple[dict[str, s
         else:
             brief.pop(key, None)
     return brief, problems
+
+
+def _sign(brief: dict[str, str], changes: Mapping[str, str], user: User) -> list[str]:
+    """«Кто подготовил» — именем сохранившего, если пункт пуст и правка его не называла.
+
+    Названный в правке пункт — решение человека, даже пустой строкой: она очищает,
+    и подпись поверх очистки её отменила бы. Имя — полное, у учётки без имени —
+    почта. Возвращает ключи записанного: журнал называет их, а не имя (инвариант 8).
+    """
+    if PREPARED_BY in changes or brief.get(PREPARED_BY):
+        return []
+    brief[PREPARED_BY] = user.full_name.strip() or user.email
+    return [PREPARED_BY]

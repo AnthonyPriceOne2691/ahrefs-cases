@@ -31,7 +31,7 @@ from ahrefs_cases.api.schemas import (
     VerdictView,
 )
 from ahrefs_cases.cases.builder import chart_series
-from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS
+from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS, Period
 from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
 from ahrefs_cases.classify.rules import SUPPORTING_METRICS
@@ -42,7 +42,7 @@ from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
 from ahrefs_cases.export import removal
 from ahrefs_cases.export.archive import newest_pack
-from ahrefs_cases.export.brief_sheet import known_for
+from ahrefs_cases.export.brief_known import BriefFacts, known_for
 from ahrefs_cases.export.charts import curve_blocks
 from ahrefs_cases.export.grouping import Grouping
 from ahrefs_cases.export.html_renderer import POINTS_NOTE
@@ -139,13 +139,14 @@ async def project_card(
 
     shown = source or configured_source()
     series = await load_series(session, project.id, shown)
+    view = (
+        _verdict_view(verdict, ruleset, await bought_metrics(session, project.domain))
+        if verdict is not None
+        else None
+    )
     return ProjectCard(
         project=_row(project, verdict),
-        verdict=(
-            _verdict_view(verdict, ruleset, await bought_metrics(session, project.domain))
-            if verdict is not None
-            else None
-        ),
+        verdict=view,
         series=[
             SeriesRow(metric=metric.value, points=sorted(points.items()))
             for metric, points in sorted(series.items(), key=lambda item: item[0].value)
@@ -156,7 +157,7 @@ async def project_card(
         # вердикта, а не пишется здесь второй раз.
         source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
         brief=dict(project.brief or {}),
-        brief_known=known_for(project.niche, project.work_volume),
+        brief_known=known_for(_brief_facts(project, view), project.brief or {}),
         geo_note=rows_note(project.geo, await bought_countries(session, project.id, shown)),
     )
 
@@ -335,6 +336,26 @@ def _row(project: Project, verdict: Verdict | None) -> ProjectRow:
         status=project.status.value,
         group=verdict.group.value if verdict is not None else None,
         score=verdict.score if verdict is not None else None,
+    )
+
+
+def _brief_facts(project: Project, verdict: VerdictView | None) -> BriefFacts:
+    """Факты проекта для подстановки брифа — те же, что лист берёт из кейса.
+
+    Трафик на старте — «было» строки трафика в таблице А → Б этой же карточки, а не
+    свой разбор точки: вид проекта судится по точке А вердикта, тем числом, что
+    человек видит рядом и что стоит в листе (L41). Нет вердикта — нет ни группы, ни
+    трафика, и подстановки по ним тоже нет.
+    """
+    rows = verdict.comparison if verdict is not None else []
+    traffic = next((row.before for row in rows if row.subject == Metric.ORG_TRAFFIC.value), None)
+    return BriefFacts(
+        niche=project.niche,
+        work_volume=project.work_volume,
+        service=project.service_type,
+        period=Period(start=project.period_start, end=project.period_end),
+        group=Group(verdict.group) if verdict is not None else None,
+        traffic_start=traffic,
     )
 
 
