@@ -95,7 +95,7 @@ food           ед(?:а|ы|у|ой)\b|питани|продуктов(?:ый|а
 entertainment  игр|развлеч|кино|казино|гемблинг|беттинг|букмекер|музык|концерт|фильм|сериал|аниме|квест|досуг|game|gaming|casino|gambl|betting|movie|music|anime|entertain
 education      детск\w* сад|образова|обучени|обучающ|курс|школ|университет|вуз|колледж|репетитор|учеб|тренинг|вебинар|educat|course|school|universit|learning|tutor
 hobby          хобби|рукодел|творчеств|рисовани|вязани|шитье|коллекцион|рыбалк|охот|handmade|craft|hobby|fishing|hunting
-it             софт|программн|программир|разработ|приложени|хостинг|облачн|кибер|айти|ит\b|it\b|software|saas|devops|hosting|cloud|cyber|tech\b
+it             софт|программн|программир|разработ|автоматизац|приложени|хостинг|облачн|кибер|айти|ит\b|it\b|software|saas|devops|hosting|cloud|cyber|tech\b
 industry       промышлен|производств|оборудован|станк|станок|завод|металл|спецтехник|industr|manufactur|machinery|equipment
 home           дом(?:а|у|ом|е|ов)?\b|ремонт|мебел|стройматериал|строител|стройк|бытов|сад(?:а|у|ом|ы|ов)?\b|садов|огород|дач|интерьер|декор|сантехник|освещени|garden|furniture|interior|renovation|home\b|diy\b
 """)
