@@ -330,6 +330,28 @@ def test_point_a_is_marked_with_its_own_value() -> None:
     assert left, "подпись точки А не прижата влево — значит может лечь на кривую"
 
 
+def test_point_label_rounds_half_like_the_table() -> None:
+    """M128: подпись точки на графике округляет половину так же, как таблица А → Б.
+
+    Свой `round` графика округлял половину к чётному: точка 1000,5 была «1 000» на
+    кривой и «1 001» в таблице того же листа и в карточке (Z63). Подпись теперь
+    печатает тот же форматтер, что таблица (`cases.format.number`).
+    """
+    months = _months(6)
+    svg = curves_svg(
+        [_series("org_traffic", [990.0, 1011.0, 1200.0, 1300.0, 1400.0, 1500.0], months)],
+        period_start=months[0],
+        window_a=months[:2],
+        window_b=months[-2:],
+        point_a={"org_traffic": 1000.5},
+        point_b={"org_traffic": 1450.5},
+    )
+
+    assert ">1\u00a0001</text>" in svg
+    assert ">1\u00a0451</text>" in svg
+    assert ">1\u00a0000</text>" not in svg
+
+
 def test_every_month_gets_a_tick_even_without_a_label() -> None:
     """Под каждым месяцем — риска, даже если подписи у него нет.
 

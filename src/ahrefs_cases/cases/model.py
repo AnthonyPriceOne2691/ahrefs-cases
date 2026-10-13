@@ -22,7 +22,7 @@ from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.classify.points import KW_TOP10
 from ahrefs_cases.storage import geo as geo_module
 from ahrefs_cases.storage._enums import Group, Metric
-from ahrefs_cases.storage.brief import SERVICES
+from ahrefs_cases.storage.brief import service_label
 
 KW_TOTAL = "kw_total"
 """«Число ключей» из must-have списка ТЗ — сумма пяти корзин распределения.
@@ -282,15 +282,11 @@ class CaseData:
 
         Подпись одна на шапку листа «Динамика» и пункт «Услуга» листа брифа (урок
         L142): бриф переводил ключ в подпись, а шапка печатала ключ как есть, и на
-        одном PDF услуга называлась двумя словами (Z62). Ключ не из списка
-        `storage.brief.SERVICES` — как записан в файле: чужое слово лучше выдуманной
-        подписи.
+        одном PDF услуга называлась двумя словами (Z62). Правило одно —
+        `storage.brief.service_label`, его же берёт подстановка брифа; ключ не из
+        списка — как записан в файле: чужое слово лучше выдуманной подписи.
         """
-        wanted = self.service.strip().lower()
-        for choice in SERVICES:
-            if choice.key == wanted:
-                return choice.label
-        return self.service
+        return service_label(self.service)
 
     def change(self, subject: str) -> Change | None:
         """Изменение по метрике — или `None`, если её в кейсе нет."""

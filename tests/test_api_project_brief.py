@@ -335,3 +335,9 @@ def test_prepared_by_is_whoever_saved_the_brief(
     cleared = _patch(client, project_id, {"fields": {"prepared_by": ""}}, email=ANNA)
     assert "prepared_by" not in cleared.json()["fields"]
     assert "prepared_by" not in _card(client, project_id)["brief"]
+
+    # M135: правка одного NDA или одни очистки пунктов информацию не готовят — подписи нет.
+    nda_only = _patch(client, project_id, {"fields": {}, "nda": True}, email=ANNA)
+    assert "prepared_by" not in nda_only.json()["fields"]
+    clears_only = _patch(client, project_id, {"fields": {"goals": ""}}, email=ANNA)
+    assert "prepared_by" not in clears_only.json()["fields"]
