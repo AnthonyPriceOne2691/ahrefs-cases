@@ -34,17 +34,22 @@ export function months(from: string, to: string): string {
   return `${short(from)} — ${short(to)}`;
 }
 
+/** Число со словом в нужной форме: «1 пункт», «3 пункта», «11 пунктов». */
+export function plural(count: number, [one, few, many]: readonly [string, string, string]): string {
+  const tens = count % 100;
+  const ones = count % 10;
+  let word = many;
+  if (tens < 11 || tens > 14) {
+    if (ones === 1) word = one;
+    else if (ones >= 2 && ones <= 4) word = few;
+  }
+  return `${num(count)} ${word}`;
+}
+
 /** «1 кейс», «3 кейса», «11 кейсов»: на кнопке число без согласованного слова
  *  читается как номер, а не как количество файлов. */
 export function casesCount(count: number): string {
-  const tens = count % 100;
-  const ones = count % 10;
-  let word = 'кейсов';
-  if (tens < 11 || tens > 14) {
-    if (ones === 1) word = 'кейс';
-    else if (ones >= 2 && ones <= 4) word = 'кейса';
-  }
-  return `${num(count)} ${word}`;
+  return plural(count, ['кейс', 'кейса', 'кейсов']);
 }
 
 const MEGABYTE = 1_048_576;

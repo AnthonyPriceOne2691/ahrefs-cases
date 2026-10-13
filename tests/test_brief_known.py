@@ -3,7 +3,9 @@
 Примеры приёмки поставки `brief-autofill`: M129 (отдел по услуге), M130 (тип услуги
 по периоду), M131 (вид проекта по трафику точки А), M132 (срез и период 1), M133
 (весомость по группе), M134 (тематика и тип сайта по нише), M136 (заполненное не
-подменяется). Правило чистое — база не нужна.
+подменяется). Поставки `brief-known-more`: M137 (кто подготовил — кто вёл), M138
+(трудности по динамике), M139 (параллельные услуги), M140 (YMYL в особенностях),
+M141 (словарь по нишам прода). Правило чистое — база не нужна.
 """
 
 from __future__ import annotations
@@ -14,8 +16,15 @@ from typing import Any
 
 import pytest
 
-from ahrefs_cases.cases.model import Period
-from ahrefs_cases.export.brief_known import MONTHLY_FROM_MONTHS, BriefFacts, known_for
+from ahrefs_cases.cases.model import ParallelService, Period
+from ahrefs_cases.export.brief_known import (
+    DROP_SHARE,
+    MAX_DROPS,
+    MONTHLY_FROM_MONTHS,
+    RATING_DROP,
+    BriefFacts,
+    known_for,
+)
 from ahrefs_cases.export.brief_sheet import printed_fields
 from ahrefs_cases.storage._enums import Group
 from ahrefs_cases.storage.brief import SITE_TYPES, TOPICS
@@ -27,6 +36,10 @@ FACTS = BriefFacts(
     period=Period(start=date(2026, 5, 1), end=date(2026, 8, 1)),
     group=Group.GOOD,
     traffic_start=2487.0,
+    owner="",
+    traffic=(),
+    rating=None,
+    parallel=(),
 )
 
 
@@ -222,3 +235,152 @@ def test_filled_item_is_not_substituted() -> None:
     known = _known(brief, niche="интернет-магазин одежды", work_volume=120)
     assert set(known) == set(full) - set(brief)
     assert known["service_kind"] == full["service_kind"]
+
+
+@pytest.mark.parametrize(
+    ("owner", "brief", "prepared_by"),
+    [
+        ("Пётр", {}, "Пётр (вёл проект, из файла)"),
+        ("  Пётр ", {}, "Пётр (вёл проект, из файла)"),
+        ("", {}, None),
+        ("Пётр", {"prepared_by": "Анна"}, None),
+    ],
+)
+def test_prepared_by_is_who_led_the_project(
+    owner: str, brief: dict[str, str], prepared_by: str | None
+) -> None:
+    """M137: «Кто подготовил» — «Кто вёл проект» из файла; не сказано — нет; записано — не трогается."""
+    assert _known(brief, owner=owner).get("prepared_by") == prepared_by
+
+
+def _months(*values: float, start: date = date(2026, 5, 1)) -> tuple[tuple[date, float], ...]:
+    """Ряд трафика по месяцам подряд от `start`."""
+    out = []
+    for shift, value in enumerate(values):
+        total = start.month - 1 + shift
+        out.append((date(start.year + total // 12, total % 12 + 1, 1), value))
+    return tuple(out)
+
+
+TAIL = " (по динамике Ahrefs — уточните причину)"
+DROP_07 = "Просадка органического трафика в 07.2026: -18\u00a0% к 06.2026"
+
+
+@pytest.mark.parametrize(
+    ("traffic", "rating", "difficulties"),
+    [
+        (_months(1000, 1200, 980, 1300), (31.0, 31.0), DROP_07 + TAIL),
+        (_months(1000, 1200, 1400, 1600), (32.0, 29.0), "Domain Rating снизился: 32 → 29" + TAIL),
+        (
+            _months(1000, 1200, 980, 1300),
+            (32.0, 29.0),
+            DROP_07 + "; Domain Rating снизился: 32 → 29" + TAIL,
+        ),
+        (_months(1000, 1100, 990, 1300), (32.0, 30.0), None),
+        (_months(1300, 1000, 1100, 1200, 1250, start=date(2026, 4, 1)), None, None),
+        (((date(2026, 5, 1), 1000.0), (date(2026, 7, 1), 700.0)), None, None),
+        ((), None, None),
+    ],
+    ids=["drop", "rating", "both", "below-threshold", "drop-before-start", "gap", "no-series"],
+)
+def test_difficulties_hint_from_the_dynamics(
+    traffic: tuple[tuple[date, float], ...],
+    rating: tuple[float, float] | None,
+    difficulties: str | None,
+) -> None:
+    """M138: просадка трафика от 15 % к прошлому месяцу и падение DR от 3 пунктов — подсказкой.
+
+    Сравниваются соседние измеренные месяцы внутри периода работ 05–08.2026: месяц до
+    старта в пару не входит, пара через пропуск не сравнивается.
+    """
+    assert (DROP_SHARE, RATING_DROP) == (0.15, 3.0)
+    assert _known(traffic=traffic, rating=rating).get("difficulties") == difficulties
+
+
+def test_difficulties_name_the_deepest_drops_in_month_order() -> None:
+    """M138: больше трёх просадок — три самые глубокие, по порядку месяцев."""
+    period = Period(start=date(2026, 1, 1), end=date(2026, 12, 1))
+    # Просадки: 02 −20 %, 04 −50 %, 06 −30 %, 08 −16 %, 10 −40 %.
+    traffic = _months(
+        1000, 800, 1000, 500, 1000, 700, 1000, 840, 1000, 600, 1000, 1000, start=date(2026, 1, 1)
+    )
+
+    found = _known(traffic=traffic, period=period)["difficulties"]
+
+    assert MAX_DROPS == 3
+    assert found == (
+        "Просадка органического трафика в 04.2026: -50\u00a0% к 03.2026; "
+        "просадка органического трафика в 06.2026: -30\u00a0% к 05.2026; "
+        "просадка органического трафика в 10.2026: -40\u00a0% к 09.2026" + TAIL
+    )
+
+
+def test_parallel_services_from_the_same_domain() -> None:
+    """M139: другие проекты домена — услугой словами и периодом; нет пары — нет подстановки."""
+    linkbuilding = ParallelService(
+        "linkbuilding", Period(start=date(2025, 6, 1), end=date(2026, 5, 1))
+    )
+    own_word = ParallelService("аудит", Period(start=date(2025, 9, 1), end=date(2025, 10, 1)))
+
+    assert _known(parallel=(linkbuilding,))["parallel_services"] == (
+        "Линкбилдинг, 06.2025 — 05.2026 (тот же домен в базе)"
+    )
+    assert _known(parallel=(linkbuilding, own_word))["parallel_services"] == (
+        "Линкбилдинг, 06.2025 — 05.2026; аудит, 09.2025 — 10.2025 (тот же домен в базе)"
+    )
+    assert "parallel_services" not in _known()
+
+
+YMYL = "YMYL-тематика: Google строже оценивает экспертность и надёжность сайта"
+
+
+@pytest.mark.parametrize(
+    ("niche", "brief", "features"),
+    [
+        ("финансы", {}, YMYL + " (по тематике «Финансы»)"),
+        ("авто", {"topic": "health"}, YMYL + " (по тематике «Медицина и здоровье»)"),
+        ("медицинская клиника", {}, YMYL + " (по тематике «Медицина и здоровье»)"),
+        ("авто", {}, None),
+        ("финансы", {"topic": "other"}, None),
+        ("финансы", {"features": "сайт на Tilda"}, None),
+    ],
+)
+def test_features_name_ymyl_topics(niche: str, brief: dict[str, str], features: str | None) -> None:
+    """M140: финансы и медицина — YMYL; тематика специалиста важнее словаря; записанное не трогается."""
+    assert _known(brief, niche=niche).get("features") == features
+
+
+@pytest.mark.parametrize(
+    ("niche", "topic", "site_type"),
+    [
+        ("seo-инструменты", None, "Сервис / SaaS"),
+        ("DIY-ритейл", None, "Интернет-магазин"),
+        ("ПО", "ИТ и софт", "Сервис / SaaS"),
+        ("софт для разработчиков", "ИТ и софт", "Сервис / SaaS"),
+        ("контент", None, "Медиа / блог"),
+        ("финтех", "Финансы", None),
+    ],
+)
+def test_dictionary_knows_production_niches(
+    niche: str, topic: str | None, site_type: str | None
+) -> None:
+    """M141: ниши прода 13.10.2026, которых словарь не узнавал, — тематика и тип сайта."""
+    known = _known(niche=niche)
+
+    if topic is not None:
+        assert known["topic"] == f"{topic} (по нише «{niche}»)"
+    if site_type is not None:
+        assert known["site_type"] == f"{site_type} (по нише «{niche}»)"
+
+
+@pytest.mark.parametrize(
+    ("niche", "field", "not_this"),
+    [
+        ("музыкальные инструменты", "site_type", "Сервис / SaaS"),
+        ("товары по уходу", "topic", "ИТ и софт"),
+        ("ПО-шник на час", "topic", "ИТ и софт"),
+    ],
+)
+def test_dictionary_words_stay_narrow(niche: str, field: str, not_this: str) -> None:
+    """M141: «инструменты» без «чьи» — не сервис, «по» внутри ниши — не «ПО»."""
+    assert not _known(niche=niche).get(field, "").startswith(not_this)

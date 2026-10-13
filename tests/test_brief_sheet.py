@@ -130,6 +130,10 @@ def test_sheet_and_card_take_the_file_from_one_place() -> None:
         period=case.period,
         group=Group.GOOD,
         traffic_start=1000.0,
+        owner="Пётр",
+        traffic=(),
+        rating=None,
+        parallel=(),
     )
     known = known_for(facts, {})
 

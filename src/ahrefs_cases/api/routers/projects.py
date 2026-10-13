@@ -31,12 +31,13 @@ from ahrefs_cases.api.schemas import (
     VerdictView,
 )
 from ahrefs_cases.cases.builder import chart_series
-from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS, Period
+from ahrefs_cases.cases.model import CASE_SUBJECTS, SUBJECT_LABELS, ParallelService, Period
+from ahrefs_cases.cases.parallel import parallel_services
 from ahrefs_cases.classify.deltas import delta_of
 from ahrefs_cases.classify.points import window_from
 from ahrefs_cases.classify.rules import SUPPORTING_METRICS
 from ahrefs_cases.classify.rulesets import active_ruleset
-from ahrefs_cases.classify.series import bought_countries, load_series
+from ahrefs_cases.classify.series import MetricSeries, bought_countries, load_series
 from ahrefs_cases.classify.verdicts import source_mismatch
 from ahrefs_cases.collect.factory import build_provider
 from ahrefs_cases.collect.purchases import bought_metrics
@@ -157,7 +158,10 @@ async def project_card(
         # вердикта, а не пишется здесь второй раз.
         source_mismatch=(source_mismatch(verdict.source, shown) if verdict is not None else None),
         brief=dict(project.brief or {}),
-        brief_known=known_for(_brief_facts(project, view), project.brief or {}),
+        brief_known=known_for(
+            _brief_facts(project, view, series, await parallel_services(session, project)),
+            project.brief or {},
+        ),
         geo_note=rows_note(project.geo, await bought_countries(session, project.id, shown)),
     )
 
@@ -339,16 +343,24 @@ def _row(project: Project, verdict: Verdict | None) -> ProjectRow:
     )
 
 
-def _brief_facts(project: Project, verdict: VerdictView | None) -> BriefFacts:
+def _brief_facts(
+    project: Project,
+    verdict: VerdictView | None,
+    series: MetricSeries,
+    parallel: tuple[ParallelService, ...],
+) -> BriefFacts:
     """Факты проекта для подстановки брифа — те же, что лист берёт из кейса.
 
-    Трафик на старте — «было» строки трафика в таблице А → Б этой же карточки, а не
-    свой разбор точки: вид проекта судится по точке А вердикта, тем числом, что
-    человек видит рядом и что стоит в листе (L41). Нет вердикта — нет ни группы, ни
-    трафика, и подстановки по ним тоже нет.
+    Трафик на старте и Domain Rating — «было» и «стало» таблицы А → Б этой же
+    карточки, а не свой разбор точек: вид проекта и падение DR судятся по точкам
+    вердикта, теми числами, что человек видит рядом и что стоят в листе (L41).
+    Просадки — по рядам карточки: источник у них тот же, что у сборки кейса
+    (`configured_source`), и ряд трафика тот, что ляжет кривой в PDF. Нет вердикта —
+    нет ни группы, ни точек, и подстановки по ним тоже нет.
     """
     rows = verdict.comparison if verdict is not None else []
     traffic = next((row.before for row in rows if row.subject == Metric.ORG_TRAFFIC.value), None)
+    rating = next(((row.before, row.after) for row in rows if row.subject == Metric.DR.value), None)
     return BriefFacts(
         niche=project.niche,
         work_volume=project.work_volume,
@@ -356,6 +368,10 @@ def _brief_facts(project: Project, verdict: VerdictView | None) -> BriefFacts:
         period=Period(start=project.period_start, end=project.period_end),
         group=Group(verdict.group) if verdict is not None else None,
         traffic_start=traffic,
+        owner=project.owner or "",
+        traffic=tuple(sorted(series.get(Metric.ORG_TRAFFIC, {}).items())),
+        rating=rating,
+        parallel=parallel,
     )
 
 

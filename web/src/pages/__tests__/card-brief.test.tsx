@@ -274,6 +274,52 @@ describe('бриф на карточке: то, что знает файл', () 
     expect(await screen.findByText(/Бриф ещё не заполнен/)).toBeInTheDocument();
     expect(screen.queryByText('Путешествия')).not.toBeInTheDocument();
   });
+
+  it('M142: пустой бриф — сколько подставил сервис и сколько осталось; подставленное — по кнопке', async () => {
+    const known = { topic: 'travel', budget: '120 (объём работ из файла)' };
+    server({
+      'GET /api/projects/7': card({}, true, known),
+      'GET /api/projects/7/charts': { status: 200, body: [] },
+      'GET /api/brief-fields': {
+        status: 200,
+        body: { ...CATALOG, fields: [TOPIC, BUDGET, ...CATALOG.fields] },
+      },
+    });
+
+    renderCard(['read']);
+
+    expect(
+      await screen.findByText(
+        'Бриф ещё не заполнен: сервис подставил 2 пункта из 6, специалисту осталось 4',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Путешествия')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Показать подставленное' }));
+    expect(screen.getByText('Путешествия')).toBeInTheDocument();
+    expect(screen.getByText('120 (объём работ из файла)')).toBeInTheDocument();
+    expect(screen.queryByText('заполняет специалист')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Скрыть подставленное' }));
+    expect(screen.queryByText('Путешествия')).not.toBeInTheDocument();
+  });
+
+  it('M142: один подставленный пункт — «1 пункт», а не «1 пунктов»', async () => {
+    server({
+      'GET /api/projects/7': card({}, true, { topic: 'travel' }),
+      'GET /api/projects/7/charts': { status: 200, body: [] },
+      'GET /api/brief-fields': {
+        status: 200,
+        body: { ...CATALOG, fields: [TOPIC, ...CATALOG.fields] },
+      },
+    });
+
+    renderCard(['read']);
+
+    expect(
+      await screen.findByText(
+        'Бриф ещё не заполнен: сервис подставил 1 пункт из 5, специалисту осталось 4',
+      ),
+    ).toBeInTheDocument();
+  });
 });
 
 const GEO_NOTE =
