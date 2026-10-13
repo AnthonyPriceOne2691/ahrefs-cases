@@ -19,8 +19,8 @@ import type { RunEstimate, RunRow } from '../../api/types';
 
 import { RunLine } from './RunLine';
 
-/** Подписи панели. Смета одна на обе кнопки прогона (B6) — у второй другие
- *  слова, а не другая панель: вторая копия разошлась бы с первой. */
+/** Подписи панели. Смета одна на цикл по файлу и шаг 2 по базе (B6) — у каждого
+ *  свои слова, а не своя панель: вторая копия разошлась бы с первой. */
 export interface EstimateWords {
   title: string;
   count: string;
@@ -28,20 +28,13 @@ export interface EstimateWords {
   empty: string;
 }
 
-export const STAGE1_WORDS: EstimateWords = {
-  title: 'Смета прогона',
-  count: 'проектов',
-  start: 'Запустить прогон',
-  empty: 'Сначала загрузите список.',
-};
-
 interface Props {
   estimate: RunEstimate;
   run: RunRow | null;
   starting: boolean;
   startError: string | null;
   onStart: () => void;
-  words?: EstimateWords;
+  words: EstimateWords;
 }
 
 function quotaText(estimate: RunEstimate): string {
@@ -84,14 +77,7 @@ function Refusal({ estimate }: { estimate: RunEstimate }) {
   );
 }
 
-export function EstimatePanel({
-  estimate,
-  run,
-  starting,
-  startError,
-  onStart,
-  words = STAGE1_WORDS,
-}: Props) {
+export function EstimatePanel({ estimate, run, starting, startError, onStart, words }: Props) {
   const empty = estimate.projects === 0;
 
   return (

@@ -26,10 +26,26 @@ const STATUS_COLOR: Record<string, string> = {
   rejected: 'orange',
 };
 
-function moment(iso: string | null): string {
-  if (!iso) return '—';
+/** Дата и под ней время — двумя строками у каждого прогона, как номер и ступень:
+ *  «13.10.2026, 12:10» одной строкой переносился там, где колонке не хватало
+ *  места, и строка журнала меняла высоту (Z60). */
+function Moment({ iso }: { iso: string | null }) {
+  if (!iso) {
+    return (
+      <Table.Td ta="center">
+        <Text size="sm">—</Text>
+      </Table.Td>
+    );
+  }
   const at = new Date(iso);
-  return at.toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+  return (
+    <Table.Td ta="center">
+      <Text size="sm">{at.toLocaleDateString('ru-RU', { dateStyle: 'short' })}</Text>
+      <Text size="xs" c="dimmed">
+        {at.toLocaleTimeString('ru-RU', { timeStyle: 'short' })}
+      </Text>
+    </Table.Td>
+  );
 }
 
 /** Ширина, за которую текст из базы не выходит. Колонки таблицы делят
@@ -37,42 +53,95 @@ function moment(iso: string | null): string {
  *  длинная почта — раздвигает свою колонку за счёт всех остальных. */
 const CELL_WIDTH = 220;
 
-/** Ширина колонки статуса, в которую «частично» влезает целиком. */
-const STATUS_WIDTH = 116;
+/** Колонки журнала и их доли ширины, в сумме 100 %.
+ *
+ *  Доли задаёт таблица (`table-layout: fixed`), а не содержимое строк: пока цикл
+ *  по файлу проходил ступени, колонка «№» раздувалась 112 → 169 px и сжимала
+ *  соседей, таблица «плясала» (Z60, владелец 13.10.2026). Номеру отдано место под
+ *  самую длинную ступень («цикл · данные под кейс»), статусу — под «частично». */
+const HEADERS: readonly { title: string; share: number; center: boolean }[] = [
+  { title: '№', share: 17, center: false },
+  { title: 'Статус', share: 12, center: true },
+  { title: 'Кто запустил', share: 18, center: true },
+  { title: 'Начат', share: 10, center: true },
+  { title: 'Завершён', share: 10, center: true },
+  { title: 'Проекты', share: 10, center: true },
+  { title: 'Units: смета → факт', share: 10, center: true },
+  { title: 'Кейсы', share: 13, center: true },
+];
 
 /** Столько колонок в таблице. Раскрытие судеб занимает строку во всю ширину,
  *  и это число — единственное место, где ширина названа. */
-const COLUMNS = 8;
+const COLUMNS = HEADERS.length;
 
 /** Фон полосы по номеру ПРОГОНА в списке. */
 function stripe(index: number): string | undefined {
   return index % 2 === 1 ? 'var(--mantine-color-default-hover)' : undefined;
 }
 
+/** Ступень под номером. Цикл по файлу — одна строка на все ступени: какая идёт
+ *  (или на какой он встал), видно здесь же, и строка короче «цикл по файлу ·
+ *  данные под кейс» — та не помещалась в колонку и переносилась (Z60). */
+function stageLine(run: RunRow): string {
+  if (run.stage === 'cycle' && run.current_stage && run.status !== 'done') {
+    return `цикл · ${stageWord(run.current_stage)}`;
+  }
+  return stageWord(run.stage);
+}
+
+/** Ступень — всегда одна строка; не поместилась (узкое окно) — многоточие, а не перенос. */
+const STAGE_LINE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } as const;
+
+/** Почта переносится после «@», а не посреди слова: колонка своей ширины (Z60),
+ *  и «anthony@parsingprice / s.com» читалось хуже, чем «anthony@ / parsingprices.com». */
+function Author({ name }: { name: string }) {
+  const at = name.indexOf('@');
+  if (at < 0) return name;
+  return (
+    <>
+      {name.slice(0, at + 1)}
+      <wbr />
+      {name.slice(at + 1)}
+    </>
+  );
+}
+
 /** Номер и под ним ступень (B6). Не отдельной колонкой: число колонок держит
- *  строка раскрытия (`colSpan`), и таблица не должна раздаваться. */
+ *  строка раскрытия (`colSpan`), и таблица не должна раздаваться. Ступень — одной
+ *  строкой: перенос менял высоту строки, пока цикл шёл. */
 function RunNumber({ run }: { run: RunRow }) {
   return (
     <Table.Td>
       {run.id}
       {run.stage && (
-        <Text size="xs" c="dimmed" data-stage={run.stage}>
-          {stageWord(run.stage)}
-          {/* Цикл по файлу — одна строка на все ступени: какая идёт (или на
-              какой он встал), видно здесь же. */}
-          {run.current_stage && run.status !== 'done' && ` · ${stageWord(run.current_stage)}`}
+        <Text size="xs" c="dimmed" data-stage={run.stage} style={STAGE_LINE}>
+          {stageLine(run)}
         </Text>
       )}
     </Table.Td>
   );
 }
 
-/** Статус значком. Нижняя граница ширины: колонка «Кейсы» забирает место у
- *  соседей, и «частично» обрезалось до «ЧАСТИ…» (браузер, 25.09.2026). */
+/** Длинный статус («отклонён по квоте») переносится внутри значка, а не
+ *  обрезается многоточием: колонка теперь своей ширины (Z60), и значок под неё
+ *  не раздвигает. Отклонённый прогон своего статуса не меняет — высота его
+ *  строки постоянна. */
+const STATUS_LABEL = { label: { whiteSpace: 'normal' } } as const;
+
+/** Статус значком. Ширину колонки держит её доля (`HEADERS`): колонка «Кейсы»
+ *  забирала место у соседей, и «частично» обрезалось до «ЧАСТИ…» (браузер,
+ *  25.09.2026). */
 function RunStatus({ run }: { run: RunRow }) {
   return (
-    <Table.Td ta="center" miw={STATUS_WIDTH}>
-      <Badge variant="light" color={STATUS_COLOR[run.status] ?? 'gray'} data-status={run.status}>
+    <Table.Td ta="center">
+      <Badge
+        variant="light"
+        color={STATUS_COLOR[run.status] ?? 'gray'}
+        data-status={run.status}
+        h="auto"
+        maw="100%"
+        styles={STATUS_LABEL}
+      >
         {runWord(run.status)}
       </Badge>
     </Table.Td>
@@ -106,17 +175,18 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
           лишнюю — и все строки ниже меняли чётность, отчего соседние получали
           одинаковый фон (замечание владельца 15.09.2026). Полоса теперь
           принадлежит ПРОГОНУ, а не позиции строки, и раскрытие её не трогает. */}
-      <Table>
+      <Table layout="fixed">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th>№</Table.Th>
-            <Table.Th ta="center">Статус</Table.Th>
-            <Table.Th ta="center">Кто запустил</Table.Th>
-            <Table.Th ta="center">Начат</Table.Th>
-            <Table.Th ta="center">Завершён</Table.Th>
-            <Table.Th ta="center">Проекты</Table.Th>
-            <Table.Th ta="center">Units: смета → факт</Table.Th>
-            <Table.Th ta="center">Кейсы</Table.Th>
+            {HEADERS.map(({ title, share, center }) => (
+              <Table.Th
+                key={title}
+                ta={center ? 'center' : undefined}
+                style={{ width: `${share}%` }}
+              >
+                {title}
+              </Table.Th>
+            ))}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -129,7 +199,7 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                   остаётся здесь с пометкой. */}
               <Table.Td ta="center" data-author={run.started_by}>
                 <Text size="sm" maw={CELL_WIDTH} mx="auto" style={{ wordBreak: 'break-word' }}>
-                  {run.started_by_name || `#${run.started_by}`}
+                  <Author name={run.started_by_name || `#${run.started_by}`} />
                 </Text>
                 {run.started_by_deleted && (
                   <Text size="xs" c="dimmed" data-author-deleted="yes">
@@ -137,8 +207,8 @@ export function RunsTable({ rows }: { rows: RunRow[] }) {
                   </Text>
                 )}
               </Table.Td>
-              <Table.Td ta="center">{moment(run.started_at ?? run.created_at)}</Table.Td>
-              <Table.Td ta="center">{moment(run.finished_at)}</Table.Td>
+              <Moment iso={run.started_at ?? run.created_at} />
+              <Moment iso={run.finished_at} />
               <Table.Td ta="center">
                 {run.projects_ok} из {run.projects_total}
                 {run.projects_failed > 0 && (

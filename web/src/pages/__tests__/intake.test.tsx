@@ -9,7 +9,7 @@
  * ему говорят при отказе и — главное — что кнопка запуска недоступна, когда
  * смета этого не позволяет. Цена ошибки здесь units заказчика, а не неудобство.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -22,11 +22,16 @@ import { FILE_CSV, FILE_FORMAT, SHEET_ACCESS } from '../intake/ListHelp';
 /** Раздел живёт в маршрутизаторе: признак открытого окна сметы держится в
  *  адресе, и без `Router` экран падает на `useLocation`. */
 /** Смета живёт в окне (15.09.2026): плашка на странице пролистывалась вместе
- *  с ней, а смета — это решение «запускать ли», а не сводка. */
+ *  с ней, а смета — это решение «запускать ли», а не сводка. С 13.10.2026 окно
+ *  одно — шаг 2 по всей базе, и открывается оно из служебного блока под
+ *  журналом (Z61): шаг 1 по базе («Смета и запуск») снят с экрана. */
 async function openEstimate() {
-  await userEvent.click(await screen.findByRole('button', { name: 'Смета и запуск' }));
+  await userEvent.click(await screen.findByRole('button', { name: SERVICE }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Дособрать кандидатов' }));
   await screen.findByRole('dialog');
 }
+
+const SERVICE = 'Служебное: дособрать данные по всей базе';
 
 function showRuns() {
   return renderApp(
@@ -134,7 +139,7 @@ describe('экран загрузки', () => {
   it('E3: принятый файл показан числами, а не «готово»', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': { status: 200, body: REPORT },
     });
 
@@ -149,7 +154,7 @@ describe('экран загрузки', () => {
   it('E4: отклонённые строки названы номером и причиной', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': {
         status: 200,
         body: {
@@ -175,7 +180,7 @@ describe('экран загрузки', () => {
   it('E9: принятые с замечаниями показаны отдельно от отклонённых', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': {
         status: 200,
         body: {
@@ -203,7 +208,7 @@ describe('экран загрузки: смена страны', () => {
   it('M87: смена первой страны у купленных рядов названа словами', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': {
         status: 200,
         body: {
@@ -238,7 +243,7 @@ describe('экран загрузки: отказы источника', () => {
   it('E5: отказ по формату показывается текстом сервера', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': {
         status: 400,
         body: { detail: 'не понимаю формат файла: отчёт.pdf. Ожидаю .xlsx или .csv' },
@@ -254,7 +259,7 @@ describe('экран загрузки: отказы источника', () => {
   it('E6 и E7: ссылка на закрытую таблицу объясняет, что чинить', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/link': {
         status: 400,
         body: { detail: 'таблица недоступна по ссылке: откройте доступ «по ссылке»' },
@@ -275,7 +280,7 @@ describe('экран загрузки: отказы источника', () => {
 describe('экран загрузки: смета и запуск', () => {
   it('E8: смета видна числами и разбивкой', async () => {
     rememberToken('токен');
-    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    server({ '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE } });
 
     showRuns();
     await openEstimate();
@@ -288,7 +293,7 @@ describe('экран загрузки: смета и запуск', () => {
   it('E9: не хватает квоты — кнопка недоступна, причина видна', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': {
+      '/api/runs/stage2/estimate': {
         status: 200,
         body: {
           ...OK_ESTIMATE,
@@ -310,7 +315,7 @@ describe('экран загрузки: смета и запуск', () => {
   it('E10: «остаток неизвестен» — своя причина, а не «мало квоты»', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': {
+      '/api/runs/stage2/estimate': {
         status: 200,
         body: {
           ...OK_ESTIMATE,
@@ -335,7 +340,7 @@ describe('экран загрузки: прогон', () => {
   it('E11: запуск показывает номер прогона и его состояние', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/runs/7': {
         status: 200,
         body: {
@@ -352,7 +357,7 @@ describe('экран загрузки: прогон', () => {
       // Журнал и запуск — один путь, разные методы: без явного ключа журнал
       // получал бы ответ запуска (см. докстроку `server`).
       'GET /api/runs': { status: 200, body: [] },
-      '/api/runs': { status: 202, body: { run_id: 7, queued_as: 'inline:7' } },
+      'POST /api/runs/stage2': { status: 202, body: { run_id: 7, queued_as: 'inline:7' } },
     });
 
     showRuns();
@@ -365,9 +370,12 @@ describe('экран загрузки: прогон', () => {
   it('E12: активный прогон отвечает отказом с его номером', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       'GET /api/runs': { status: 200, body: [] },
-      '/api/runs': { status: 409, body: { detail: 'прогон 4 уже идёт: второй стоит вторую цену' } },
+      'POST /api/runs/stage2': {
+        status: 409,
+        body: { detail: 'прогон 4 уже идёт: второй стоит вторую цену' },
+      },
     });
 
     showRuns();
@@ -376,31 +384,12 @@ describe('экран загрузки: прогон', () => {
 
     expect(await screen.findByText(/прогон 4 уже идёт/)).toBeInTheDocument();
   });
-
-  it('E13: после приёма смета пересчитывается — список изменился, цена другая', async () => {
-    rememberToken('токен');
-    server({
-      '/api/runs/estimate': [
-        { status: 200, body: { ...OK_ESTIMATE, projects: 0, units_estimated: 0 } },
-        { status: 200, body: OK_ESTIMATE },
-      ],
-      '/api/intake/file': { status: 200, body: REPORT },
-    });
-
-    showRuns();
-    await openEstimate();
-    expect(await screen.findByText('units по смете 0')).toBeInTheDocument();
-    await upload();
-
-    await waitFor(() => expect(screen.getByText('units по смете 1980')).toBeInTheDocument());
-  });
 });
 
 describe('вторая кнопка: шаг 2 и данные под кейс (B6)', () => {
   it('B6: вторая кнопка — смета кандидатов и запуск шага 2', async () => {
     rememberToken('токен');
     const { calls } = server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/runs/stage2/estimate': {
         status: 200,
         body: {
@@ -430,8 +419,8 @@ describe('вторая кнопка: шаг 2 и данные под кейс (B
     });
 
     showRuns();
-    await userEvent.click(await screen.findByRole('button', { name: 'Дособрать кандидатов' }));
-    const dialog = await screen.findByRole('dialog');
+    await openEstimate();
+    const dialog = screen.getByRole('dialog');
 
     // Число — кандидатов, а не всех проектов: смета второй кнопки про них.
     expect(await within(dialog).findByText('кандидатов 3')).toBeInTheDocument();
@@ -444,12 +433,35 @@ describe('вторая кнопка: шаг 2 и данные под кейс (B
   });
 });
 
+describe('служебное по всей базе — свёрнуто под журналом (Z61)', () => {
+  it('M125: «Смета и запуск» нет; «Дособрать кандидатов» — только в раскрытом блоке', async () => {
+    rememberToken('токен');
+    server({ 'GET /api/runs': { status: 200, body: [] } });
+
+    showRuns();
+    const toggle = await screen.findByRole('button', { name: SERVICE });
+
+    expect(screen.queryByRole('button', { name: 'Смета и запуск' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Дособрать кандидатов' })).not.toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    // Блок стоит под журналом, а не рядом с приёмом списка.
+    expect(follows(screen.getByText('Журнал прогонов'), toggle)).toBe(true);
+
+    await userEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Дособрать кандидатов' })).toBeInTheDocument();
+    // Когда он нужен и что делать обычно — сказано в самом блоке.
+    expect(screen.getByText(/после смены порогов/)).toBeInTheDocument();
+    expect(screen.getByText(/нажать «Запустить»/)).toBeInTheDocument();
+  });
+});
+
 describe('кнопка загрузки файла', () => {
   it('доступна до того, как файл выбран: она и открывает выбор', async () => {
     rememberToken('токен');
-    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    server({});
     showRuns();
-    await openEstimate();
 
     // Ядро жалобы: кнопка «по сути ничего не делает». Она была `disabled`,
     // пока файл не выбран, а выбирало его поле рядом — то есть работу делало
@@ -459,12 +471,8 @@ describe('кнопка загрузки файла', () => {
 
   it('поле показывает имя выбранного файла и в него нельзя печатать', async () => {
     rememberToken('токен');
-    server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
-      '/api/intake/file': { status: 200, body: REPORT },
-    });
+    server({ '/api/intake/file': { status: 200, body: REPORT } });
     showRuns();
-    await openEstimate();
     await screen.findByRole('button', { name: 'Загрузить файл' });
 
     await upload(new File(['x'], 'сентябрь.xlsx'));
@@ -486,7 +494,7 @@ describe('отказ целиком — у своего поля', () => {
   it('V16: отказ по файлу — красная плашка под полем файла, отчёта нет', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': { status: 400, body: { detail: REFUSED } },
     });
     showRuns();
@@ -503,7 +511,7 @@ describe('отказ целиком — у своего поля', () => {
   it('V17: отказ по ссылке — плашка под полем ссылки, а не под файлом', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/link': {
         status: 400,
         body: { detail: 'Таблица по ссылке не подходит: нет колонок client, owner.' },
@@ -526,7 +534,7 @@ describe('отказ целиком — у своего поля', () => {
     // Сервер тоже отказал бы (413), но через прокси его ответ не доходит: он
     // рвёт соединение, не дочитав тело, и прокси отвечает «500» (замер в Chrome).
     rememberToken('токен');
-    const { calls } = server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    const { calls } = server({ '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE } });
     showRuns();
 
     await upload(new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'выгрузка.csv'));
@@ -539,7 +547,7 @@ describe('отказ целиком — у своего поля', () => {
   it('V20: после выбора поле выбора пустеет — тот же файл можно выбрать снова', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': { status: 400, body: { detail: REFUSED } },
     });
     showRuns();
@@ -559,7 +567,7 @@ describe('отказ целиком — у своего поля', () => {
 describe('справка о таблице', () => {
   it('значок стоит у поля ссылки и назван словами', async () => {
     rememberToken('токен');
-    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    server({ '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE } });
     showRuns();
 
     // Знак вопроса сам по себе не говорит, о чём спросят: подпись обязательна,
@@ -570,7 +578,7 @@ describe('справка о таблице', () => {
 
   it('V18: у поля файла свой «?», названный словами', async () => {
     rememberToken('токен');
-    server({ '/api/runs/estimate': { status: 200, body: OK_ESTIMATE } });
+    server({ '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE } });
     showRuns();
 
     // Карточку не раскрываем: попап Mantine в jsdom открывался здесь двадцать
@@ -604,7 +612,7 @@ describe('отказ гео в отчёте приёма', () => {
   it('M13: отказ гео называет новый формат и непонятый код', async () => {
     rememberToken('токен');
     server({
-      '/api/runs/estimate': { status: 200, body: OK_ESTIMATE },
+      '/api/runs/stage2/estimate': { status: 200, body: OK_ESTIMATE },
       '/api/intake/file': {
         status: 200,
         body: {

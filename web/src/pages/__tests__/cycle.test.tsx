@@ -147,7 +147,7 @@ describe('цикл по загруженному списку', () => {
       if (!found) throw new Error('строки цикла нет');
       return found;
     });
-    expect(within(row).getByText('цикл по файлу · шаг 2')).toBeInTheDocument();
+    expect(within(row).getByText('цикл · шаг 2')).toBeInTheDocument(); // M123
     expect(within(row).getByRole('button', { name: 'Скачать кейсы' })).toBeDisabled();
     view.unmount();
 
