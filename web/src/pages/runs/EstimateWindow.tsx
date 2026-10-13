@@ -18,11 +18,8 @@ import { Alert, Button, Modal, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '../../api/client';
-import { fetchEstimate } from '../../api/intake';
 import type { RunEstimate, RunRow } from '../../api/types';
-import { EstimatePanel, STAGE1_WORDS, type EstimateWords } from '../intake/EstimatePanel';
-
-export const ESTIMATE_KEY = ['runs', 'estimate'];
+import { EstimatePanel, type EstimateWords } from '../intake/EstimatePanel';
 
 interface Props {
   opened: boolean;
@@ -31,10 +28,11 @@ interface Props {
   starting: boolean;
   startError: string | null;
   onStart: () => void;
-  /** Чья смета: шаг 1 (умолчание) или вторая кнопка (B6) — ключ, запрос, слова. */
-  queryKey?: readonly string[];
-  fetcher?: () => Promise<RunEstimate>;
-  words?: EstimateWords;
+  /** Чья смета — ключ, запрос, слова. Окно одно на ступени воронки по всей базе;
+   *  с 13.10.2026 это шаг 2 и данные под кейс (шаг 1 по базе снят с экрана, Z61). */
+  queryKey: readonly string[];
+  fetcher: () => Promise<RunEstimate>;
+  words: EstimateWords;
 }
 
 export function EstimateWindow({
@@ -44,9 +42,9 @@ export function EstimateWindow({
   starting,
   startError,
   onStart,
-  queryKey = ESTIMATE_KEY,
-  fetcher = fetchEstimate,
-  words = STAGE1_WORDS,
+  queryKey,
+  fetcher,
+  words,
 }: Props) {
   const estimate = useQuery({
     queryKey,

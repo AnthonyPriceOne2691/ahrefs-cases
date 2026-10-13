@@ -20,14 +20,6 @@ export function uploadLink(url: string): Promise<IntakeReport> {
   return request<IntakeReport>('/api/intake/link', { method: 'POST', body: { url } });
 }
 
-export function fetchEstimate(): Promise<RunEstimate> {
-  return request<RunEstimate>('/api/runs/estimate');
-}
-
-export function startRun(): Promise<RunStarted> {
-  return request<RunStarted>('/api/runs', { method: 'POST' });
-}
-
 /** Смета второй кнопки: шаг 2 по кандидатам и данные под кейс (B6). */
 export function fetchStage2Estimate(): Promise<RunEstimate> {
   return request<RunEstimate>('/api/runs/stage2/estimate');

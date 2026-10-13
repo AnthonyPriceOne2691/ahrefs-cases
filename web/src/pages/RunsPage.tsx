@@ -8,31 +8,31 @@
  * «Загрузка» даже отсылала туда текстом («Запустить можно на экране
  * „Загрузка“») — две страницы указывали друг на друга.
  *
- * Смета переехала в окно: она отвечает на вопрос «запускать ли», а не «что
- * происходит», и на странице стояла третьей — её пролистывали вместе с ней.
+ * Запуск — один на виду: принятый список показывает смету своего цикла и
+ * «Запустить». Шаг 1 по всей базе («Смета и запуск») снят с экрана 13.10.2026 —
+ * его нажимали вместо цикла и оставались без кейсов (Z61); ступени по базе — в
+ * служебном блоке под журналом.
  */
-import { Alert, Button, Container, Group, Paper, Stack, Text, Title } from '@mantine/core';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Container, Paper, Stack, Text, Title } from '@mantine/core';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { ApiError } from '../api/client';
-import { fetchRun, startRun, uploadLink, uploadList } from '../api/intake';
+import { fetchRun, uploadLink, uploadList } from '../api/intake';
 import { fetchRunAuthors, fetchRuns } from '../api/ops';
 import type { IntakeReport, RunRow } from '../api/types';
 import { usePagedScreen } from '../app/screenState';
-import { useStickyFlag } from '../app/stickyFlag';
 import { Pager } from '../components/Pager';
 
 import { CycleStart } from './intake/CycleStart';
 import { IntakeOutcome } from './intake/IntakeOutcome';
 import { RUNNING } from './intake/RunLine';
 import { SourceForm } from './intake/SourceForm';
-import { ESTIMATE_KEY, EstimateWindow } from './runs/EstimateWindow';
-import { Stage2Launcher } from './runs/Stage2Launcher';
 import { JournalFilters, isFiltered } from './runs/JournalFilters';
 import type { JournalFilter } from './runs/JournalFilters';
 import { NextStep } from './runs/NextStep';
 import { RunsTable } from './runs/RunsTable';
+import { ServiceRuns } from './runs/ServiceRuns';
 
 const POLL_MS = 5_000;
 const OPEN = new Set(['queued', 'running']);
@@ -166,12 +166,9 @@ function Journal() {
 }
 
 export function RunsPage() {
-  const queryClient = useQueryClient();
   const [report, setReport] = useState<IntakeReport | null>(null);
   const [intakeError, setIntakeError] = useState<string | null>(null);
   const [runId, setRunId] = useState<number | null>(null);
-  const [startError, setStartError] = useState<string | null>(null);
-  const [showEstimate, setShowEstimate] = useStickyFlag('смета');
 
   const run = useQuery({
     queryKey: ['runs', runId],
@@ -189,23 +186,8 @@ export function RunsPage() {
       setIntakeError(null);
       setReport(null);
     },
-    onSuccess: async (accepted) => {
-      setReport(accepted);
-      // Список изменился — значит изменилась и цена. Без этого смета осталась бы
-      // ценой предыдущего списка, и решение о запуске принималось бы по ней.
-      await queryClient.invalidateQueries({ queryKey: ESTIMATE_KEY });
-    },
+    onSuccess: (accepted) => setReport(accepted),
     onError: (error: unknown) => setIntakeError(failureText(error, 'список не принят')),
-  });
-
-  const launch = useMutation({
-    mutationFn: startRun,
-    onMutate: () => setStartError(null),
-    onSuccess: async (started) => {
-      setRunId(started.run_id);
-      await queryClient.invalidateQueries({ queryKey: ['runs'] });
-    },
-    onError: (error: unknown) => setStartError(failureText(error, 'прогон не начат')),
   });
 
   return (
@@ -220,10 +202,6 @@ export function RunsPage() {
               error={intakeError}
               onSubmit={(source) => accept.mutate(source)}
             />
-            <Group>
-              <Button onClick={() => setShowEstimate(true)}>Смета и запуск</Button>
-              <Stage2Launcher run={run.data ?? null} onStarted={setRunId} />
-            </Group>
             <NextStep />
           </Stack>
         </Paper>
@@ -244,14 +222,9 @@ export function RunsPage() {
           </Stack>
         </Paper>
 
-        <EstimateWindow
-          opened={showEstimate}
-          onClose={() => setShowEstimate(false)}
-          run={run.data ?? null}
-          starting={launch.isPending}
-          startError={startError}
-          onStart={() => launch.mutate()}
-        />
+        {/* Ступени по всей базе — служебное, под журналом и свёрнуто: на виду один
+            путь, «Запустить» цикла по файлу (Z61, решение владельца 13.10.2026). */}
+        <ServiceRuns run={run.data ?? null} onStarted={setRunId} />
       </Stack>
     </Container>
   );

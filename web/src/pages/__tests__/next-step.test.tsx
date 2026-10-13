@@ -50,6 +50,12 @@ describe('правило «что дальше»', () => {
     expect(hint?.toCases).toBe(false);
   });
 
+  it('M126: после шага 1 «Дособрать кандидатов» — в служебном блоке под журналом, а не «выше»', () => {
+    const hint = nextStep(run('stage1', 'done'));
+    expect(hint?.text).toContain('«Дособрать кандидатов» в блоке «Служебное» под журналом');
+    expect(hint?.text).not.toContain('выше');
+  });
+
   it('N2: после шага 2 — данные под кейс идут сами, в их строке будет «Собрать кейсы»', () => {
     const hint = nextStep(run('stage2', 'done'));
     expect(hint?.text).toContain('данные под кейс');
