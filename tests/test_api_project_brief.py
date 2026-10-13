@@ -401,7 +401,7 @@ def test_card_and_sheet_agree_on_the_new_items(
     client: TestClient, project_id: int, writer: Callable[[Ask], Any]
 ) -> None:
     """M143: просадка, падение DR, параллельный проект, YMYL и «вёл проект» — карточка
-    (`brief_known`) и лист PDF печатают одно и то же по всем пунктам (L258)."""
+    (`brief_known`) и лист PDF печатают одно и то же по всем пунктам."""
 
     async def _setup(session: AsyncSession) -> None:
         project = await session.get(db.Project, project_id)
@@ -452,13 +452,14 @@ def test_card_and_sheet_agree_on_the_new_items(
 
     printed = {field.key: rows[field.label] for field in FIELDS if rows[field.label]}
     assert printed == known
-    assert known["prepared_by"] == "i.p (вёл проект, из файла)"  # M137
-    assert known["difficulties"] == (
+    assert known["difficulties"] == (  # M138
         "Просадка органического трафика в 04.2025: -25\u00a0% к 03.2025; "
         "Domain Rating снизился: 32 → 29 (по динамике Ahrefs — уточните причину)"
     )
-    assert known["parallel_services"] == "Линкбилдинг, 06.2025 — 05.2026 (тот же домен в базе)"
-    assert known["features"] == (
+    parallel = "Линкбилдинг, 06.2025 — 05.2026 (тот же домен в базе)"  # M139
+    assert known["parallel_services"] == parallel
+    assert known["features"] == (  # M140
         "YMYL-тематика: Google строже оценивает экспертность и надёжность сайта "
         "(по тематике «Финансы»)"
     )
+    assert known["prepared_by"] == "i.p (вёл проект, из файла)"  # M137
