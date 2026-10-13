@@ -98,10 +98,19 @@ function server(routes: Record<string, Reply>): { sent: unknown[] } {
         )
         .sort(([left], [right]) => right.length - left.length)[0];
       const reply = found?.[1] ?? { status: 404, body: { detail: 'нет такого адреса' } };
+      remember(routes, method, path, reply);
       return new Response(JSON.stringify(reply.body), { status: reply.status });
     }),
   );
   return { sent };
+}
+
+/** Записанный бриф сервер помнит: после сохранения карточка перечитывается (подстановка
+ *  `brief_known` зависит от записанного) и обязана прийти с новым брифом, как у настоящего. */
+function remember(routes: Record<string, Reply>, method: string, path: string, reply: Reply) {
+  if (method !== 'PATCH' || !path.endsWith('/brief') || reply.status >= 300) return;
+  const view = reply.body as { nda: boolean; fields: Record<string, string> };
+  routes['GET /api/projects/7'] = card(view.fields, !view.nda);
 }
 
 function card(brief: Record<string, string>, publishable = true, known = {}): Reply {

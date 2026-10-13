@@ -4,7 +4,8 @@
 (специалист заполняет бриф, карточка его отдаёт), M20 (правка частичная, пустое
 очищает), M21 (негодное поле — отказ словами, не пишется ничего), M22 (NDA —
 это `publishable` наоборот), M23 (право `edit_briefs`: у всех групп, лично
-отбирается).
+отбирается). Поставки `brief-autofill`: M131, M133 (карточка знает по вердикту), M135
+(«Кто подготовил» — сохранивший бриф), M136 (карточка и лист подставляют одно).
 
 Строки свои — проект `card.brief.example` и люди `*@brief.test.local`: дев-база
 общая, тест убирает только созданное им (L80, L148).
@@ -13,28 +14,38 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Iterator
 from datetime import date
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from tests.owned_rows import delete_owned
 
 from ahrefs_cases import config
 from ahrefs_cases.api import security
 from ahrefs_cases.api.main import app
-from ahrefs_cases.storage import UserGroup
+from ahrefs_cases.cases.builder import VerdictView, build_case
+from ahrefs_cases.classify.rulesets import active_ruleset
+from ahrefs_cases.export.brief_sheet import brief_sections
+from ahrefs_cases.storage import Group, MetricSource, UserGroup
 from ahrefs_cases.storage import models as db
+from ahrefs_cases.storage.brief import FIELDS
 
 PASSWORD = "очень-длинный-пароль"
 DOMAIN = "card.brief.example"
 CLERK, REVOKED = "clerk@brief.test.local", "revoked@brief.test.local"
+ANNA = "anna@brief.test.local"
 PEOPLE: dict[str, tuple[UserGroup, dict[str, bool]]] = {
     CLERK: (UserGroup.USER, {}),
     REVOKED: (UserGroup.ENGINEER, {"edit_briefs": False}),
+    ANNA: (UserGroup.USER, {}),
 }
+NAMES = {ANNA: "Анна Петрова"}
+"""Полное имя есть не у всех: у учётки без имени «Кто подготовил» — почта."""
 DRIVE = "https://drive.google.com/drive/folders/brief-test"
 
 Ask = Callable[[AsyncSession], Awaitable[Any]]
@@ -70,7 +81,13 @@ async def _cleanup(session: AsyncSession) -> None:
 async def _seed(session: AsyncSession) -> int:
     hashed = security.hash_password(PASSWORD)
     session.add_all(
-        db.User(email=email, password_hash=hashed, group=group, permissions=personal)
+        db.User(
+            email=email,
+            full_name=NAMES.get(email, ""),
+            password_hash=hashed,
+            group=group,
+            permissions=personal,
+        )
         for email, (group, personal) in PEOPLE.items()
     )
     project = db.Project(
@@ -94,6 +111,35 @@ def project_id(migrated_db: None, writer: Callable[[Ask], Any]) -> Iterator[int]
     writer(_cleanup)
     yield writer(_seed)
     writer(_cleanup)
+
+
+def _point(at: str, traffic: float) -> dict[str, Any]:
+    return {"at": at, "months_used": 3, "values": {"org_traffic": traffic}, "derived": {}}
+
+
+@pytest.fixture
+def verdict(project_id: int, writer: Callable[[Ask], Any]) -> None:
+    """Вердикт «хороший» по действующей версии порогов: трафик в точке А — 2 487.
+
+    Убирается с проектом: уборка сносит вердикты своих доменов.
+    """
+
+    async def _add(session: AsyncSession) -> None:
+        ruleset = await active_ruleset(session)
+        session.add(
+            db.Verdict(
+                project_id=project_id,
+                ruleset_id=ruleset.id,
+                group=Group.GOOD,
+                score=2633.0,
+                reasons={"checks": []},
+                point_a=_point("2025-01-01", 2487.0),
+                point_b=_point("2025-12-01", 5120.0),
+                source=MetricSource.FIXTURE,
+            )
+        )
+
+    writer(_add)
 
 
 @pytest.fixture
@@ -140,8 +186,9 @@ def test_specialist_fills_the_brief(client: TestClient, project_id: int) -> None
 
     assert response.status_code == 200
     stored = {"client_request": "рост заявок", "site_type": "marketplace", "folder_url": DRIVE}
-    assert response.json()["fields"] == stored
-    assert _card(client, project_id)["brief"] == stored
+    signed = {**stored, "prepared_by": CLERK}
+    assert response.json()["fields"] == signed  # M135
+    assert _card(client, project_id)["brief"] == signed  # M135
 
 
 def test_patch_is_partial_and_empty_clears(client: TestClient, project_id: int) -> None:
@@ -151,7 +198,7 @@ def test_patch_is_partial_and_empty_clears(client: TestClient, project_id: int) 
     response = _patch(client, project_id, {"fields": {"client_request": ""}})
 
     assert response.status_code == 200
-    assert _card(client, project_id)["brief"] == {"goals": "топ-10"}
+    assert _card(client, project_id)["brief"] == {"goals": "топ-10", "prepared_by": CLERK}  # M135
 
 
 def test_bad_field_saves_nothing(client: TestClient, project_id: int) -> None:
@@ -197,21 +244,100 @@ def test_other_closes_service_and_project_kinds(client: TestClient, project_id: 
     for key in other:
         assert by_key[key]["choices"][-1] == {"key": "other", "label": "Другое"}
     assert response.status_code == 200
-    assert response.json()["fields"] == {"service_kind": "other", "project_kind": "other"}
+    other_keys = {"service_kind": "other", "project_kind": "other"}
+    assert response.json()["fields"] == {**other_keys, "prepared_by": CLERK}  # M135
 
 
 def test_card_shows_what_the_file_knows(
     client: TestClient, project_id: int, writer: Callable[[Ask], Any]
 ) -> None:
-    """M121: карточка отдаёт то, что лист берёт из файла у пустых пунктов, — нишу и объём работ."""
+    """M121: карточка отдаёт то, что лист подставляет у пустых пунктов; без вердикта — из файла."""
 
     async def _volume(session: AsyncSession) -> None:
         project = await session.get(db.Project, project_id)
         assert project is not None
         project.work_volume = 120
 
-    assert _card(client, project_id)["brief_known"] == {"topic": "travel"}
+    from_file = {
+        "department": "SEO (по услуге из файла)",
+        "service_kind": "Ежемесячное продвижение (период 12 мес.)",
+        "topic": "Путешествия (по нише «travel»)",
+        "dynamics_slice": "Весь период работ (по умолчанию)",
+        "case_period_1": "01.2025 — 12.2025: SEO-продвижение (период и услуга из файла)",
+    }
+    assert _card(client, project_id)["brief_known"] == from_file  # M134
     writer(_volume)
 
     known = _card(client, project_id)["brief_known"]
-    assert known == {"topic": "travel", "budget": "120 (объём работ из файла)"}
+    assert known == {**from_file, "budget": "120 (объём работ из файла)"}  # M134
+
+
+def test_card_knows_what_the_verdict_tells(
+    client: TestClient, verdict: None, project_id: int
+) -> None:
+    """M131: вид проекта — по трафику в точке А вердикта, тем же числом, что в таблице А → Б."""
+    card = _card(client, project_id)
+    known = card["brief_known"]
+
+    assert card["verdict"]["comparison"][0]["before"] == 2487.0
+    assert known["project_kind"] == "Рост существующего сайта (трафик на старте — 2\u00a0487)"
+    assert known["result_weight"] == "Высокая (группа «хороший»)"  # M133
+
+
+def test_card_and_sheet_substitute_the_same(
+    client: TestClient, verdict: None, project_id: int, writer: Callable[[Ask], Any]
+) -> None:
+    """M136: у пустых пунктов карточка и лист PDF подставляют одно; заполненное — как записано."""
+    _patch(client, project_id, {"fields": {"department": "pr", "goals": "топ-10"}})
+    card = _card(client, project_id)
+
+    async def _sheet(session: AsyncSession) -> dict[str, str]:
+        project = await session.get(db.Project, project_id)
+        stmt = select(db.Verdict).where(db.Verdict.project_id == project_id)
+        found = (await session.execute(stmt)).scalars().one()
+        assert project is not None
+        case = build_case(project, VerdictView.of(found, "проверка"), {})
+        return {row.label: row.value for section in brief_sections(case) for row in section.rows}
+
+    rows = writer(_sheet)
+    empty = [field for field in FIELDS if field.key not in card["brief"]]
+    printed = {field.key: rows[field.label] for field in empty if rows[field.label]}
+
+    assert printed == card["brief_known"]
+    assert set(printed) == {
+        "service_kind",
+        "project_kind",
+        "topic",
+        "dynamics_slice",
+        "case_period_1",
+        "result_weight",
+    }
+    assert rows["Чей отдел вёл проект"] == "PR"
+    assert "department" not in card["brief_known"]
+
+
+def test_prepared_by_is_whoever_saved_the_brief(
+    client: TestClient, project_id: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    """M135: «Кто подготовил» пуст — пишется сохранивший; заполнен — не трогается; очищен — пуст."""
+    with caplog.at_level(logging.INFO, logger="ahrefs_cases.api.routers.briefs"):
+        first = _patch(client, project_id, {"fields": {"goals": "топ-10"}}, email=ANNA)
+    [record] = [record for record in caplog.records if record.getMessage() == "brief_updated"]
+
+    assert first.json()["fields"]["prepared_by"] == "Анна Петрова"
+    assert record.signed == ["prepared_by"]
+    assert "Анна Петрова" not in str(record.__dict__)
+
+    _patch(client, project_id, {"fields": {"prepared_by": "Иван"}})
+    kept = _patch(client, project_id, {"fields": {"goals": "топ-3"}}, email=ANNA)
+    assert kept.json()["fields"]["prepared_by"] == "Иван"
+
+    cleared = _patch(client, project_id, {"fields": {"prepared_by": ""}}, email=ANNA)
+    assert "prepared_by" not in cleared.json()["fields"]
+    assert "prepared_by" not in _card(client, project_id)["brief"]
+
+    # M135: правка одного NDA или одни очистки пунктов информацию не готовят — подписи нет.
+    nda_only = _patch(client, project_id, {"fields": {}, "nda": True}, email=ANNA)
+    assert "prepared_by" not in nda_only.json()["fields"]
+    clears_only = _patch(client, project_id, {"fields": {"goals": ""}}, email=ANNA)
+    assert "prepared_by" not in clears_only.json()["fields"]

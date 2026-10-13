@@ -5,10 +5,11 @@
 заполнил специалист (`storage.brief`). Порядок — шаблона агентства (K117), а не
 источников: копирайтер читает лист сверху вниз, как привык читать шаблон.
 
-Пустой пункт печатается словами «заполняет специалист» — пробел виден, а не
-пропущен (команда агентства 07.10.2026). Пункт брифа, которого нет на листе,
-быть не может: раскладка обязана назвать каждое поле описания, и это
-проверяется тестом.
+Пустой пункт брифа печатает то, что сервис знает о нём сам, с источником в
+скобках (`brief_known`, то же правило у карточки), а без этого — «заполняет
+специалист»: пробел виден, а не пропущен (команда агентства 07.10.2026). Пункт
+брифа, которого нет на листе, быть не может: раскладка обязана назвать каждое
+поле описания, и это проверяется тестом.
 """
 
 from __future__ import annotations
@@ -17,18 +18,20 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from ahrefs_cases.cases.format import number, percent
+from ahrefs_cases.cases.format import percent
 from ahrefs_cases.cases.model import CaseData
+from ahrefs_cases.export.brief_known import BriefFacts, known_for
+from ahrefs_cases.storage._enums import Metric
 from ahrefs_cases.storage.brief import (
     ANALYSIS,
     EMPLOYEE,
     FIELDS_BY_KEY,
     PROJECT,
     RESULTS,
-    SERVICES,
     WORKS,
     FieldKind,
     label_of,
+    service_label,
 )
 
 EMPTY = "заполняет специалист"
@@ -47,13 +50,6 @@ class BriefRow:
 class BriefSection:
     title: str
     rows: tuple[BriefRow, ...]
-
-
-def _service(case: CaseData) -> str:
-    for choice in SERVICES:
-        if choice.key == case.service.strip().lower():
-            return choice.label
-    return case.service
 
 
 def _geo(case: CaseData) -> str:
@@ -90,7 +86,7 @@ def _screens(case: CaseData) -> str:
 _AUTO: Mapping[str, tuple[str, Callable[[CaseData], str]]] = MappingProxyType(
     {
         "@owner": ("Кто из сотрудников вёл проект", lambda case: case.owner),
-        "@service": ("Услуга (по которой пишем кейс)", _service),
+        "@service": ("Услуга (по которой пишем кейс)", lambda case: service_label(case.service)),
         "@period": ("Период сотрудничества", _period),
         "@geo": ("ГЕО", _geo),
         "@growth": ("Процент роста показателей", _growth),
@@ -140,41 +136,38 @@ LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 def brief_sections(case: CaseData) -> tuple[BriefSection, ...]:
     """Разделы листа брифа с тем, что известно о проекте."""
+    known = known_for(_facts(case), case.brief)
     return tuple(
-        BriefSection(title, tuple(_row(case, key) for key in keys)) for title, keys in LAYOUT
+        BriefSection(title, tuple(_row(case, key, known) for key in keys)) for title, keys in LAYOUT
     )
 
 
-def _row(case: CaseData, key: str) -> BriefRow:
+def _facts(case: CaseData) -> BriefFacts:
+    """Факты кейса для подстановки — те же, что карточка берёт из проекта и вердикта.
+
+    Трафик на старте — «было» строки трафика в таблице А → Б листа: вид проекта
+    судится по точке А вердикта, тем числом, что копирайтер видит рядом (L41).
+    """
+    traffic = case.change(Metric.ORG_TRAFFIC.value)
+    return BriefFacts(
+        niche=case.niche,
+        work_volume=case.work_volume,
+        service=case.service,
+        period=case.period,
+        group=case.group,
+        traffic_start=traffic.before if traffic is not None else None,
+    )
+
+
+def _row(case: CaseData, key: str, known: Mapping[str, str]) -> BriefRow:
     if key in _AUTO:
         label, compute = _AUTO[key]
         return BriefRow(label, compute(case))
     field = FIELDS_BY_KEY[key]
     value = case.brief.get(key, "")
     if not value:
-        value = file_knows(key, niche=case.niche, work_volume=case.work_volume)
-    shown = label_of(field, value) if value else ""
-    return BriefRow(field.label, shown, link=field.kind is FieldKind.LINK and bool(shown))
-
-
-def file_knows(key: str, *, niche: str, work_volume: int | None) -> str:
-    """То, что файл знает о пункте, пока специалист его не заполнил."""
-    if key == "topic":
-        return niche
-    if key == "budget" and work_volume is not None:
-        return f"{number(float(work_volume))} (объём работ из файла)"
-    return ""
-
-
-def known_for(niche: str, work_volume: int | None) -> dict[str, str]:
-    """Подстановка из файла для карточки — пункт брифа → то, что лист печатает у пустого пункта.
-
-    Правило одно на лист и экран: карточка получает его значения с сервера, а не
-    повторяет (L78) — до 09.10.2026 экран писал «заполняет специалист» там, где лист
-    печатал нишу и объём работ из файла (Z58).
-    """
-    known = {key: file_knows(key, niche=niche, work_volume=work_volume) for key in printed_fields()}
-    return {key: value for key, value in known.items() if value}
+        return BriefRow(field.label, known.get(key, ""))
+    return BriefRow(field.label, label_of(field, value), link=field.kind is FieldKind.LINK)
 
 
 def printed_fields() -> frozenset[str]:

@@ -26,6 +26,7 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import date
 
+from ahrefs_cases.cases.format import number
 from ahrefs_cases.cases.model import KW_TOTAL, CaseSeries
 from ahrefs_cases.classify.points import KW_TOP10
 from ahrefs_cases.export.axis import label_step, month_labels, month_ticks, window_band
@@ -168,10 +169,6 @@ def _y(value: float, top: float) -> float:
     return _HEIGHT - _BOTTOM - (value / top) * (_HEIGHT - _BOTTOM - _TOP)
 
 
-def _number(value: float) -> str:
-    return f"{round(value):,}".replace(",", " ")
-
-
 def _axis_rows(top: float) -> list[tuple[float, str]]:
     """Деления шкалы: базовая линия подписи и что на ней написано.
 
@@ -180,7 +177,7 @@ def _axis_rows(top: float) -> list[tuple[float, str]]:
     """
     axis_max = _axis_max(top / _HEADROOM)
     return [
-        (_y(axis_max * fraction, top), _number(axis_max * fraction)) for fraction in (0.0, 0.5, 1.0)
+        (_y(axis_max * fraction, top), number(axis_max * fraction)) for fraction in (0.0, 0.5, 1.0)
     ]
 
 
@@ -370,7 +367,10 @@ def _point_mark(
     window_left = min(max(_x(present[0], months), field_left), field_right)
     y = _y(value, top)
     color = SUBJECT_COLORS[item.subject]
-    body = _number(value)
+    # Подпись точки — тем же форматтером, что таблица А → Б и текст: свой `round`
+    # округлял половину к чётному, и точка 1000,5 была «1 000» на графике и
+    # «1 001» в таблице того же листа (Z63, класс L142).
+    body = number(value)
     width = len(body) * DIGIT_WIDTH
     # А стоит в начале кривой, Б — в её конце: линия ведёт от одной точки к
     # другой, и узлы у неё именно эти.

@@ -2,7 +2,8 @@
 
 Примеры приёмки поставки `brief-pdf`: M33 (каждый пункт брифа на листе, порядок
 шаблона, что сервис знает сам), M35 (ссылки на отчёты: домен, режим, страна,
-период), M37 (запрет RU/BY читает клиента и бриф).
+период), M37 (запрет RU/BY читает клиента и бриф). Поставки `brief-autofill`:
+M129–M134 (подстановка у пустых пунктов с источником в скобках).
 """
 
 from __future__ import annotations
@@ -20,10 +21,11 @@ from ahrefs_cases.cases.stoplist import ContentBlockedError, check
 from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.export import pdf_renderer
 from ahrefs_cases.export.ahrefs_links import report_links
-from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections, known_for, printed_fields
+from ahrefs_cases.export.brief_known import BriefFacts, known_for
+from ahrefs_cases.export.brief_sheet import EMPTY, brief_sections, printed_fields
 from ahrefs_cases.export.html_renderer import render_html
 from ahrefs_cases.storage._enums import Group
-from ahrefs_cases.storage.brief import FIELDS, SECTIONS
+from ahrefs_cases.storage.brief import FIELDS, FIELDS_BY_KEY, SECTIONS
 
 
 def _case(**overrides: object) -> CaseData:
@@ -109,7 +111,7 @@ def test_sheet_fills_what_the_service_knows_and_marks_the_rest() -> None:
     assert rows["Период сотрудничества"] == "10.2024 — 09.2025 (12 мес.)"
     assert rows["ГЕО"] == "Германия (DE)"
     assert rows["Процент роста показателей"] == "органический трафик +160\u00a0%"  # M118
-    assert rows["Тематика"] == "путешествия"
+    assert rows["Тематика"] == "Путешествия (по нише «путешествия»)"  # M134
     assert rows["Бюджет проекта / объём работ"] == "120 (объём работ из файла)"
     assert rows["Тип сайта"] == "Маркетплейс"
     assert rows["Поставленные цели"] == "топ-10 по турам"
@@ -118,13 +120,47 @@ def test_sheet_fills_what_the_service_knows_and_marks_the_rest() -> None:
 
 
 def test_sheet_and_card_take_the_file_from_one_place() -> None:
-    """M121: что лист берёт из файла у пустых пунктов — то же, что карточка получает с сервера."""
-    rows = _rows(_case())
-    known = known_for("путешествия", 120)
+    """M121: что лист печатает у пустых пунктов — то же, что правило отдаёт карточке."""
+    case = _case()
+    rows = _rows(case)
+    facts = BriefFacts(
+        niche="путешествия",
+        work_volume=120,
+        service="seo",
+        period=case.period,
+        group=Group.GOOD,
+        traffic_start=1000.0,
+    )
+    known = known_for(facts, {})
 
-    assert known == {"topic": "путешествия", "budget": "120 (объём работ из файла)"}
-    assert rows["Тематика"] == known["topic"]
+    assert known["budget"] == "120 (объём работ из файла)"
     assert rows["Бюджет проекта / объём работ"] == known["budget"]
+    assert known["topic"] == "Путешествия (по нише «путешествия»)"  # M134
+    assert {key: rows[FIELDS_BY_KEY[key].label] for key in known} == known  # M136
+
+
+def test_sheet_prints_what_the_service_knows_with_its_source() -> None:
+    """M129–M133: у пустых пунктов — вывод сервиса с источником в скобках, а не «заполняет специалист»."""
+    rows = _rows(_case())
+
+    assert rows["Чей отдел вёл проект"] == "SEO (по услуге из файла)"  # M129
+    assert rows["Тип услуги"] == "Ежемесячное продвижение (период 12 мес.)"  # M130
+    assert rows["Вид проекта"] == "Рост существующего сайта (трафик на старте — 1\u00a0000)"  # M131
+    assert rows["Весомость результата"] == "Высокая (группа «хороший»)"  # M133
+    assert rows["Срез динамики"] == "Весь период работ (по умолчанию)"  # M132
+    period = "10.2024 — 09.2025: SEO-продвижение (период и услуга из файла)"
+    assert rows["Период для кейса 1 — какие услуги делали в этот момент"] == period
+    assert rows["Тип сайта"] == ""
+    assert rows["Период для кейса 2 — какие услуги делали в этот момент"] == ""
+
+
+def test_sheet_says_nothing_it_does_not_know() -> None:
+    """M132: срез «по этапам» — период 1 делит специалист; без трафика в точке А вида проекта нет."""
+    rows = _rows(_case(brief={"dynamics_slice": "stages"}, changes=()))
+
+    assert rows["Срез динамики"] == "По этапам (до трёх периодов)"
+    assert rows["Период для кейса 1 — какие услуги делали в этот момент"] == ""
+    assert rows["Вид проекта"] == ""  # M131
 
 
 def test_dollar_stays_with_its_metric() -> None:

@@ -56,6 +56,10 @@ export function BriefForm({ projectId, catalog, brief, nda, onDone }: Props) {
           ? { ...card, brief: view.fields, project: { ...card.project, publishable: !view.nda } }
           : card,
       );
+      // Подстановка сервиса у пустых пунктов (`brief_known`) зависит от записанного:
+      // очищенный пункт её получает, срез «По этапам» снимает период 1. Перечитывается
+      // только сама карточка (`exact`) — графики на своих ключах не трогаются.
+      void queryClient.invalidateQueries({ queryKey: ['project', projectId], exact: true });
       // Список проектов показывает «публикацию» — он узнаёт про NDA сам.
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
       onDone();

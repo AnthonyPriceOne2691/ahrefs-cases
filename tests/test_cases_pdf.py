@@ -22,6 +22,7 @@ from ahrefs_cases.cases.model import CaseData, Change, Period
 from ahrefs_cases.cases.stoplist import ContentBlockedError, check
 from ahrefs_cases.classify.deltas import Delta
 from ahrefs_cases.export import pdf_renderer
+from ahrefs_cases.export.brief_sheet import brief_sections
 from ahrefs_cases.export.html_renderer import (
     ATTRIBUTION,
     DATA_FOOTNOTE,
@@ -109,6 +110,27 @@ def test_masthead_names_the_countries() -> None:
     assert sheet_pages(six) == 1
 
 
+def test_dynamics_masthead_names_the_service_by_its_label() -> None:
+    """M127: шапка листа «Динамика» — услуга подписью, как в листе брифа, а не ключом (Z62)."""
+    sheet = render_html(_case(niche="финансы")).split("<!-- sheet -->", 1)[1]
+
+    assert "<span>США (US)</span><span>финансы</span><span>Линкбилдинг</span>" in sheet
+    assert "linkbuilding" not in sheet
+
+
+@pytest.mark.parametrize(
+    ("service", "label"),
+    [("linkbuilding", "Линкбилдинг"), (" SEO ", "SEO-продвижение"), ("аудит", "аудит")],
+)
+def test_service_label_is_one_for_the_masthead_and_the_brief(service: str, label: str) -> None:
+    """M127: подпись услуги одна на шапку «Динамики» и лист брифа; ключ не из списка — как записан."""
+    case = _case(service=service)
+    rows = {row.label: row.value for section in brief_sections(case) for row in section.rows}
+
+    assert case.service_label == label
+    assert rows["Услуга (по которой пишем кейс)"] == label
+
+
 @pytest.mark.parametrize("geo", ["RU", "by", "DE,RU"])
 def test_forbidden_geo_blocks_the_artifact(geo: str, tmp_path: Path) -> None:
     """E4: контент-запрет ТЗ ловится структурно, по коду страны."""
@@ -168,6 +190,26 @@ def test_percent_sign_stays_with_its_number() -> None:
     assert percent(640.2) == "+640\u00a0%"
     assert percent(1.2) == "+1,2\u00a0%"
     assert " %" not in render_html(_case())
+
+
+def test_half_rounds_away_from_zero_like_the_screen() -> None:
+    """M128: половина округляется от нуля, как на экране, а не к чётному, как `round` (Z63)."""
+    assert number(582.5) == "583"
+    assert number(1500.5) == "1\u00a0501"
+    assert number(-582.5) == "-583"
+    assert number(2.5) == "2,5"
+    assert percent(12.5) == "+13\u00a0%"
+    assert percent(-12.5) == "-13\u00a0%"
+    assert percent(2.25) == "+2,3\u00a0%"
+    # точка А ссылающихся доменов jupid.com: среднее 582,5 — в таблице листа «583», как в карточке
+    sheet = render_html(_case(changes=(_change("refdomains", 582.5, 700.0),)))
+    assert '<td class="cell-num">583</td>' in sheet
+
+
+def test_half_is_read_in_the_written_number_like_the_screen() -> None:
+    """M128: «2,15» — тоже половина: экран округляет запись числа, а не двоичное 2,1499…"""
+    assert percent(2.15) == "+2,2\u00a0%"
+    assert percent(-2.15) == "-2,2\u00a0%"
 
 
 def test_render_is_deterministic() -> None:

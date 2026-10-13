@@ -1,69 +1,63 @@
-# Verify report: runs-journal-steady
+# Verify report: brief-autofill
 
 ## Чем проверено
 
 | Что | Чем | Результат |
 |---|---|---|
-| M123 (repro) | `web/src/pages/__tests__/runs-journal.test.tsx` — таблица и шесть состояний строки цикла | **до правки** — 8 из 8 красные: `expected '' to be 'fixed'`, ступени «цикл · шаг 1» нет (к «цикл по файлу» дописывалось « · шаг 1»), у подсказки нет нижней границы высоты; после — зелёные |
-| M123, M124 — вёрстка | Chrome на стенде (`dance`): строка цикла №28 в шести состояниях, ниже — строки журнала прода 13.10 и «частично», «отклонён по квоте», «Собрать кейсы»; API подменён перехватом CDP | таблица ниже |
-| M125 | `intake.test.tsx`: «служебное по всей базе — свёрнуто под журналом»; E8–E12 и B6 — окно сметы шага 2 через блок | «Смета и запуск» нет; «Дособрать кандидатов» — только в раскрытом блоке под журналом; окно сметы — как прежде (числа, нехватка квоты, неизвестный остаток, номер прогона, отказ 409) |
-| M126 | `next-step.test.tsx` | после шага 1 — «в блоке «Служебное» под журналом», «выше» нет |
-| Цикл в журнале | `cycle.test.tsx` G3 | строка цикла — «цикл · шаг 2», «Скачать кейсы» неактивна, пока идёт |
-| Фронт | `vitest`, `tsc --noEmit`, ESLint, Prettier | 257 passed (было 248: плюс M123 ×7, M124, M125, M126; минус E13); чисто, новых предупреждений нет |
-
-### Замер вёрстки (стенд, Chrome 154, пиксели)
-
-Колонки: №, Статус, Кто запустил, Начат, Завершён, Проекты, Units, Кейсы. Состояния строки цикла: в очереди → шаг 1 →
-шаг 2 → данные под кейс → сборка кейсов → готов.
-
-| Окно | Что | До (`origin/main`) | После |
-|---|---|---|---|
-| 1440 | ширины колонок | «№» 112 → 131 → 132 → 169 → 162 → 112; «Кто» 187 → 180 → 167 → 169 → 187; «Units» 148 → 143 → 132 → 148 | 188, 133, 199, 111, 111, 111, 111, 144 — во всех шести |
-| 1440 | высота строки цикла | 58 → 70 → 70 → 70 → 70 → 58 | 56 во всех шести |
-| 1440 | верх таблицы | 677 ×5, по готовности 722 (+45) | 651 во всех шести |
-| 1280 | ширины колонок | «№» 89 → 99 → 100 → 120 → 116 → 89; «Кто» 139 → 129 | 161, 114, 170, 95, 95, 95, 95, 123 — во всех шести |
-| 1280 | высота строки цикла | 70 → 70 → 70 → 87 → 70 → 70 | 56 во всех шести |
-| 1280 | верх таблицы | 677 ×5, по готовности 722 (+45) | 651 во всех шести |
-| обе | обрезанный текст в таблице | — | нет ни в одной ячейке ни в одном состоянии (до перебалансировки долей: «цикл · данные под кейс» при 1280 и «отклонён по квоте» — исправлено) |
+| M127, M128 (repro) | `tests/test_cases_pdf.py` — шапка «Динамики», `number`/`percent` на половине | **до правки** (исполнитель Б) — 6 красных: в шапке `<span>linkbuilding</span>`; `'CaseData' object has no attribute 'service_label'`; `number(582.5)` — `'582' == '583'`, ячейка таблицы `582`; `percent(2.15)` — `'+2,1 %'` против `'+2,2 %'`; после — зелёные |
+| M128 — графики | `tests/test_cases_charts.py::test_point_label_rounds_half_like_the_table` | **на прежнем `charts.py`** — красный (`'>1 001</text>' in svg` — на кривой «1 000»); после — зелёный |
+| M129–M134 | `tests/test_brief_known.py` — правило подстановки по фактам | 34 passed: отдел по услуге («Комплекс» — без отдела), тип услуги по периоду (порог 3 мес.), вид проекта по точке А, срез и период 1 (при «по этапам» — нет), весомость по группе, тематика и тип сайта по словарю ниш; заполненный пункт не подменяется |
+| M135 | `tests/test_api_project_brief.py::test_prepared_by_is_whoever_saved_the_brief` | пустой — пишется сохранивший; заполнен — не трогается; очищен в правке — пуст; правка одного NDA и одни очистки — подписи нет; журнал называет ключ, не имя |
+| M136 | `tests/test_api_project_brief.py` — сличающий тест | карточка (`brief_known`) и лист PDF печатают одни и те же значения по всем пустым пунктам одного проекта (L258) |
+| Полный сьют | `pytest` (дев-база) | 949 passed, 12 skipped (8 мин 33 с) |
+| Фронт | `vitest`, `tsc --noEmit`, ESLint, Prettier | 257 passed; чисто. M30 карточки: подменный сервер помнит сохранённое — карточка после записи перечитывается |
+| Мутации правила | исполнитель А: трафик карточки обнулён в `None`, затем отключена подпись — 6 тестов покраснели, код возвращён | оракулы различают |
 
 ## Исполнение рисковых путей
 
-- `web/src/pages/runs/RunsTable.tsx` — Chrome на стенде (Vite, API подменён перехватом CDP): шесть состояний строки
-  цикла при 1440 и 1280 — ширины, высота строки, верх таблицы и высота подсказки (112 px) не меняются; ни один текст
-  в таблице не обрезан. Служебный блок: до раскрытия «Дособрать кандидатов» и «Смета и запуск» на экране нет; раскрыт —
-  объяснение и кнопка; окно — смета шага 2 («кандидатов 3», «Запустить шаг 2»); F5 — блок и окно восстановлены
-  (`?служебное=да&шаг2=да`). at=2026-10-13
+- `src/ahrefs_cases/export/brief_sheet.py`, `templates/case.html.j2` — стенд (база `cases_geo`, провайдер fixture, API и
+  воркер на коде ветки): «Пересобрать кейсы» (прогон №2369, 66 собрано из 80), `zooplus.de — Кейс v15.pdf`
+  растеризован: отдел «SEO (по услуге из файла)», тип услуги «Ежемесячное продвижение (период 12 мес.)», вид проекта
+  «Рост существующего сайта (трафик на старте — 53 995)», тематика «Товары для животных (по нише «зоотовары»)», бюджет
+  «150 (объём работ из файла)», срез «Весь период работ (по умолчанию)», период 1 «09.2024 — 08.2025: SEO-продвижение
+  (период и услуга из файла)», весомость «Средняя (группа «средний»)»; пустые без вывода — «заполняет специалист»;
+  шапка «Динамики» — «Германия (DE) · зоотовары · SEO-продвижение»; бриф — 2 страницы, «Динамика» — 1. Карточки
+  zooplus.de, zapier.com и двух проектов стенда отдают те же значения в `brief_known`. at=2026-10-13
+- Карточка в Chrome (стенд): пустой бриф — одна строка; записан один пункт — «Кто подготовил: agent-check@local.test»
+  (у учётки нет имени — почта), остальные пункты сразу с подстановкой, без перезагрузки; правка откатана. at=2026-10-13
 
 ## Что нашла проверка
 
-- **Ступень не помещалась при 1280.** Первая раскладка долей (№ 16 %) давала колонке номера 151 px, и «цикл · данные
-  под кейс» обрезалось многоточием; № — 17 %.
-- **«Отклонён по квоте» обрезался.** Прежде колонку статуса раздвигало содержимое, теперь ширина своя: длинный статус
-  переносится внутри значка (статус отклонённого прогона не меняется — высота его строки постоянна).
-- **Почта рвалась посреди слова** («anthony@parsingprice / s.com») — перенос после «@».
-- **Замер ловит и свои ошибки:** строка без units в подменных данных роняла экран (`num(undefined)`) — это данные
-  замера, а не код: у живого ответа units есть всегда.
+- **Две копии подписи услуги.** Исполнители написали каждый свою (`CaseData.service_label` и
+  `storage.brief.service_label`) — свойство кейса теперь зовёт вторую (L142).
+- **Подписи графиков округляли к чётному** — свой `round` в `export/charts.py`; найдено исполнителем Б вне его файлов,
+  исправлено при сведении (подписи печатает `cases.format.number`).
+- **Правка одного NDA подписывала бриф** — пустой бриф становился непустым и разворачивался на карточке; подпись —
+  только за записанный пункт.
+- **Карточка не обновляла подстановку после записи** — `BriefForm` клал в кэш только бриф; теперь карточка
+  перечитывается (`exact`, графики не трогаются).
+- **Словарь ниш:** «автоматизация» (zapier.com) оставалась без тематики — к «ИТ и софт».
+- **Округление половины** берётся по записи числа (`Decimal(repr(value))`), а не по двоичному значению: сверка
+  исполнителя Б с ICU (Node 24) — 320 000 значений без расхождений; по двоичному — 5 445 расхождений на одном знаке.
 
 ## Ревью рисковых мест
 
-**Данные и сервер.** Не меняются: шаг 1 по всей базе (`POST /api/runs`, `/api/runs/estimate`) остаётся в API и
-консоли, экран его больше не зовёт.
+**Данные.** Миграций нет. Подстановка не пишется в бриф — считается при сборке и чтении; «Кто подготовил» пишется в
+JSONB брифа тем же путём, что правка специалиста, и правится им же.
 
-**Деньги.** Платные кнопки экрана — окно шага 2 (`Stage2Launcher` → `EstimateWindow` → `EstimatePanel`) и «Запустить»
-цикла по файлу (`CycleStart`) — не меняются: та же смета, тот же отказ при нехватке квоты (E9, E10 — через блок) и
-тот же 409 при идущем прогоне (E12). Снятие «Смета и запуск» убирает одну платную точку входа, а не добавляет; шаг 2
-теперь на два нажатия дальше (раскрыть блок, открыть окно) — запуск по-прежнему только после сметы в окне.
+**Деньги.** Units не тратятся: подстановка — по уже купленным и записанным данным (вердикт, период, файл);
+«Пересобрать кейсы» бесплатна.
 
-**Безопасность.** Новых запросов и путей нет: блок зовёт тот же `/api/runs/stage2/estimate` и `POST /api/runs/stage2`,
-права проверяет сервер, как прежде; видимость экрана «Прогоны» и кнопки — у тех же, у кого была.
+**Безопасность.** Новых путей нет; запись брифа — под тем же правом `edit_briefs`, имя сохранившего берётся из его
+же учётки и в журнал не пишется (инвариант 8).
 
-**Интеграция.** Признак окна шага 1 в адресе (`?смета=да`) больше никто не читает — старая ссылка открывает экран
-без окна. Служебный блок — новый признак `служебное`.
+**Интеграция.** `brief_known` в ответе карточки — то же поле, другие значения; экран показывает их как прежде.
 
 ## Чего проверка НЕ доказывает
 
-- Прод: вёрстка шрифтами и окном владельца — во время настоящего цикла после выкатки.
-- Окна уже 1280 (контейнер до 900 px): доли держат пропорцию, ступень может уйти в многоточие — не мерилось.
+- Прод: подстановка в PDF после «Пересобрать кейсы» и шрифтом контейнера (DejaVu) — длинные значения с источником
+  в скобках переносятся иначе, чем на Mac (L257).
+- Правила команды для «Комплекса» и порога «Тип услуги» — умолчания, ответа команды нет.
 
 ## Verdict
 - [ ] READY FOR HANDOFF — оракулы зелёные; ждёт подписи human:anthony (verifier)
@@ -76,31 +70,91 @@ asserts_reviewed_by: n/a (все утверждения ведут к одобр
 
 База: `origin/main` · сгенерировано `assert_digest.sh`
 
-Новых/изменённых утверждений: **17**, из них без ссылки на пример спеки:
+Новых/изменённых утверждений: **77**, из них без ссылки на пример спеки:
 **0**. Вопрос к каждому непривязанному один: **откуда взято ожидаемое
 значение — из спеки или придумано под реализацию?**
 
 ```
-M123	expect(within(row).getByText('цикл · шаг 2')).toBeInTheDocument(); // M123
-M125	expect(screen.queryByRole('button', { name: 'Смета и запуск' })).not.toBeInTheDocument();
-M125	expect(screen.queryByRole('button', { name: 'Дособрать кандидатов' })).not.toBeInTheDocument();
-M125	expect(toggle).toHaveAttribute('aria-expanded', 'false');
-M125	expect(follows(screen.getByText('Журнал прогонов'), toggle)).toBe(true);
-M125	expect(toggle).toHaveAttribute('aria-expanded', 'true');
-M125	expect(screen.getByRole('button', { name: 'Дособрать кандидатов' })).toBeInTheDocument();
-M125	expect(screen.getByText(/после смены порогов/)).toBeInTheDocument();
-M125	expect(screen.getByText(/нажать «Запустить»/)).toBeInTheDocument();
-M126	expect(hint?.text).toContain('«Дособрать кандидатов» в блоке «Служебное» под журналом');
-M126	expect(hint?.text).not.toContain('выше');
-M123	expect(table.style.getPropertyValue('--table-layout')).toBe('fixed');
-M123	expect(shares.every((width) => width.endsWith('%'))).toBe(true);
-M123	expect(shares.reduce((sum, width) => sum + Number.parseFloat(width), 0)).toBe(100);
-M123	expect(stage).toHaveStyle({ whiteSpace: 'nowrap' });
-M123	expect((cells[index] as HTMLElement).children).toHaveLength(when ? 2 : 1);
-M124	expect(hint.style.minHeight).not.toBe('');
+M135	assert response.json()["fields"] == signed  # M135
+M135	assert _card(client, project_id)["brief"] == signed  # M135
+M135	assert _card(client, project_id)["brief"] == {"goals": "топ-10", "prepared_by": CLERK}  # M135
+M135	assert response.json()["fields"] == {**other_keys, "prepared_by": CLERK}  # M135
+M134	assert _card(client, project_id)["brief_known"] == from_file  # M134
+M134	assert known == {**from_file, "budget": "120 (объём работ из файла)"}  # M134
+M131	assert card["verdict"]["comparison"][0]["before"] == 2487.0
+M131	assert known["project_kind"] == "Рост существующего сайта (трафик на старте — 2\u00a0487)"
+M133	assert known["result_weight"] == "Высокая (группа «хороший»)"  # M133
+M136	assert project is not None
+M136	assert printed == card["brief_known"]
+M136	assert set(printed) == {
+M136	assert rows["Чей отдел вёл проект"] == "PR"
+M136	assert "department" not in card["brief_known"]
+M135	assert first.json()["fields"]["prepared_by"] == "Анна Петрова"
+M135	assert record.signed == ["prepared_by"]
+M135	assert "Анна Петрова" not in str(record.__dict__)
+M135	assert kept.json()["fields"]["prepared_by"] == "Иван"
+M135	assert "prepared_by" not in cleared.json()["fields"]
+M135	assert "prepared_by" not in _card(client, project_id)["brief"]
+M135	assert "prepared_by" not in nda_only.json()["fields"]
+M135	assert "prepared_by" not in clears_only.json()["fields"]
+M129	assert _known(service=service).get("department") == department
+M130	assert MONTHLY_FROM_MONTHS == 3
+M130	assert _known(period=period)["service_kind"] == kind
+M131	assert _known(traffic_start=traffic).get("project_kind") == kind
+M132	assert known["dynamics_slice"] == "Весь период работ (по умолчанию)"
+M132	assert known["case_period_1"] == whole
+M132	assert _known({"dynamics_slice": "whole"})["case_period_1"] == whole
+M132	assert "case_period_1" not in _known({"dynamics_slice": "stages"})
+M132	assert "case_period_2" not in known
+M132	assert _known(service="seo")["case_period_1"].endswith(
+M133	assert _known(group=group).get("result_weight") == weight
+M134	assert known.get("topic") == topic
+M134	assert known.get("site_type") == site_type
+M134	assert set(TOPIC_NICHES) == set(topics)
+M134	assert set(SITE_NICHES) == set(sites)
+M134	assert _known(niche=niche)["topic"] == f"{topics[key]} (по нише «{niche}»)", niche
+M134	assert _known(niche=niche)["site_type"] == f"{sites[key]} (по нише «{niche}»)", niche
+M134	assert _known(niche=niche)["topic"] == topic
+M136	assert set(full) == {
+M136	assert set(full) <= printed_fields()
+M136	assert full["budget"] == "120 (объём работ из файла)"
+M136	assert set(known) == set(full) - set(brief)
+M136	assert known["service_kind"] == full["service_kind"]
+M134	assert rows["Тематика"] == "Путешествия (по нише «путешествия»)"  # M134
+M121	assert known["budget"] == "120 (объём работ из файла)"
+M134	assert known["topic"] == "Путешествия (по нише «путешествия»)"  # M134
+M136	assert {key: rows[FIELDS_BY_KEY[key].label] for key in known} == known  # M136
+M129	assert rows["Чей отдел вёл проект"] == "SEO (по услуге из файла)"  # M129
+M130	assert rows["Тип услуги"] == "Ежемесячное продвижение (период 12 мес.)"  # M130
+M131	assert rows["Вид проекта"] == "Рост существующего сайта (трафик на старте — 1\u00a0000)"  # M131
+M133	assert rows["Весомость результата"] == "Высокая (группа «хороший»)"  # M133
+M132	assert rows["Срез динамики"] == "Весь период работ (по умолчанию)"  # M132
+M132	assert rows["Период для кейса 1 — какие услуги делали в этот момент"] == period
+M132	assert rows["Тип сайта"] == ""
+M132	assert rows["Период для кейса 2 — какие услуги делали в этот момент"] == ""
+M132	assert rows["Срез динамики"] == "По этапам (до трёх периодов)"
+M132	assert rows["Период для кейса 1 — какие услуги делали в этот момент"] == ""
+M131	assert rows["Вид проекта"] == ""  # M131
+M128	assert ">1\u00a0001</text>" in svg
+M128	assert ">1\u00a0451</text>" in svg
+M128	assert ">1\u00a0000</text>" not in svg
+M127	assert "<span>США (US)</span><span>финансы</span><span>Линкбилдинг</span>" in sheet
+M127	assert "linkbuilding" not in sheet
+M127	assert case.service_label == label
+M127	assert rows["Услуга (по которой пишем кейс)"] == label
+M128	assert number(582.5) == "583"
+M128	assert number(1500.5) == "1\u00a0501"
+M128	assert number(-582.5) == "-583"
+M128	assert number(2.5) == "2,5"
+M128	assert percent(12.5) == "+13\u00a0%"
+M128	assert percent(-12.5) == "-13\u00a0%"
+M128	assert percent(2.25) == "+2,3\u00a0%"
+M128	assert '<td class="cell-num">583</td>' in sheet
+M128	assert percent(2.15) == "+2,2\u00a0%"
+M128	assert percent(-2.15) == "-2,2\u00a0%"
 ```
 
-✅ **Каждое утверждение ведёт к примеру спеки** (M123 M124 M125 M126), а примеры человек
+✅ **Каждое утверждение ведёт к примеру спеки** (M121 M127 M128 M129 M130 M131 M132 M133 M134 M135 M136), а примеры человек
 подписал до кода (`human_ok_spec`). Подпись под дайджестом здесь
 **не требуется**: она уже стоит, заранее и на числах. Пиши в verify-report
 `asserts_reviewed_by: n/a (все утверждения ведут к одобренным примерам)`.
@@ -113,11 +167,11 @@ asserts_without_example: 0
 
 | Metric | Value |
 |---|---|
-| files_touched / loc_diff | 12 code (+21 process docs) / +443/-172 (net +271) |
-| commits | 2 |
+| files_touched / loc_diff | 18 code (+17 process docs) / +879/-85 (net +794) |
+| commits | 7 |
 | time_to_accepted_spec | n/a (no spec.md in history — class S?) |
 | rework_after_done | 0 (handoff not declared yet) |
-| harness_hardened | yes — web/src/pages/__tests__/runs-journal.test.tsx (новый оракул) |
+| harness_hardened | yes — tests/test_brief_known.py (новый оракул) |
 | implement_retries | MANUAL — fills from session log |
 | verify_fails_before_green | MANUAL — count red verify runs (CI run list) |
 | est_token_or_cost | MANUAL / n/a |

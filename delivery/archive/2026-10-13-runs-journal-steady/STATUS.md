@@ -1,0 +1,33 @@
+# Active delivery status
+
+- **slug:** runs-journal-steady
+- **stack:** delivery@2.00, cqg@2.55, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** bugfix
+- **repro_test:** web/src/pages/__tests__/runs-journal.test.tsx
+- **diagnosis:** n/a reason=причина измерена на стенде 13.10 до кода, перебора гипотез не было: строка цикла в шести состояниях (API подменён перехватом CDP) — колонка «№» 112 → 169 → 112 px, потому что `RunNumber` дописывает ступень только пока цикл идёт, а таблица без заданных ширин делит место по содержимому; таблица съезжает на 45 px, потому что «Что дальше» над ней меняет высоту (Z60)
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-13 by=human:anthony (13.10: «давай сейчас, да. Это и поставкой. Чиним журнал и прячем кнопки… переносим. Остальное не делаем пока» — на предложение «„Смета и запуск“ убрать, „Дособрать кандидатов“ — в свёрнутый блок под журналом, вместе с починкой журнала»; находка «таблица пляшет, должна быть в одном состоянии» — его же, 13.10; примеры M123–M126 выведены агентом)
+- **human_ok_plan:** n/a reason=подпись плана требуется классу L (§2.2); класс M — по объёму: экран прогонов, журнал, подсказка, окно сметы и тесты
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** вёрстка журнала — в jsdom её нет: тесты проверяют заданные ширины и одну строку ступени, а ширины колонок, высота строки и верх таблицы по шести состояниям цикла меряются в Chrome на стенде (`dance`), до и после
+- **ci-oracles:** tooling
+- **worktree:** none reason=единственный исполнитель ветки
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none
+- **runtime_paths:** web/src/pages/runs/RunsTable.tsx <!-- ширины колонок видны только вёрсткой браузера: jsdom её не считает — замер на стенде по шести состояниям строки цикла, при 1440 и 1280 -->
+- **irreversible_surfaces:** none reason=сервер и база не меняются; шаг 1 по всей базе остаётся в API и консоли; откат кодом экрана
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде после выкатки: на «Прогонах» нет «Смета и запуск», «Дособрать кандидатов» — в свёрнутом блоке под журналом; во время цикла по файлу ширины колонок журнала и место таблицы не меняются
+- **observe_until:** 2026-10-27
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
