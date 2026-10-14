@@ -5,7 +5,7 @@
 - **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
 - **class:** M
 - **kind:** feature
-- **phase:** implement
+- **phase:** verify
 - **builder:** agent:claude
 - **verifier:** human:anthony
 - **human_ok_spec:** yes at=2026-10-14 by=human:anthony (14.10: «добавь на фронте на проде список полей, которые теперь у нас автоматически заполняются, которые вчера делали»; на вопрос, где, — «В блоке брифа, списком»; затем «пересобрал кейсы, но когда захожу в бриф, то там поля, которые должны быть заполнены автоматически, — не заполнены», «вопрос не столько в пачке, сколько именно в карточке, когда на фронте заходишь»; значения проекта в списке и подписи формы — вывод агента из второго сообщения; примеры M144–M146 выведены агентом)
@@ -18,7 +18,7 @@
 - **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
 - **blockers:** none
 - **new_dependency:** none
-- **runtime_paths:** web/src/pages/card/Brief.tsx, web/src/pages/card/BriefForm.tsx <!-- экран карточки и формы: vitest на подменном сервере, глазами — Chrome на стенде -->
+- **runtime_paths:** web/src/pages/card/Brief*.tsx <!-- одна поверхность — блок брифа на карточке: просмотр (`Brief.tsx`) и форма (`BriefForm.tsx`) внутри него; vitest на подменном сервере, глазами — Chrome на стенде -->
 - **irreversible_surfaces:** none reason=миграций нет; подстановка не пишется в бриф — форма показывает её подписью
 - **model_surface:** n/a reason=модель не вызывается
 - **rule_enforcers:** n/a reason=model_surface не объявлена
