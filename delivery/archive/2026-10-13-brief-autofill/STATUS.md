@@ -1,0 +1,31 @@
+# Active delivery status
+
+- **slug:** brief-autofill
+- **stack:** delivery@2.00, cqg@2.55, okf@1.19
+- **stack-selftest:** external (~/Documents/Prepare) — вариант D; постоянное объявление в `delivery/STACK-ACCEPTANCE.md`
+- **class:** M
+- **kind:** feature
+- **phase:** verify
+- **builder:** agent:claude
+- **verifier:** human:anthony
+- **human_ok_spec:** yes at=2026-10-13 by=human:anthony (13.10: «еще нужно сделать, чтобы автоматически заполнялись часть полей… в PDF, давай еще вот это делай» — на предложение 12.10 «8 из 22 пунктов сервис может заполнять сам без units, 3 — подсказкой»; «если я нажму пересобрать кейсы… данные должны заполниться»; находки Z62 и Z63 — «что там еще за находки… давай»; примеры M127–M136 выведены агентом, правила «Комплекс» и порог 3 мес. — умолчания агента, ответа команды нет)
+- **human_ok_plan:** n/a reason=подпись плана требуется классу L (§2.2); класс M — по объёму: правило подстановки, карточка, лист, запись брифа, форматтер и тесты
+- **shape-oracles:** cqg-deployed
+- **behavior-oracles:** tests-present
+- **artifact_oracle:** PDF — артефакт: подстановка и шапка «Динамики» проверяются тестами текста листа, на стенде PDF после «Пересобрать кейсы» растеризован и просмотрен
+- **ci-oracles:** tooling
+- **worktree:** two reason=два исполнителя параллельно (Delivery §5.1): правило подстановки и запись брифа — одна ветка, Z62/Z63 — другая; сводятся в `brief-autofill` слиянием
+- **hooks:** claude (права из delivery/CONSTITUTION.md в .claude/settings.json)
+- **blockers:** none
+- **new_dependency:** none
+- **runtime_paths:** src/ahrefs_cases/export/brief_sheet.py, templates/case.html.j2 <!-- подстановка и шапка «Динамики» видны на листе PDF: тесты проверяют текст листа, глазами — PDF со стенда после «Пересобрать кейсы» -->
+- **irreversible_surfaces:** none reason=миграций нет; подстановка не пишется в бриф, а считается при чтении; «Кто подготовил» пишется в JSONB брифа тем же путём, что правка специалиста, и правится им же
+- **model_surface:** n/a reason=модель не вызывается
+- **rule_enforcers:** n/a reason=model_surface не объявлена
+- **canon_drift_waiver:** no
+- **baseline_growth_waiver:** no
+- **waivers:** none
+- **observability:** 1
+- **observe_signal:** на проде после выкатки и «Пересобрать кейсы»: в PDF-брифе у пустых пунктов отдел, тип услуги, вид проекта, срез, период 1, весомость, тематика и тип сайта — с источником в скобках; шапка «Динамики» — «Линкбилдинг» у jupid.com; точка А ссылающихся доменов jupid.com — 583 и в карточке, и в PDF
+- **observe_until:** 2026-10-27
+- **circuit_breakers:** defaults from AGENT_DELIVERY_HARNESS.md §3.4
