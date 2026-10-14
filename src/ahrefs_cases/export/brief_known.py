@@ -126,9 +126,10 @@ def known_for(facts: BriefFacts, brief: Mapping[str, str]) -> dict[str, str]:
     """
     known: dict[str, str] = {}
     for field in FIELDS:
-        rule = _RULES.get(field.key)
-        if rule is None or brief.get(field.key):
+        found = _RULES.get(field.key)
+        if found is None or brief.get(field.key):
             continue
+        rule, _source = found
         value = rule(facts, brief)
         if value:
             known[field.key] = value
@@ -220,17 +221,30 @@ def _plain(text: str) -> str:
     return text.strip().casefold().replace("ё", "е")
 
 
-_RULES: Mapping[str, Rule] = MappingProxyType(
+_RULES: Mapping[str, tuple[Rule, str]] = MappingProxyType(
     {
-        "department": _department,
-        "service_kind": _service_kind,
-        "project_kind": _project_kind,
-        "site_type": _site_type,
-        "topic": _topic,
-        "budget": _budget,
-        "dynamics_slice": _dynamics_slice,
-        "case_period_1": _first_period,
-        "result_weight": _result_weight,
+        "department": (_department, "по услуге из файла"),
+        "service_kind": (_service_kind, "по длине периода"),
+        "project_kind": (_project_kind, "по трафику на старте"),
+        "site_type": (_site_type, "по нише из файла, если она называет тип"),
+        "topic": (_topic, "по нише из файла"),
+        "budget": (_budget, "объём работ из файла, если он указан"),
+        "dynamics_slice": (_dynamics_slice, "весь период работ — по умолчанию"),
+        "case_period_1": (_first_period, "период и услуга из файла"),
+        "result_weight": (_result_weight, "по группе проекта"),
     }
 )
-"""Пункт брифа → откуда сервис его знает. Пункта нет — его знает только специалист."""
+"""Пункт брифа → правило и откуда сервис его знает, словами для человека. Пункта нет — его
+знает только специалист. Источник стоит рядом с правилом, а не в отдельном списке: новое
+правило без источника не напишешь, и экран не отстанет от правил (Z58, L78)."""
+
+AUTOFILL: Mapping[str, str] = MappingProxyType(
+    {
+        **{key: source for key, (_rule, source) in _RULES.items()},
+        "prepared_by": "подпишется тот, кто сохранит бриф",
+    }
+)
+"""Пункт → откуда сервис заполняет его сам — для экрана (`/api/brief-fields`): список на
+карточке пустого брифа и подписи формы (владелец 14.10.2026: «добавь на фронте список полей,
+которые теперь заполняются автоматически»). «Кто подготовил» пишет не подстановка, а
+сохранение брифа (`api.routers.briefs._sign`), но для человека это тоже «сервис сам»."""

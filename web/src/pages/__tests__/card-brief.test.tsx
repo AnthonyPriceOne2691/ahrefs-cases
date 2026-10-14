@@ -276,6 +276,77 @@ describe('бриф на карточке: то, что знает файл', () 
   });
 });
 
+const PREPARED = {
+  key: 'prepared_by',
+  label: 'Кто подготовил информацию по кейсу',
+  section: 'Проект',
+  kind: 'text',
+  choices: [],
+  column: '',
+  max_len: 300,
+};
+/** Каталог с `autofill`: три пункта заполняет сервис, три — только специалист. */
+const AUTO_CATALOG = {
+  ...CATALOG,
+  fields: [
+    { ...TOPIC, autofill: 'по нише из файла' },
+    { ...BUDGET, autofill: 'объём работ из файла, если он указан' },
+    { ...PREPARED, autofill: 'подпишется тот, кто сохранит бриф' },
+    ...CATALOG.fields.slice(1),
+  ],
+};
+const AUTO_KNOWN = {
+  topic: 'Путешествия (по нише «путешествия»)',
+  budget: '120 (объём работ из файла)',
+};
+
+function autoRoutes(): Record<string, Reply> {
+  return {
+    'GET /api/projects/7': card({}, true, AUTO_KNOWN),
+    'GET /api/projects/7/charts': { status: 200, body: [] },
+    'GET /api/brief-fields': { status: 200, body: AUTO_CATALOG },
+    'PATCH /api/projects/7/brief': { status: 200, body: { project_id: 7, nda: false, fields: {} } },
+  };
+}
+
+describe('бриф на карточке: что сервис заполняет сам', () => {
+  it('M145: пустой бриф — пункты сервиса со значениями проекта, без значения — откуда; остаток строкой', async () => {
+    server(autoRoutes());
+
+    renderCard(['read']);
+
+    expect(await screen.findByText('Сервис заполняет сам, пока пункт пуст:')).toBeInTheDocument();
+    expect(screen.getByText('Путешествия (по нише «путешествия»)')).toBeInTheDocument();
+    expect(screen.getByText('120 (объём работ из файла)')).toBeInTheDocument();
+    expect(screen.getByText('подпишется тот, кто сохранит бриф')).toBeInTheDocument();
+    expect(screen.getByText('Остальные 3 пункта заполняет специалист.')).toBeInTheDocument();
+    expect(screen.queryByText(/пунктов для специалиста/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Языковые версии')).not.toBeInTheDocument();
+  });
+
+  it('M146: форма показывает подстановку в самом поле, а сохранение её не пишет', async () => {
+    const { sent } = server(autoRoutes());
+
+    renderCard(['read', 'edit_briefs']);
+    await userEvent.click(await screen.findByRole('button', { name: 'Заполнить бриф' }));
+
+    const topic = screen.getByLabelText('Тематика') as HTMLSelectElement;
+    expect(topic.value).toBe('');
+    expect(topic.options[0]?.text).toBe('Сервис подставит: Путешествия (по нише «путешествия»)');
+    expect(screen.getByLabelText('Бюджет проекта / объём работ')).toHaveAttribute(
+      'placeholder',
+      'Сервис подставит: 120 (объём работ из файла)',
+    );
+    expect(screen.getByLabelText('Кто подготовил информацию по кейсу')).toHaveAttribute(
+      'placeholder',
+      'Сервис: подпишется тот, кто сохранит бриф',
+    );
+    expect(screen.getByLabelText('Языковые версии')).not.toHaveAttribute('placeholder');
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить бриф' }));
+    expect(sent).toEqual([{ fields: {} }]);
+  });
+});
+
 const GEO_NOTE =
   'цифры Ahrefs куплены по стране США (US) — до того, как первой страной проекта стала Германия (DE)';
 

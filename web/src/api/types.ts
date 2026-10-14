@@ -237,6 +237,8 @@ export interface BriefField {
   /** Колонка входного файла; пусто — поле правится только в карточке. */
   column: string;
   max_len: number;
+  /** Откуда сервис заполняет пункт сам, пока он пуст; пусто — пункт знает только специалист. */
+  autofill?: string;
 }
 
 export interface BriefCatalog {
