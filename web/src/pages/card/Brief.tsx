@@ -17,6 +17,7 @@ import { fetchBriefFields } from '../../api/brief';
 import type { BriefCatalog, BriefField, ProjectCard } from '../../api/types';
 import { useAuth } from '../../auth/AuthProvider';
 import { failureText } from '../cases/failure';
+import { plural } from '../format';
 
 import { BriefForm } from './BriefForm';
 import { EMPTY, bySection, shown } from './briefValues';
@@ -65,6 +66,7 @@ export function Brief({ projectId, card }: Props) {
                 projectId={projectId}
                 catalog={catalog.data}
                 brief={brief}
+                known={known}
                 nda={nda}
                 onDone={() => setEditing(false)}
               />
@@ -102,12 +104,39 @@ interface ReadProps {
 }
 
 function BriefRead({ catalog, brief, known }: ReadProps) {
-  // Пустой бриф — одна строка, а не двадцать пять «заполняет специалист»: иначе цифры и
-  // «Почему эта группа» уезжают далеко вниз (решение владельца 07.10.2026). Частично
-  // заполненный показывает пробелы, как прежде.
+  // Пустой бриф не разворачивается двадцатью двумя пунктами: иначе цифры и «Почему эта
+  // группа» уезжают далеко вниз (решение владельца 07.10.2026). Частично заполненный
+  // показывает все пункты, пустые — подстановкой сервиса, как лист PDF.
   const sections = bySection(catalog);
   const listed = sections.flatMap(([, fields]) => fields);
   if (!listed.some((field) => brief[field.key])) {
+    return <EmptyBrief listed={listed} known={known} />;
+  }
+  return (
+    <Stack gap="md">
+      {sections.map(([section, fields]) => (
+        <Stack gap={4} key={section}>
+          <Title order={5}>{section}</Title>
+          <FieldRows fields={fields} value={(key) => brief[key] || known[key]} />
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
+const POINTS = ['пункт', 'пункта', 'пунктов'] as const;
+
+/**
+ * Пустой бриф. До 14.10.2026 — одна строка «пунктов для специалиста: 22», и владелец,
+ * зайдя в бриф после пересборки, не увидел того, что сервис заполнил сам: «поля, которые
+ * должны быть заполнены автоматически, — не заполнены». Теперь — пункты, которые сервис
+ * заполняет сам (`autofill` каталога), со значением этого проекта (`brief_known`), а нет
+ * его — серым, откуда сервис его берёт; остальное — одной строкой. Число в ней — пункты
+ * без `autofill`, а не длина каталога (Z64, L260). Каталог без `autofill` — прежняя строка.
+ */
+function EmptyBrief({ listed, known }: { listed: BriefField[]; known: Record<string, string> }) {
+  const auto = listed.filter((field) => field.autofill);
+  if (auto.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-brief-empty>
         Бриф ещё не заполнен — пунктов для специалиста: {listed.length}
@@ -115,39 +144,61 @@ function BriefRead({ catalog, brief, known }: ReadProps) {
     );
   }
   return (
-    <Stack gap="md">
-      {sections.map(([section, fields]) => (
-        <Stack gap={4} key={section}>
-          <Title order={5}>{section}</Title>
-          <Table withRowBorders={false} verticalSpacing={4}>
-            <Table.Tbody>
-              {fields.map((field) => (
-                <Table.Tr key={field.key}>
-                  <Table.Td w="40%">
-                    <Text size="sm" c="dimmed">
-                      {field.label}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {/* Пустой пункт — то, что знает файл, как на листе PDF; пустой бриф
-                        целиком по-прежнему одна строка: в нём специалист ещё ничего не писал. */}
-                    <Value field={field} value={brief[field.key] || known[field.key]} />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </Stack>
-      ))}
+    <Stack gap={4} data-brief-auto>
+      <Text size="sm" fw={500}>
+        Сервис заполняет сам, пока пункт пуст:
+      </Text>
+      <FieldRows
+        fields={auto}
+        value={(key) => known[key]}
+        missing={(field) => field.autofill ?? EMPTY}
+      />
+      <Text size="sm" c="dimmed" data-brief-empty>
+        Остальные {plural(listed.length - auto.length, POINTS)} заполняет специалист.
+      </Text>
     </Stack>
   );
 }
 
-function Value({ field, value }: { field: BriefField; value: string | undefined }) {
+interface RowsProps {
+  fields: BriefField[];
+  value: (key: string) => string | undefined;
+  /** Что писать у пункта без значения; по умолчанию — «заполняет специалист». */
+  missing?: (field: BriefField) => string;
+}
+
+function FieldRows({ fields, value, missing }: RowsProps) {
+  return (
+    <Table withRowBorders={false} verticalSpacing={4}>
+      <Table.Tbody>
+        {fields.map((field) => (
+          <Table.Tr key={field.key}>
+            <Table.Td w="40%">
+              <Text size="sm" c="dimmed">
+                {field.label}
+              </Text>
+            </Table.Td>
+            <Table.Td>
+              <Value field={field} value={value(field.key)} missing={missing?.(field)} />
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
+interface ValueProps {
+  field: BriefField;
+  value: string | undefined;
+  missing?: string | undefined;
+}
+
+function Value({ field, value, missing = EMPTY }: ValueProps) {
   if (!value) {
     return (
       <Text size="sm" c="dimmed" fs="italic">
-        {EMPTY}
+        {missing}
       </Text>
     );
   }

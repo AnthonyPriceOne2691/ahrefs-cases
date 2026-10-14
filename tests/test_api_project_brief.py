@@ -6,6 +6,7 @@
 это `publishable` наоборот), M23 (право `edit_briefs`: у всех групп, лично
 отбирается). Поставки `brief-autofill`: M131, M133 (карточка знает по вердикту), M135
 («Кто подготовил» — сохранивший бриф), M136 (карточка и лист подставляют одно).
+Поставки `brief-auto-list`: M144 (каталог говорит, откуда сервис заполняет пункт).
 
 Строки свои — проект `card.brief.example` и люди `*@brief.test.local`: дев-база
 общая, тест убирает только созданное им (L80, L148).
@@ -177,6 +178,20 @@ def test_catalog_is_open_to_readers(client: TestClient) -> None:
     assert "Очень высокая" in [choice["label"] for choice in by_key["complexity"]["choices"]]
     assert by_key["folder_url"]["column"] == "folder_url"
     assert client.get("/api/brief-fields").status_code == 401
+
+
+def test_catalog_says_what_the_service_fills(client: TestClient) -> None:
+    """M144: у пунктов, которые сервис заполняет сам, каталог называет откуда; у остальных — пусто."""
+    fields = client.get("/api/brief-fields", headers=_headers(client)).json()["fields"]
+    autofill = {field["key"]: field["autofill"] for field in fields if field["autofill"]}
+
+    assert len(autofill) == 10
+    assert len(fields) - len(autofill) == 12
+    assert autofill["department"] == "по услуге из файла"
+    assert autofill["prepared_by"] == "подпишется тот, кто сохранит бриф"
+    assert autofill["site_type"] == "по нише из файла, если она называет тип"
+    assert autofill["budget"] == "объём работ из файла, если он указан"
+    assert "client_request" not in autofill
 
 
 def test_specialist_fills_the_brief(client: TestClient, project_id: int) -> None:

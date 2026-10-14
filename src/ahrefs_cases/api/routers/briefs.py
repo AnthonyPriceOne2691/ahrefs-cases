@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from ahrefs_cases.api.deps import SessionDep, UserDep, require_right
+from ahrefs_cases.export.brief_known import AUTOFILL
 from ahrefs_cases.storage.brief import (
     FIELDS,
     FIELDS_BY_KEY,
@@ -52,6 +53,9 @@ class BriefFieldView(BaseModel):
     """Колонка входного файла; пусто — поле правится только в карточке."""
 
     max_len: int
+    autofill: str
+    """Откуда сервис заполняет пункт сам, пока он пуст (`export.brief_known.AUTOFILL`);
+    пусто — пункт знает только специалист."""
 
 
 class BriefCatalog(BaseModel):
@@ -80,7 +84,8 @@ class BriefView(BaseModel):
     dependencies=[Depends(require_right("read"))],
 )
 async def brief_fields() -> BriefCatalog:
-    """Пункты шаблона по разделам — в порядке шаблона, со списками значений."""
+    """Пункты шаблона по разделам — в порядке шаблона, со списками значений и тем, откуда
+    сервис заполняет пункт сам."""
     return BriefCatalog(
         sections=list(SECTIONS),
         fields=[
@@ -92,6 +97,7 @@ async def brief_fields() -> BriefCatalog:
                 choices=[ChoiceView(key=c.key, label=c.label) for c in field.choices],
                 column=field.column,
                 max_len=field.max_len,
+                autofill=AUTOFILL.get(field.key, ""),
             )
             for field in FIELDS
         ],

@@ -3,7 +3,8 @@
 Примеры приёмки поставки `brief-autofill`: M129 (отдел по услуге), M130 (тип услуги
 по периоду), M131 (вид проекта по трафику точки А), M132 (срез и период 1), M133
 (весомость по группе), M134 (тематика и тип сайта по нише), M136 (заполненное не
-подменяется). Правило чистое — база не нужна.
+подменяется). Поставки `brief-auto-list`: M144 (откуда сервис заполняет пункт — для
+экрана). Правило чистое — база не нужна.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from typing import Any
 import pytest
 
 from ahrefs_cases.cases.model import Period
-from ahrefs_cases.export.brief_known import MONTHLY_FROM_MONTHS, BriefFacts, known_for
+from ahrefs_cases.export.brief_known import AUTOFILL, MONTHLY_FROM_MONTHS, BriefFacts, known_for
 from ahrefs_cases.export.brief_sheet import printed_fields
 from ahrefs_cases.storage._enums import Group
 from ahrefs_cases.storage.brief import SITE_TYPES, TOPICS
@@ -222,3 +223,14 @@ def test_filled_item_is_not_substituted() -> None:
     known = _known(brief, niche="интернет-магазин одежды", work_volume=120)
     assert set(known) == set(full) - set(brief)
     assert known["service_kind"] == full["service_kind"]
+
+
+def test_screen_list_is_what_the_rule_fills() -> None:
+    """M144: у экрана — те же пункты, что подставляет правило, и «Кто подготовил» (его
+    подписывает сохранение брифа); у каждого сказано, откуда он."""
+    full = _known(niche="интернет-магазин одежды", work_volume=120)
+
+    assert set(AUTOFILL) == set(full) | {"prepared_by"}
+    assert all(AUTOFILL.values())
+    assert AUTOFILL["department"] == "по услуге из файла"
+    assert AUTOFILL["prepared_by"] == "подпишется тот, кто сохранит бриф"
